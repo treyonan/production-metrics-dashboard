@@ -1,0 +1,9 @@
+# Dev + test tooling. Installing this also installs the runtime requirements
+# (via the -r include). Use this for local dev; production install uses
+# requirements.txt only.
+
+-r requirements.txt
+
+pytest~=8.3
+pytest-asyncio~=0.24
+ruff~=0.8

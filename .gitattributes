@@ -1,0 +1,28 @@
+# Normalize line endings. Git on Windows defaults to `autocrlf=true`,
+# which silently rewrites LF → CRLF on checkout. That breaks the
+# shebang line and `/bin/sh` semantics of shell scripts and the
+# Dockerfile's RUN steps when the container starts.
+#
+# Rules below force LF on files that must stay LF regardless of the
+# client's autocrlf setting, and let everything else use the repo's
+# default.
+
+*                text=auto eol=lf
+
+# Explicitly force LF (just in case, for high-risk files)
+Dockerfile       text eol=lf
+*.sh             text eol=lf
+*.sql            text eol=lf
+*.py             text eol=lf
+
+# Binary files — never line-ending-munge these
+*.png            binary
+*.jpg            binary
+*.jpeg           binary
+*.gif            binary
+*.ico            binary
+*.pdf            binary
+*.woff           binary
+*.woff2          binary
+*.ttf            binary
+*.eot            binary

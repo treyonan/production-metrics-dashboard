@@ -1,0 +1,55 @@
+{
+  "$namespace": "https://github.com/flow-software/InfoHub-Profiles/blob/6027bead6c6d60f58ee5f75c8e95692f808d62d2/Profiles/Measure/FlowMeasureValueData.schema.json",
+  "$comment": "Flow Software Profile - Measure Value Data",
+  "measure": {
+    "$namespace": "https://github.com/flow-software/InfoHub-Profiles/blob/bf0a941dd1edcee469a782c56f90c1a821bdcd39/Profiles/Measure/FlowMeasure.schema.json",
+    "$comment": "Measure definition — identifies the measure being reported",
+    "id": 1644,
+    "name": "Total",
+    "parent": "C4",
+    "hierarchicalName": "[C4.Total.Total](http://C4.Total.Total)",
+    "description": "C4_Total",
+    "uom": "Tons",
+    "intervalType": "Hourly",
+    "format": "0",
+    "measureDataApiEndpoint": "http://dbp-bcq:4501/flow-software/flow/instances/80D1092C-EFBF-4592-9425-C85ABE2EC7FB/server/api/v1/data/measures?start=[PeriodStart]&end=[PeriodEnd]&preferred=true&eventPeriods=false&calendarid=1&id=1644&comments=false&exceptions=false&attributes=false&users=false&limit=1000",
+    "measureDataApiEndpointWithAttributes": "http://dbp-bcq:4501/flow-software/flow/instances/80D1092C-EFBF-4592-9425-C85ABE2EC7FB/server/api/v1/data/measures?start=[PeriodStart]&end=[PeriodEnd]&preferred=true&eventPeriods=false&calendarid=1&id=1644&comments=false&exceptions=false&attributes=true&users=false&limit=1000"
+  },
+  "modelAttributes": {
+    "$namespace": "https://github.com/flow-software/InfoHub-Profiles/blob/bf0a941dd1edcee469a782c56f90c1a821bdcd39/Profiles/Measure/FlowModelAttributes.schema.json",
+    "$comment": "Model attributes — contextual metadata from the data model hierarchy",
+    "Site": "Big_Canyon",
+    "Area": "Secondary",
+    "Line": "Conveyor",
+    "Conveyor_Number": "C4",
+    "Entity_ID": "214",
+    "MaintainX_Asset_ID": "10798217",
+    "ConnectionProperty.Tagname": "Total_Calculated",
+    "ConnectionProperty.AggregationType": "Sum",
+    "ConnectionProperty.ComparatorType": "Equals",
+    "ConnectionProperty.ScaleFactor": "1",
+    "ConnectionProperty.Rollover": "0",
+    "ConnectionProperty.RolloverDeadband": "0",
+    "ConnectionProperty.State": ""
+  },
+  "timePeriod": {
+    "$namespace": "https://github.com/flow-software/InfoHub-Profiles/blob/bf0a941dd1edcee469a782c56f90c1a821bdcd39/Profiles/Measure/FlowTimePeriod.schema.json",
+    "$comment": "Time period — defines the reporting window for the values",
+    "timeScheme": "Production",
+    "timeSchemeShift": "Morning",
+    "start": "2026-04-27T12:00:00.0000000Z",
+    "end": "2026-04-27T13:00:00.0000000Z",
+    "startUnix": 1777291200,
+    "endUnix": 1777294800
+  },
+  "values": [
+    {
+      "$namespace": "https://github.com/flow-software/InfoHub-Profiles/blob/6027bead6c6d60f58ee5f75c8e95692f808d62d2/Profiles/Measure/FlowMeasureValue.schema.json",
+      "$comment": "Measure value — a single data point with optional attribute breakdown",
+      "value": 0.0,
+      "formattedValue": "0",
+      "duration": 3600000,
+      "quality": 192
+    }
+  ]
+}

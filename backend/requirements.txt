@@ -1,0 +1,17 @@
+# Direct runtime dependencies only. Edit here; let pip resolve transitives.
+# ~= is PEP 440 "compatible release": patch updates allowed, next minor/major
+# pinned out. For 0.x packages we pin at the minor level (3 segments) because
+# minor bumps in 0.x often contain breaking changes.
+
+fastapi~=0.136.0
+pydantic~=2.13
+pydantic-settings~=2.6
+uvicorn[standard]~=0.32.0
+httpx~=0.27.0
+structlog~=24.4
+
+# SQL Server backend (optional at runtime; only used when
+# PMD_PRODUCTION_REPORT_BACKEND=sql). Requires ODBC Driver 17 for SQL Server
+# installed on the host -- pip alone is not enough.
+aioodbc~=0.5.0
+pyodbc~=5.2.0

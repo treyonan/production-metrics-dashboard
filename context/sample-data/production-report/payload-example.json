@@ -1,0 +1,104 @@
+{
+  "Metrics": {
+    "Site": {
+      "Loader_Operator_One": "Brandon Stephens",
+      "Shot_Number_One": "None",
+      "Loader_Operator_Two": "Connor Dakour",
+      "Loads_15_Ton": "0",
+      "Shot_Number_Two": "None"
+    },
+    "C3": {
+      "Availability": 0.0,
+      "Runtime": 0.0,
+      "Produced_Item_Description": "_",
+      "Belt_Scale_Availability": 100.0,
+      "Total": 0.0,
+      "Produced_Item_Code": "_",
+      "Performance": null
+    },
+    "C4": {
+      "Availability": 5.7,
+      "Runtime": 31.2,
+      "Produced_Item_Description": "#57",
+      "Belt_Scale_Availability": 100.0,
+      "Total": 0.0,
+      "Produced_Item_Code": "ST3510",
+      "Performance": 0.0
+    },
+    "C5": {
+      "Availability": 5.7,
+      "Runtime": 31.2,
+      "Produced_Item_Description": "#57",
+      "Belt_Scale_Availability": 100.0,
+      "Total": 0.0,
+      "Produced_Item_Code": "ST3510",
+      "Performance": 0.0
+    },
+    "Workcenter": {
+      "Availability": 5.3,
+      "Production_Mode": "2",
+      "Start_Time": "06:30:00",
+      "Scheduled_Hours": "0",
+      "Total": null,
+      "Actual_Runtime_Hours": 9.2,
+      "Scheduled_Status": "Scheduled",
+      "Performance": null
+    },
+    "C6": {
+      "Availability": 0.0,
+      "Runtime": 0.0,
+      "Produced_Item_Description": "_",
+      "Belt_Scale_Availability": 0.0,
+      "Total": 0.0,
+      "Produced_Item_Code": "_",
+      "Performance": null
+    },
+    "C7": {
+      "Availability": 0.0,
+      "Runtime": 0.0,
+      "Produced_Item_Description": "_",
+      "Belt_Scale_Availability": 0.0,
+      "Total": 0.0,
+      "Produced_Item_Code": "_",
+      "Performance": null
+    },
+    "C8": {
+      "Availability": 0.0,
+      "Runtime": 0.0,
+      "Produced_Item_Description": "1 1/2IN CRUSHER RUN",
+      "Belt_Scale_Availability": 0.0,
+      "Total": 0.0,
+      "Produced_Item_Code": "ST5450",
+      "Performance": null
+    },
+    "Circuit": {
+      "A": {
+        "Line": {
+          "A": {
+            "Runtime": 32.4,
+            "Total": null
+          },
+          "B": {
+            "Runtime": 31.2,
+            "Total": null
+          }
+        },
+        "Runtime": 63.5,
+        "Total": null
+      },
+      "B": {
+        "Runtime": 0.0,
+        "Total": null
+      }
+    },
+    "C1": {
+      "Availability": 5.7,
+      "Runtime": 31.3,
+      "Produced_Item_Description": "_",
+      "Belt_Scale_Availability": 100.0,
+      "Total": 0.0,
+      "Produced_Item_Code": "_",
+      "Performance": 0.0
+    }
+  }
+}

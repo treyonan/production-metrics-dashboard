@@ -1,0 +1,599 @@
+{
+  "generated_at": "2026-04-19T18:31:35-05:00",
+  "sites": [
+    {
+      "code": "ARQ",
+      "sheets": [
+        "Primary",
+        "Secondary",
+        "Lippman Crusher",
+        "KPI JCI Crusher"
+      ],
+      "circuits": {
+        "arq_primary": {
+          "sheet": "Primary",
+          "header_row": 3,
+          "cols": {
+            "availability": {
+              "col": 7,
+              "hdr": "Availability",
+              "st": "confirmed"
+            },
+            "performance": {
+              "col": 8,
+              "hdr": "Performance",
+              "st": "confirmed"
+            },
+            "run_time": {
+              "col": 6,
+              "hdr": "Run Time ",
+              "st": "confirmed"
+            },
+            "sched_run": {
+              "col": 5,
+              "hdr": "Sch. Run Time = Shift Time",
+              "st": "confirmed"
+            },
+            "tons": {
+              "col": 13,
+              "hdr": "Total Tons (by J1 Belt Scale)",
+              "st": "confirmed"
+            },
+            "est_tons": {
+              "col": 11,
+              "hdr": "Est. Tons",
+              "st": "confirmed"
+            },
+            "rip_rap_pct": {
+              "col": 16,
+              "hdr": "% Rip Rap of Total Primary Tons",
+              "st": "confirmed"
+            },
+            "product_label": {
+              "col": 28,
+              "hdr": "Note What Product ( 1.5\", 2.5\", 3.5\"           CR, etc\u2026) or ODOT",
+              "st": "confirmed"
+            },
+            "downtime_hrs": {
+              "col": null,
+              "hdr": null,
+              "st": "not_configured"
+            },
+            "downtime_note": {
+              "col": null,
+              "hdr": null,
+              "st": "not_configured"
+            }
+          }
+        },
+        "arq_secondary": {
+          "sheet": "Secondary",
+          "header_row": 3,
+          "cols": {
+            "availability": {
+              "col": 35,
+              "hdr": "Availability",
+              "st": "confirmed"
+            },
+            "performance": {
+              "col": 45,
+              "hdr": "Performance (by Feed Scale)",
+              "st": "confirmed"
+            },
+            "run_time": {
+              "col": 34,
+              "hdr": "Run Time",
+              "st": "confirmed"
+            },
+            "sched_run": {
+              "col": 33,
+              "hdr": "Scheduled Run Time = Shift Time",
+              "st": "confirmed"
+            },
+            "tons": {
+              "col": 41,
+              "hdr": "Total Tons Produced",
+              "st": "confirmed"
+            },
+            "est_tons": {
+              "col": null,
+              "hdr": null,
+              "st": "not_configured"
+            },
+            "rip_rap_pct": {
+              "col": null,
+              "hdr": null,
+              "st": "not_configured"
+            },
+            "product_label": {
+              "col": 4,
+              "hdr": "Note               Product ",
+              "st": "confirmed"
+            },
+            "downtime_hrs": {
+              "col": null,
+              "hdr": null,
+              "st": "not_configured"
+            },
+            "downtime_note": {
+              "col": 51,
+              "hdr": "Comments:",
+              "st": "confirmed"
+            }
+          }
+        },
+        "arq_lippman": {
+          "sheet": "Lippman Crusher",
+          "header_row": 3,
+          "cols": {
+            "availability": {
+              "col": 9,
+              "hdr": "Availability",
+              "st": "confirmed"
+            },
+            "performance": {
+              "col": 10,
+              "hdr": "Performance",
+              "st": "confirmed"
+            },
+            "run_time": {
+              "col": 8,
+              "hdr": "Run Time",
+              "st": "confirmed"
+            },
+            "sched_run": {
+              "col": 7,
+              "hdr": "Sch. Run Time = Shift Time",
+              "st": "confirmed"
+            },
+            "tons": {
+              "col": 31,
+              "hdr": "Total Tonnage - Measured",
+              "st": "confirmed"
+            },
+            "est_tons": {
+              "col": 13,
+              "hdr": "Calculated Tons Fed",
+              "st": "confirmed"
+            },
+            "rip_rap_pct": {
+              "col": null,
+              "hdr": null,
+              "st": "not_configured"
+            },
+            "product_label": {
+              "col": 2,
+              "hdr": "A Product",
+              "st": "confirmed"
+            },
+            "downtime_hrs": {
+              "col": null,
+              "hdr": null,
+              "st": "not_configured"
+            },
+            "downtime_note": {
+              "col": 33,
+              "hdr": "Comments regarding Down time",
+              "st": "confirmed"
+            }
+          }
+        },
+        "arq_kpi_jci": {
+          "sheet": "KPI JCI Crusher",
+          "header_row": 3,
+          "cols": {
+            "availability": {
+              "col": 8,
+              "hdr": "Run Time %",
+              "st": "confirmed"
+            },
+            "performance": {
+              "col": null,
+              "hdr": null,
+              "st": "not_configured"
+            },
+            "run_time": {
+              "col": 7,
+              "hdr": "Run Time",
+              "st": "confirmed"
+            },
+            "sched_run": {
+              "col": 6,
+              "hdr": "Sch. Run Time = Shift Time",
+              "st": "confirmed"
+            },
+            "tons": {
+              "col": 30,
+              "hdr": "Total Tonnage - Measured",
+              "st": "confirmed"
+            },
+            "est_tons": {
+              "col": 10,
+              "hdr": "Calculated Tons Fed",
+              "st": "confirmed"
+            },
+            "rip_rap_pct": {
+              "col": null,
+              "hdr": null,
+              "st": "not_configured"
+            },
+            "product_label": {
+              "col": 2,
+              "hdr": "A Product",
+              "st": "confirmed"
+            },
+            "downtime_hrs": {
+              "col": null,
+              "hdr": null,
+              "st": "not_configured"
+            },
+            "downtime_note": {
+              "col": 33,
+              "hdr": "Comments regarding Down time",
+              "st": "confirmed"
+            }
+          }
+        }
+      }
+    },
+    {
+      "code": "RSQ",
+      "sheets": [
+        "Primary",
+        "Primary Piviot",
+        "Secondary",
+        "Secondary Piviot",
+        "Tertiary",
+        "Tertiary Piviot",
+        "Sand Plant",
+        "Sand Plant Piviot",
+        "Wash Plant",
+        "Trommel",
+        "Trommel Piviot",
+        "Detail1",
+        "Sheet1",
+        "Goals",
+        "Detail2"
+      ],
+      "circuits": {
+        "rsq_primary": {
+          "sheet": "Primary",
+          "header_row": 1,
+          "cols": {
+            "availability": {
+              "col": 30,
+              "hdr": "Plant Availability",
+              "st": "confirmed"
+            },
+            "performance": {
+              "col": 31,
+              "hdr": "Plant Performance",
+              "st": "confirmed"
+            },
+            "run_time": {
+              "col": 8,
+              "hdr": "RunTime",
+              "st": "confirmed"
+            },
+            "sched_run": {
+              "col": 7,
+              "hdr": "Scheduled RunTime",
+              "st": "confirmed"
+            },
+            "tons": {
+              "col": 12,
+              "hdr": "C2A Tons",
+              "st": "confirmed"
+            },
+            "est_tons": {
+              "col": null,
+              "hdr": "Estimated Tons",
+              "st": "detected"
+            },
+            "rip_rap_pct": {
+              "col": null,
+              "hdr": null,
+              "st": "not_configured"
+            },
+            "product_label": {
+              "col": 13,
+              "hdr": "C2A Product",
+              "st": "confirmed"
+            },
+            "downtime_hrs": {
+              "col": 29,
+              "hdr": "Downtime Total",
+              "st": "confirmed"
+            },
+            "downtime_note": {
+              "col": null,
+              "hdr": null,
+              "st": "not_configured"
+            }
+          }
+        },
+        "rsq_secondary": {
+          "sheet": "Secondary",
+          "header_row": 1,
+          "cols": {
+            "availability": {
+              "col": 21,
+              "hdr": "Availability",
+              "st": "confirmed"
+            },
+            "performance": {
+              "col": 22,
+              "hdr": "Plant Performace",
+              "st": "confirmed"
+            },
+            "run_time": {
+              "col": 8,
+              "hdr": "Runtime",
+              "st": "confirmed"
+            },
+            "sched_run": {
+              "col": 7,
+              "hdr": "Scheduled Runtime",
+              "st": "confirmed"
+            },
+            "tons": {
+              "col": null,
+              "hdr": "C4 Tons",
+              "st": "detected"
+            },
+            "est_tons": {
+              "col": null,
+              "hdr": null,
+              "st": "not_configured"
+            },
+            "rip_rap_pct": {
+              "col": null,
+              "hdr": null,
+              "st": "not_configured"
+            },
+            "product_label": {
+              "col": null,
+              "hdr": "C4 Product",
+              "st": "detected"
+            },
+            "downtime_hrs": {
+              "col": 20,
+              "hdr": "Downtime Total",
+              "st": "confirmed"
+            },
+            "downtime_note": {
+              "col": null,
+              "hdr": null,
+              "st": "not_configured"
+            }
+          }
+        },
+        "rsq_tertiary": {
+          "sheet": "Tertiary",
+          "header_row": 1,
+          "cols": {
+            "availability": {
+              "col": 40,
+              "hdr": "Crushing Availability",
+              "st": "confirmed"
+            },
+            "performance": {
+              "col": 41,
+              "hdr": "Crushing Performance",
+              "st": "confirmed"
+            },
+            "run_time": {
+              "col": 7,
+              "hdr": "Feed Runtime",
+              "st": "confirmed"
+            },
+            "sched_run": {
+              "col": 6,
+              "hdr": "Scheduled Runtime",
+              "st": "confirmed"
+            },
+            "tons": {
+              "col": null,
+              "hdr": "C17 Tons",
+              "st": "detected"
+            },
+            "est_tons": {
+              "col": null,
+              "hdr": null,
+              "st": "not_configured"
+            },
+            "rip_rap_pct": {
+              "col": null,
+              "hdr": null,
+              "st": "not_configured"
+            },
+            "product_label": {
+              "col": null,
+              "hdr": "C34 Product",
+              "st": "detected"
+            },
+            "downtime_hrs": {
+              "col": null,
+              "hdr": null,
+              "st": "not_configured"
+            },
+            "downtime_note": {
+              "col": null,
+              "hdr": null,
+              "st": "not_configured"
+            }
+          }
+        },
+        "rsq_sand": {
+          "sheet": "Sand Plant",
+          "header_row": 1,
+          "cols": {
+            "availability": {
+              "col": 9,
+              "hdr": "Run Time %",
+              "st": "confirmed"
+            },
+            "performance": {
+              "col": 6,
+              "hdr": "Efficiency",
+              "st": "confirmed"
+            },
+            "run_time": {
+              "col": 8,
+              "hdr": "Run Time",
+              "st": "confirmed"
+            },
+            "sched_run": {
+              "col": 7,
+              "hdr": "Sch. Run Time = Shift Time",
+              "st": "confirmed"
+            },
+            "tons": {
+              "col": 12,
+              "hdr": "Tons Produced",
+              "st": "confirmed"
+            },
+            "est_tons": {
+              "col": null,
+              "hdr": null,
+              "st": "not_configured"
+            },
+            "rip_rap_pct": {
+              "col": null,
+              "hdr": null,
+              "st": "not_configured"
+            },
+            "product_label": {
+              "col": 5,
+              "hdr": "Product",
+              "st": "confirmed"
+            },
+            "downtime_hrs": {
+              "col": null,
+              "hdr": null,
+              "st": "not_configured"
+            },
+            "downtime_note": {
+              "col": null,
+              "hdr": null,
+              "st": "not_configured"
+            }
+          }
+        },
+        "rsq_wash": {
+          "sheet": "Wash Plant",
+          "header_row": 1,
+          "cols": {
+            "availability": {
+              "col": 4,
+              "hdr": "Run Time %",
+              "st": "confirmed"
+            },
+            "performance": {
+              "col": 5,
+              "hdr": "Efficiency",
+              "st": "confirmed"
+            },
+            "run_time": {
+              "col": 3,
+              "hdr": "Run Time",
+              "st": "confirmed"
+            },
+            "sched_run": {
+              "col": 2,
+              "hdr": "Shift Time",
+              "st": "confirmed"
+            },
+            "tons": {
+              "col": 7,
+              "hdr": "Tons fed",
+              "st": "confirmed"
+            },
+            "est_tons": {
+              "col": null,
+              "hdr": null,
+              "st": "not_configured"
+            },
+            "rip_rap_pct": {
+              "col": null,
+              "hdr": null,
+              "st": "not_configured"
+            },
+            "product_label": {
+              "col": null,
+              "hdr": null,
+              "st": "not_configured"
+            },
+            "downtime_hrs": {
+              "col": null,
+              "hdr": null,
+              "st": "not_configured"
+            },
+            "downtime_note": {
+              "col": null,
+              "hdr": null,
+              "st": "not_configured"
+            }
+          }
+        },
+        "rsq_trommel": {
+          "sheet": "Trommel",
+          "header_row": 1,
+          "cols": {
+            "availability": {
+              "col": null,
+              "hdr": null,
+              "st": "not_configured"
+            },
+            "performance": {
+              "col": null,
+              "hdr": null,
+              "st": "not_configured"
+            },
+            "run_time": {
+              "col": 4,
+              "hdr": "Run Time",
+              "st": "confirmed"
+            },
+            "sched_run": {
+              "col": 3,
+              "hdr": "Sch. Run Time",
+              "st": "confirmed"
+            },
+            "tons": {
+              "col": null,
+              "hdr": null,
+              "st": "not_configured"
+            },
+            "est_tons": {
+              "col": null,
+              "hdr": null,
+              "st": "not_configured"
+            },
+            "rip_rap_pct": {
+              "col": null,
+              "hdr": null,
+              "st": "not_configured"
+            },
+            "product_label": {
+              "col": null,
+              "hdr": null,
+              "st": "not_configured"
+            },
+            "downtime_hrs": {
+              "col": null,
+              "hdr": null,
+              "st": "not_configured"
+            },
+            "downtime_note": {
+              "col": null,
+              "hdr": null,
+              "st": "not_configured"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "prev_generated_at": "2026-04-17T08:36:29-05:00"
+}

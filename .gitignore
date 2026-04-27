@@ -1,0 +1,47 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# ---- Virtual environments ----
+venv/
+.venv/
+env/
+ENV/
+
+# ---- Env / secrets ----
+.env
+.env.local
+.env.*.local
+
+# ---- OS artifacts ----
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- Editors ----
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ---- Build / dist ----
+dist/
+build/
+*.whl
+
+# ---- Project scratch (per CLAUDE.md) ----
+tasks/scratch/
+# ---- Defensive *.env catch-all (covers my.env, staging.env, etc.)
+*.env
+# ...but always allow the canonical example template
+!.env.example
+!**/.env.example

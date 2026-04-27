@@ -1,0 +1,61 @@
+{
+  "$namespace": "/MeasureEventPeriodValueData",
+  "$comment": "Flow Software Profile - Measure Event Period Value Data",
+  "eventScheme": {
+    "$namespace": "/EventScheme",
+    "$comment": "Event scheme definition",
+    "name": "C4",
+    "id": 139
+  },
+  "measure": {
+    "$namespace": "/Measure",
+    "$comment": "Measure definition — identifies the measure being reported",
+    "id": 1644,
+    "name": "Total",
+    "parent": "C4",
+    "hierarchicalName": "[C4.Total.Total](http://C4.Total.Total)",
+    "description": "C4_Total",
+    "uom": "Tons",
+    "intervalType": "Hourly",
+    "format": "0",
+    "measureDataApiEndpoint": "http://dbp-bcq:4501/flow-software/flow/instances/80D1092C-EFBF-4592-9425-C85ABE2EC7FB/server/api/v1/data/measures?start=[PeriodStart]&end=[PeriodEnd]&eventPeriods=true&eventid=139&id=1644&comments=false&exceptions=false&attributes=false&users=false&limit=1000",
+    "measureDataApiEndpointWithAttributes": "http://dbp-bcq:4501/flow-software/flow/instances/80D1092C-EFBF-4592-9425-C85ABE2EC7FB/server/api/v1/data/measures?start=[PeriodStart]&end=[PeriodEnd]&eventPeriods=true&eventid=139&id=1644&comments=false&exceptions=false&attributes=true&users=false&limit=1000"
+  },
+  "modelAttributes": {
+    "$namespace": "/ModelAttributes",
+    "$comment": "Model attributes — contextual metadata from the data model hierarchy",
+    "Site": "Big_Canyon",
+    "Area": "Secondary",
+    "Line": "Conveyor",
+    "Conveyor_Number": "C4",
+    "Entity_ID": "214",
+    "MaintainX_Asset_ID": "10798217",
+    "ConnectionProperty.Tagname": "Total_Calculated",
+    "ConnectionProperty.AggregationType": "Sum",
+    "ConnectionProperty.ComparatorType": "Equals",
+    "ConnectionProperty.ScaleFactor": "1",
+    "ConnectionProperty.Rollover": "0",
+    "ConnectionProperty.RolloverDeadband": "0",
+    "ConnectionProperty.State": ""
+  },
+  "eventPeriod": {
+    "$namespace": "/EventPeriod",
+    "$comment": "Event period — defines the event time window",
+    "start": "2026-04-24T22:15:33.6830000Z",
+    "end": "2026-04-25T07:59:05.3990000Z",
+    "startUnix": 1777068933,
+    "endUnix": 1777103945
+  },
+  "values": [
+    {
+      "$namespace": "/MeasureEventPeriodValue",
+      "$comment": "Measure event period value",
+      "value": 136.625,
+      "quality": 192,
+      "eventAttributes": {
+        "C4_Produced_Item_Description": "#57",
+        "C4_Produced_Item_Code": "ST3510"
+      }
+    }
+  ]
+}

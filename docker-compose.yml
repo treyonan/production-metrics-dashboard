@@ -1,0 +1,85 @@
+# Docker Compose orchestration for the production-metrics-dashboard
+# backend. Single service; published on host port 8001 so you can run
+# this and a local-venv uvicorn on port 8000 side-by-side when you
+# want to compare behavior.
+#
+# Usage from the repo root (PowerShell or WSL2 shell):
+#   docker compose up --build       # first run / after code change
+#   docker compose up               # subsequent runs
+#   docker compose down             # stop and remove container
+#   docker compose logs -f api      # tail structlog JSON output
+#
+# No top-level `version:` key — Compose V2 uses the Compose spec and
+# warns when `version:` is present.
+
+services:
+  api:
+    # Build the image fresh from the Dockerfile. Context is the repo
+    # root so the Dockerfile can COPY both backend/ and the sibling
+    # context/ and frontend/ directories in a single build.
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: production-metrics-dashboard:local
+    container_name: pmd-api
+
+    # Host 8001 → container 8000. The container's uvicorn always
+    # binds 8000 internally; the host port is the one you hit from
+    # the Windows browser. Keeping host 8000 free lets a local venv
+    # `uvicorn app.main:app` run on 8000 concurrently for side-by-side
+    # debugging.
+    ports:
+      - "8001:8000"
+
+    # Same .env the venv path reads. Keeping one source of truth for
+    # DB_CONN_STRING, PMD_PRODUCTION_REPORT_BACKEND, etc. Values load
+    # into the container environment at start; nothing is written
+    # into the image itself.
+    env_file:
+      - backend/.env
+
+    # Dev-ergonomics bind mounts. The image already contains baked-in
+    # copies of context/ and frontend/, so the container is self-
+    # sufficient without these mounts (important for future CI / prod
+    # use). The mounts overlay the baked-in paths so edits to sample
+    # data or frontend files show up on the next API poll / browser
+    # refresh without rebuilding the image.
+    #
+    # :ro = read-only. Defense in depth — the API is read-only and
+    # has no reason to write into these paths.
+    volumes:
+      - ./context:/app/context:ro
+      - ./frontend:/app/frontend:ro
+
+    # Static /etc/hosts entries so the container can resolve internal
+    # hostnames that aren't in the WSL2 NAT's DNS view. Flow's MQTT
+    # payloads embed history URLs pointing at LAN hostnames like
+    # `http://dbp-bcq:4501/...`, and those names are resolved on the
+    # Windows host via corporate DNS / the hosts file -- neither of
+    # which the container's resolver sees. Mapping each Flow server
+    # explicitly here lets `httpx` reach it from inside the container.
+    #
+    # ADDING A NEW SITE: append one line per new Flow server. See
+    # `RUNBOOK.md` § "Adding a new site to /api/metrics" for the full
+    # procedure (find the IP, add the line, `docker compose down` +
+    # `up --build`, verify via /api/metrics/conveyor/subjects).
+    extra_hosts:
+      - "dbp-bcq:10.44.135.12"      # site 101 (Big Canyon Quarry)
+      # - "dbp-otherquarry:10.x.x.x"  # site 102 -- add when commissioned
+
+    # Orchestrator-level healthcheck. Hits /api/health inside the
+    # container (not via the published port) using Python's stdlib so
+    # we don't need curl in the image. Returns 200 even when a source
+    # is degraded — that's the intended shape (see ARCHITECTURE.md
+    # §9). Set `start_period` long enough that the aioodbc pool has
+    # time to come up on first start.
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/api/health', timeout=3).status==200 else 1)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s

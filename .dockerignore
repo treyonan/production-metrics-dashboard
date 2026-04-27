@@ -1,0 +1,81 @@
+# Build-context exclusion list. Keeps the Docker build fast and the
+# image lean. Anything matched here is NOT sent to the Docker daemon
+# when the image is built, so it can never be COPY'd in even by
+# accident.
+
+# ---- Python runtime droppings ----
+**/__pycache__/
+**/*.py[cod]
+**/*$py.class
+**/*.so
+**/.pytest_cache/
+**/.ruff_cache/
+**/.mypy_cache/
+**/.coverage
+**/htmlcov/
+
+# ---- Virtual environments (critical — venv/ is hundreds of MB) ----
+**/venv/
+**/.venv/
+**/env/
+**/ENV/
+
+# ---- Secrets (NEVER bake .env into an image) ----
+# backend/.env is read at runtime via docker-compose.yml's `env_file:`
+# directive — the values stay on disk, not in the image layers.
+**/.env
+**/.env.local
+**/.env.*.local
+
+# ---- Git / editor / OS ----
+.git/
+.gitignore
+.gitattributes
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- Build / dist artifacts ----
+dist/
+build/
+*.whl
+
+# ---- Project-specific noise ----
+tasks/scratch/
+examples/
+docs/
+# Keep context/sample-data/ (referenced as CSV fallback) but drop
+# large binary/irrelevant additions if they appear later.
+
+# ---- Docker files themselves (don't copy into image) ----
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# ---- Frontend vendor bloat guard ----
+# Currently frontend/vendor/ only holds the small chart.umd.js file,
+# which we DO want shipped. No exclusion here, but flagging the path
+# in case node_modules shows up later.
+**/node_modules/
+
+# ---- Extended dev-only exclusions (added at re-root) ----
+tasks/
+scada/
+context/*.md
+context/schemas/
+# Keep context/sample-data/ � referenced as CSV fallback by ProductionReportSource
+
+# Top-level dev docs and prompts
+CLAUDE.md
+ARCHITECTURE.md
+PAYLOAD-CONTRACT.md
+RUNBOOK.md
+session-*-prompt.md
+.gitattributes
+
+# Dev helper scripts (Dockerfile does not COPY from scripts/)
+scripts/

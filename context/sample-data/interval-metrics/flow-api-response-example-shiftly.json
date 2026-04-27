@@ -1,0 +1,986 @@
+{
+  "values": [
+    {
+      "data": [
+        {
+          "duration": 32998267,
+          "periodid": 2997,
+          "datetime": "2026-04-03T04:15:14.2051492Z",
+          "measureeventperiodvalueid": 15818,
+          "formatted": "1813",
+          "start": "2026-03-24T11:30:06.018Z",
+          "measureeventperiodid": 14210,
+          "end": "2026-03-24T20:40:04.285Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "original",
+              "value": 1
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 1812.875
+        },
+        {
+          "duration": 32996746,
+          "periodid": 2998,
+          "datetime": "2026-04-03T04:15:14.2052595Z",
+          "measureeventperiodvalueid": 15819,
+          "formatted": "0",
+          "start": "2026-03-25T11:30:16.443Z",
+          "measureeventperiodid": 14211,
+          "end": "2026-03-25T20:40:13.189Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "original",
+              "value": 1
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 0
+        },
+        {
+          "duration": 32997202,
+          "periodid": 2999,
+          "datetime": "2026-04-03T04:15:14.2052859Z",
+          "measureeventperiodvalueid": 15820,
+          "formatted": "2722",
+          "start": "2026-03-26T11:30:11.877Z",
+          "measureeventperiodid": 14212,
+          "end": "2026-03-26T20:40:09.079Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "original",
+              "value": 1
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 2722.375
+        },
+        {
+          "duration": 33001996,
+          "periodid": 3000,
+          "datetime": "2026-04-03T04:15:14.2053072Z",
+          "measureeventperiodvalueid": 15821,
+          "formatted": "0",
+          "start": "2026-03-27T11:30:16.339Z",
+          "measureeventperiodid": 14213,
+          "end": "2026-03-27T20:40:18.335Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "original",
+              "value": 1
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 0
+        },
+        {
+          "duration": 32991865,
+          "periodid": 3001,
+          "datetime": "2026-04-03T04:15:14.2053281Z",
+          "measureeventperiodvalueid": 15822,
+          "formatted": "0",
+          "start": "2026-03-28T11:30:14.93Z",
+          "measureeventperiodid": 14214,
+          "end": "2026-03-28T20:40:06.795Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "original",
+              "value": 1
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 0
+        },
+        {
+          "duration": 32993722,
+          "periodid": 3002,
+          "datetime": "2026-04-03T04:15:14.2053473Z",
+          "measureeventperiodvalueid": 15823,
+          "formatted": "0",
+          "start": "2026-03-29T11:30:20.099Z",
+          "measureeventperiodid": 14215,
+          "end": "2026-03-29T20:40:13.821Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "original",
+              "value": 1
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 0
+        },
+        {
+          "duration": 32999159,
+          "periodid": 3003,
+          "datetime": "2026-04-03T04:15:14.2053656Z",
+          "measureeventperiodvalueid": 15824,
+          "formatted": "3455",
+          "start": "2026-03-30T11:30:20.566Z",
+          "measureeventperiodid": 14216,
+          "end": "2026-03-30T20:40:19.725Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "original",
+              "value": 1
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 3454.625
+        },
+        {
+          "duration": 32998536,
+          "periodid": 3004,
+          "datetime": "2026-04-03T19:57:07.9663264Z",
+          "measureeventperiodvalueid": 16992,
+          "formatted": "2427",
+          "start": "2026-03-31T11:30:14.951Z",
+          "measureeventperiodid": 14217,
+          "end": "2026-03-31T20:40:13.487Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "updated",
+              "value": 2
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 2427.375
+        },
+        {
+          "duration": 32998286,
+          "periodid": 3005,
+          "datetime": "2026-04-03T04:15:14.2054022Z",
+          "measureeventperiodvalueid": 15826,
+          "formatted": "0",
+          "start": "2026-04-01T11:30:22.143Z",
+          "measureeventperiodid": 14218,
+          "end": "2026-04-01T20:40:20.429Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "original",
+              "value": 1
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 0
+        },
+        {
+          "duration": 32999314,
+          "periodid": 3006,
+          "datetime": "2026-04-03T04:15:14.2054203Z",
+          "measureeventperiodvalueid": 15827,
+          "formatted": "0",
+          "start": "2026-04-02T11:30:17.558Z",
+          "measureeventperiodid": 14219,
+          "end": "2026-04-02T20:40:16.872Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "original",
+              "value": 1
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 0
+        },
+        {
+          "duration": 33003308,
+          "periodid": 3076,
+          "datetime": "2026-04-03T20:41:48.0505534Z",
+          "measureeventperiodvalueid": 17094,
+          "formatted": "3485",
+          "start": "2026-04-03T11:30:17.22Z",
+          "measureeventperiodid": 15316,
+          "end": "2026-04-03T20:40:20.528Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "original",
+              "value": 1
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 3484.6875
+        },
+        {
+          "duration": 33010328,
+          "periodid": 3094,
+          "datetime": "2026-04-04T20:41:57.702943Z",
+          "measureeventperiodvalueid": 17219,
+          "formatted": "0",
+          "start": "2026-04-04T11:30:16.564Z",
+          "measureeventperiodid": 15441,
+          "end": "2026-04-04T20:40:26.892Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "original",
+              "value": 1
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 0
+        },
+        {
+          "duration": 33001746,
+          "periodid": 3113,
+          "datetime": "2026-04-05T20:42:13.638788Z",
+          "measureeventperiodvalueid": 17341,
+          "formatted": "0",
+          "start": "2026-04-05T11:30:26.357Z",
+          "measureeventperiodid": 15568,
+          "end": "2026-04-05T20:40:28.103Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "original",
+              "value": 1
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 0
+        },
+        {
+          "duration": 32998926,
+          "periodid": 3116,
+          "datetime": "2026-04-06T20:42:09.6029863Z",
+          "measureeventperiodvalueid": 17460,
+          "formatted": "1317",
+          "start": "2026-04-06T11:30:27.106Z",
+          "measureeventperiodid": 15687,
+          "end": "2026-04-06T20:40:26.032Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "original",
+              "value": 1
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 1316.6875
+        },
+        {
+          "duration": 33007412,
+          "periodid": 3135,
+          "datetime": "2026-04-09T21:48:49.9895942Z",
+          "measureeventperiodvalueid": 20634,
+          "formatted": "881",
+          "start": "2026-04-07T11:30:19.346Z",
+          "measureeventperiodid": 15819,
+          "end": "2026-04-07T20:40:26.758Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "updated",
+              "value": 5
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 881
+        },
+        {
+          "duration": 37087742,
+          "periodid": 3147,
+          "datetime": "2026-04-09T21:11:14.9646651Z",
+          "measureeventperiodvalueid": 20363,
+          "formatted": "389",
+          "start": "2026-04-07T21:41:01.5Z",
+          "measureeventperiodid": 15973,
+          "end": "2026-04-08T07:59:09.242Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "updated",
+              "value": 3
+            },
+            "preferred": true,
+            "quality": {
+              "value": 0
+            }
+          },
+          "value": 389.25
+        },
+        {
+          "duration": 32999734,
+          "periodid": 3165,
+          "datetime": "2026-04-08T20:41:15.8883868Z",
+          "measureeventperiodvalueid": 17880,
+          "formatted": "0",
+          "start": "2026-04-08T11:30:14.206Z",
+          "measureeventperiodid": 16062,
+          "end": "2026-04-08T20:40:13.94Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "original",
+              "value": 1
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 0
+        },
+        {
+          "duration": 21309873,
+          "periodid": 3178,
+          "datetime": "2026-04-09T08:01:02.1715618Z",
+          "measureeventperiodvalueid": 18006,
+          "formatted": "0",
+          "start": "2026-04-09T02:04:04.343Z",
+          "measureeventperiodid": 16246,
+          "end": "2026-04-09T07:59:14.216Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "original",
+              "value": 1
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 0
+        },
+        {
+          "duration": 32990162,
+          "periodid": 3195,
+          "datetime": "2026-04-09T21:06:14.2856175Z",
+          "measureeventperiodvalueid": 20352,
+          "formatted": "3858",
+          "start": "2026-04-09T11:30:17.466Z",
+          "measureeventperiodid": 17563,
+          "end": "2026-04-09T20:40:07.628Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "updated",
+              "value": 2
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 3858
+        },
+        {
+          "duration": 39842720,
+          "periodid": 3201,
+          "datetime": "2026-04-10T08:00:30.9275239Z",
+          "measureeventperiodvalueid": 21344,
+          "formatted": "364",
+          "start": "2026-04-09T20:55:08.904Z",
+          "measureeventperiodid": 17888,
+          "end": "2026-04-10T07:59:11.624Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "original",
+              "value": 1
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 363.625
+        },
+        {
+          "duration": 33008426,
+          "periodid": 3222,
+          "datetime": "2026-04-10T20:41:59.5340645Z",
+          "measureeventperiodvalueid": 21535,
+          "formatted": "3419",
+          "start": "2026-04-10T11:30:06.729Z",
+          "measureeventperiodid": 18064,
+          "end": "2026-04-10T20:40:15.155Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "original",
+              "value": 1
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 3418.625
+        },
+        {
+          "duration": 39790823,
+          "periodid": 3232,
+          "datetime": "2026-04-15T19:17:25.2215192Z",
+          "measureeventperiodvalueid": 22981,
+          "formatted": "717",
+          "start": "2026-04-10T20:56:02.021Z",
+          "measureeventperiodid": 18255,
+          "end": "2026-04-11T07:59:12.844Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "updated",
+              "value": 2
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 716.75
+        },
+        {
+          "duration": 33009917,
+          "periodid": 3254,
+          "datetime": "2026-04-11T20:42:25.7958472Z",
+          "measureeventperiodvalueid": 21962,
+          "formatted": "0",
+          "start": "2026-04-11T11:30:08.948Z",
+          "measureeventperiodid": 18452,
+          "end": "2026-04-11T20:40:18.865Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "original",
+              "value": 1
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 0
+        },
+        {
+          "duration": 32990485,
+          "periodid": 3273,
+          "datetime": "2026-04-12T20:42:00.5234131Z",
+          "measureeventperiodvalueid": 22050,
+          "formatted": "0",
+          "start": "2026-04-12T11:30:20.092Z",
+          "measureeventperiodid": 18579,
+          "end": "2026-04-12T20:40:10.577Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "original",
+              "value": 1
+            },
+            "preferred": true,
+            "quality": {
+              "value": 0
+            }
+          },
+          "value": 0.125
+        },
+        {
+          "duration": 33001188,
+          "periodid": 3286,
+          "datetime": "2026-04-13T20:41:16.6518528Z",
+          "measureeventperiodvalueid": 22211,
+          "formatted": "3448",
+          "start": "2026-04-13T11:30:16.583Z",
+          "measureeventperiodid": 18725,
+          "end": "2026-04-13T20:40:17.771Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "original",
+              "value": 1
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 3447.875
+        },
+        {
+          "duration": 39804363,
+          "periodid": 3292,
+          "datetime": "2026-04-15T19:17:25.2216082Z",
+          "measureeventperiodvalueid": 22982,
+          "formatted": "802",
+          "start": "2026-04-13T20:55:39.267Z",
+          "measureeventperiodid": 18910,
+          "end": "2026-04-14T07:59:03.63Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "updated",
+              "value": 2
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 802.375
+        },
+        {
+          "duration": 32997414,
+          "periodid": 3307,
+          "datetime": "2026-04-14T20:41:26.8861286Z",
+          "measureeventperiodvalueid": 22562,
+          "formatted": "271",
+          "start": "2026-04-14T11:30:15.844Z",
+          "measureeventperiodid": 19092,
+          "end": "2026-04-14T20:40:13.258Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "original",
+              "value": 1
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 271.1875
+        },
+        {
+          "duration": 39826212,
+          "periodid": 3322,
+          "datetime": "2026-04-15T19:17:25.2216331Z",
+          "measureeventperiodvalueid": 22983,
+          "formatted": "669",
+          "start": "2026-04-14T20:55:28.78Z",
+          "measureeventperiodid": 19260,
+          "end": "2026-04-15T07:59:14.992Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "updated",
+              "value": 2
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 668.5625
+        },
+        {
+          "duration": 32997966,
+          "periodid": 3340,
+          "datetime": "2026-04-15T20:54:11.3107328Z",
+          "measureeventperiodvalueid": 23171,
+          "formatted": "2899",
+          "start": "2026-04-15T11:30:26.121Z",
+          "measureeventperiodid": 19448,
+          "end": "2026-04-15T20:40:24.087Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "updated",
+              "value": 2
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 2898.625
+        },
+        {
+          "duration": 39818262,
+          "periodid": 3348,
+          "datetime": "2026-04-23T21:16:09.0737609Z",
+          "measureeventperiodvalueid": 26886,
+          "formatted": "703",
+          "start": "2026-04-15T20:55:25.791Z",
+          "measureeventperiodid": 19613,
+          "end": "2026-04-16T07:59:04.053Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "updated",
+              "value": 2
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 702.6875
+        },
+        {
+          "duration": 33000457,
+          "periodid": 3374,
+          "datetime": "2026-04-23T21:16:09.0738537Z",
+          "measureeventperiodvalueid": 26887,
+          "formatted": "2385",
+          "start": "2026-04-16T11:30:14.325Z",
+          "measureeventperiodid": 19826,
+          "end": "2026-04-16T20:40:14.782Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "updated",
+              "value": 2
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 2384.875
+        },
+        {
+          "duration": 32990772,
+          "periodid": 3385,
+          "datetime": "2026-04-17T20:41:09.7483957Z",
+          "measureeventperiodvalueid": 23910,
+          "formatted": "2183",
+          "start": "2026-04-17T11:30:23.882Z",
+          "measureeventperiodid": 20108,
+          "end": "2026-04-17T20:40:14.654Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "original",
+              "value": 1
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 2183.25
+        },
+        {
+          "duration": 32990443,
+          "periodid": 3414,
+          "datetime": "2026-04-23T21:16:09.0738761Z",
+          "measureeventperiodvalueid": 26888,
+          "formatted": "5",
+          "start": "2026-04-18T11:30:28.473Z",
+          "measureeventperiodid": 20320,
+          "end": "2026-04-18T20:40:18.916Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "updated",
+              "value": 2
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 4.8125
+        },
+        {
+          "duration": 33007045,
+          "periodid": 3423,
+          "datetime": "2026-04-19T20:41:48.8652343Z",
+          "measureeventperiodvalueid": 24266,
+          "formatted": "0",
+          "start": "2026-04-19T11:30:05.44Z",
+          "measureeventperiodid": 20478,
+          "end": "2026-04-19T20:40:12.485Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "original",
+              "value": 1
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 0
+        },
+        {
+          "duration": 33000521,
+          "periodid": 3438,
+          "datetime": "2026-04-20T20:42:23.5996885Z",
+          "measureeventperiodvalueid": 24429,
+          "formatted": "2517",
+          "start": "2026-04-20T11:30:13.873Z",
+          "measureeventperiodid": 20640,
+          "end": "2026-04-20T20:40:14.394Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "original",
+              "value": 1
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 2516.5625
+        },
+        {
+          "duration": 39790027,
+          "periodid": 3442,
+          "datetime": "2026-04-23T21:16:09.0738954Z",
+          "measureeventperiodvalueid": 26889,
+          "formatted": "687",
+          "start": "2026-04-20T20:55:52.574Z",
+          "measureeventperiodid": 20823,
+          "end": "2026-04-21T07:59:02.601Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "updated",
+              "value": 2
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 686.6875
+        },
+        {
+          "duration": 33004263,
+          "periodid": 3460,
+          "datetime": "2026-04-23T21:16:09.0739116Z",
+          "measureeventperiodvalueid": 26890,
+          "formatted": "208",
+          "start": "2026-04-21T11:30:06.73Z",
+          "measureeventperiodid": 21808,
+          "end": "2026-04-21T20:40:10.993Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "updated",
+              "value": 2
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 207.5625
+        },
+        {
+          "duration": 37170131,
+          "periodid": 3479,
+          "datetime": "2026-04-23T21:16:09.0739284Z",
+          "measureeventperiodvalueid": 26891,
+          "formatted": "315",
+          "start": "2026-04-21T21:39:41.785Z",
+          "measureeventperiodid": 22006,
+          "end": "2026-04-22T07:59:11.916Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "updated",
+              "value": 2
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 314.9375
+        },
+        {
+          "duration": 32993452,
+          "periodid": 3492,
+          "datetime": "2026-04-22T20:41:30.0198422Z",
+          "measureeventperiodvalueid": 26425,
+          "formatted": "3543",
+          "start": "2026-04-22T11:30:13.609Z",
+          "measureeventperiodid": 22188,
+          "end": "2026-04-22T20:40:07.061Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "original",
+              "value": 1
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 3543.3125
+        },
+        {
+          "duration": 39813133,
+          "periodid": 3501,
+          "datetime": "2026-04-23T08:01:16.0307337Z",
+          "measureeventperiodvalueid": 26656,
+          "formatted": "720",
+          "start": "2026-04-22T20:55:38.347Z",
+          "measureeventperiodid": 22407,
+          "end": "2026-04-23T07:59:11.48Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "original",
+              "value": 1
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 720.1875
+        },
+        {
+          "duration": 37837937,
+          "periodid": 3518,
+          "datetime": "2026-04-23T22:01:44.2901891Z",
+          "measureeventperiodvalueid": 27224,
+          "formatted": "3508",
+          "start": "2026-04-23T11:30:15.107Z",
+          "measureeventperiodid": 22589,
+          "end": "2026-04-23T22:00:53.044Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "original",
+              "value": 1
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 3508.1875
+        },
+        {
+          "duration": 34997166,
+          "periodid": 3535,
+          "datetime": "2026-04-24T08:00:56.2948458Z",
+          "measureeventperiodvalueid": 27420,
+          "formatted": "268",
+          "start": "2026-04-23T22:15:54.494Z",
+          "measureeventperiodid": 22854,
+          "end": "2026-04-24T07:59:11.66Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "original",
+              "value": 1
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 267.5625
+        },
+        {
+          "duration": 37799529,
+          "periodid": 3549,
+          "datetime": "2026-04-24T22:01:37.2733131Z",
+          "measureeventperiodvalueid": 29337,
+          "formatted": "3621",
+          "start": "2026-04-24T11:30:17.618Z",
+          "measureeventperiodid": 23282,
+          "end": "2026-04-24T22:00:17.147Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "original",
+              "value": 1
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 3621.1875
+        },
+        {
+          "duration": 35011716,
+          "periodid": 3565,
+          "datetime": "2026-04-25T08:00:47.4292769Z",
+          "measureeventperiodvalueid": 29558,
+          "formatted": "137",
+          "start": "2026-04-24T22:15:33.683Z",
+          "measureeventperiodid": 23506,
+          "end": "2026-04-25T07:59:05.399Z",
+          "detail": {
+            "pending": false,
+            "version": {
+              "type": "original",
+              "value": 1
+            },
+            "preferred": true,
+            "quality": {
+              "value": 192
+            }
+          },
+          "value": 136.625
+        }
+      ],
+      "name": "[C4.Total.Total](http://C4.Total.Total)",
+      "id": 1644,
+      "tags": {
+        "retrieval": "retrieved",
+        "interval": "hourly"
+      }
+    }
+  ],
+  "start": "2026-03-23T00:00:00Z",
+  "end": "2026-04-26T00:00:00Z",
+  "event": "C4",
+  "errors": []
+}

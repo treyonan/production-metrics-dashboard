@@ -1,0 +1,876 @@
+/* Production Metrics Dashboard - V1 styles.
+ * Microsoft Fluent / Power BI-inspired palette with light + dark themes.
+ * The theme is selected by a `data-theme="light|dark"` attribute on the
+ * root element; app.js (or the inline FOUC script in index.html) sets it.
+ * Aesthetic reference: examples/dashboard-mockup/index.html. */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ---- palette ---- */
+/* Light theme (default) */
+:root,
+:root[data-theme="light"] {
+  --bg-shell: #201f1e;
+  --bg-canvas: #f3f2f1;
+  --bg-sidebar: #fafaf9;
+  --bg-card: #ffffff;
+  --border: #e1dfdd;
+  --border-strong: #c8c6c4;
+  --divider-dark: #484644;
+
+  --text: #201f1e;
+  --text-strong: #201f1e;
+  --text-muted: #605e5c;
+  --text-faint: #a19f9d;
+  --text-body: #323130;
+
+  --shell-text: #f3f2f1;
+  --shell-text-muted: #c8c6c4;
+  --shell-text-faint: #a19f9d;
+  --shell-hover-bg: #3b3a39;
+  --shell-button-bg: #3b3a39;
+
+  --accent: #0078d4;
+  --accent-tint: #e6f2fb;
+
+  --ok: #107c10;
+  --warn: #e66c37;
+  --crit: #a4262c;
+
+  --chip-default-bg: #dce8fa;
+  --chip-default-fg: #004578;
+  --chip-g-bg: #dff6dd;
+  --chip-g-fg: #0e5c0e;
+  --chip-w-bg: #fff4ce;
+  --chip-w-fg: #7a4800;
+  --chip-r-bg: #fde7e9;
+  --chip-r-fg: #a4262c;
+
+  --pill-ok-bg: #0e5c0e;
+  --pill-ok-fg: #ffffff;
+  --pill-warn-bg: #7a4800;
+  --pill-warn-fg: #ffffff;
+  --pill-crit-bg: #a4262c;
+  --pill-crit-fg: #ffffff;
+
+  --warn-bg: #fff4ce;
+  --warn-border: #f2c811;
+  --warn-fg: #7a4800;
+  --crit-bg: #fde7e9;
+  --crit-border: #a4262c;
+  --crit-fg: #a4262c;
+
+  --row-hover-bg: #fafaf9;
+  --row-divider: #f3f2f1;
+}
+
+/* Dark theme */
+:root[data-theme="dark"] {
+  --bg-shell: #1b1a19;
+  --bg-canvas: #252423;
+  --bg-sidebar: #201f1e;
+  --bg-card: #323130;
+  --border: #484644;
+  --border-strong: #605e5c;
+  --divider-dark: #484644;
+
+  --text: #f3f2f1;
+  --text-strong: #ffffff;
+  --text-muted: #c8c6c4;
+  --text-faint: #a19f9d;
+  --text-body: #e1dfdd;
+
+  --accent: #2b88d8;
+  --accent-tint: #1e3a5c;
+
+  --ok: #6ccb5f;
+  --warn: #ffaa44;
+  --crit: #f85d6a;
+
+  --chip-default-bg: #1e3a5c;
+  --chip-default-fg: #8ab7e8;
+  --chip-g-bg: #1e3a1e;
+  --chip-g-fg: #6ccb5f;
+  --chip-w-bg: #3d2f00;
+  --chip-w-fg: #ffd567;
+  --chip-r-bg: #3d1518;
+  --chip-r-fg: #f85d6a;
+
+  --pill-ok-bg: #1e6b1e;
+  --pill-ok-fg: #dff6dd;
+  --pill-warn-bg: #6b4a00;
+  --pill-warn-fg: #ffd567;
+  --pill-crit-bg: #6b1a20;
+  --pill-crit-fg: #f85d6a;
+
+  --warn-bg: #3d2f00;
+  --warn-border: #f2c811;
+  --warn-fg: #ffd567;
+  --crit-bg: #3d1518;
+  --crit-border: #a4262c;
+  --crit-fg: #f85d6a;
+
+  --row-hover-bg: #3a3938;
+  --row-divider: #3a3938;
+}
+
+html, body { height: 100%; }
+body {
+  background: var(--bg-shell);
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  color: var(--text);
+}
+
+.shell { display: flex; flex-direction: column; min-height: 100vh; }
+
+/* ---- topbar (always dark-chrome in both themes) ---- */
+.topbar {
+  height: 40px;
+  background: var(--bg-shell);
+  border-bottom: 1px solid var(--divider-dark);
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+}
+.tlogo {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding-right: 12px;
+  border-right: 1px solid var(--divider-dark);
+}
+.tlogo b { color: var(--shell-text, #f3f2f1); font-size: 12px; }
+.tlogo s { color: var(--shell-text-faint, #a19f9d); font-size: 11px; text-decoration: none; }
+
+.site-tog { display: flex; align-items: center; border-right: 1px solid var(--divider-dark); }
+.stbtn {
+  height: 40px;
+  padding: 0 14px;
+  background: none;
+  border: none;
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 600;
+  color: var(--shell-text-muted, #c8c6c4);
+  border-bottom: 3px solid transparent;
+  transition: color .15s, border-color .15s, background .15s;
+}
+.stbtn:hover { background: var(--shell-hover-bg, #3b3a39); color: var(--shell-text, #f3f2f1); }
+.stbtn.on { color: var(--shell-text, #f3f2f1); border-bottom-color: var(--accent); }
+
+/* Theme toggle button in the topbar */
+.theme-toggle {
+  height: 26px;
+  width: 26px;
+  padding: 0;
+  margin-right: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--shell-button-bg, #3b3a39);
+  border: 1px solid var(--divider-dark);
+  border-radius: 2px;
+  color: var(--shell-text, #f3f2f1);
+  cursor: pointer;
+  transition: background .15s, color .15s, transform .1s;
+}
+.theme-toggle:hover { background: var(--shell-hover-bg, #484644); }
+.theme-toggle:active { transform: translateY(1px); }
+.theme-toggle svg { display: block; width: 14px; height: 14px; }
+
+/* Export button in the topbar (Phase 6). */
+.export-btn {
+  height: 26px;
+  padding: 0 10px;
+  margin-right: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--shell-button-bg, #3b3a39);
+  border: 1px solid var(--divider-dark);
+  border-radius: 2px;
+  color: var(--shell-text, #f3f2f1);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s, color .15s, transform .1s, opacity .15s;
+}
+.export-btn:hover:not(:disabled) { background: var(--shell-hover-bg, #484644); }
+.export-btn:active:not(:disabled) { transform: translateY(1px); }
+.export-btn:disabled { opacity: .45; cursor: not-allowed; }
+.export-btn svg { display: block; width: 12px; height: 12px; flex-shrink: 0; }
+.export-btn span { line-height: 1; }
+
+.health-pill {
+  font-size: 10px;
+  padding: 3px 8px;
+  margin-right: 10px;
+  border-radius: 10px;
+  background: var(--shell-button-bg, #3b3a39);
+  color: var(--shell-text-muted, #c8c6c4);
+  font-weight: 600;
+}
+.health-pill.ok { background: var(--pill-ok-bg); color: var(--pill-ok-fg); }
+.health-pill.degraded { background: var(--pill-warn-bg); color: var(--pill-warn-fg); }
+.health-pill.down { background: var(--pill-crit-bg); color: var(--pill-crit-fg); }
+
+.refresh-lbl {
+  font-size: 10px;
+  color: var(--shell-text-faint, #a19f9d);
+  padding: 0 10px;
+  font-style: italic;
+}
+
+/* ---- canvas (below topbar) ---- */
+.canvas {
+  display: flex;
+  background: var(--bg-canvas);
+  flex: 1;
+  min-height: 0;
+}
+.sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  padding: 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+}
+.main {
+  flex: 1;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+/* ---- sidebar cards ---- */
+.site-strip {
+  padding: 6px 9px;
+  border-bottom: 2px solid var(--accent);
+  background: var(--accent-tint);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-radius: 2px;
+}
+.site-id { font-size: 13px; font-weight: 700; color: var(--accent); }
+.site-nm { font-size: 10px; color: var(--text-muted); }
+
+.sb { background: var(--bg-card); border: 1px solid var(--border); border-radius: 2px; }
+.sh {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text);
+  padding: 5px 8px 4px;
+  background: var(--bg-canvas);
+  border-bottom: 1px solid var(--border);
+  letter-spacing: .04em;
+}
+.sd { padding: 6px 8px; line-height: 1.45; color: var(--text); }
+.sd.small, .small { font-size: 10px; }
+.muted { color: var(--text-muted); }
+
+/* ---- main content blocks ---- */
+.wc-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.wc-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--bg-canvas);
+  border-bottom: 1px solid var(--border);
+}
+.wc-title { font-size: 13px; font-weight: 700; color: var(--text-strong); }
+.wc-sub { font-size: 10px; color: var(--text-muted); }
+.wc-spacer { flex: 1; }
+.wc-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }
+
+/* KPI grid (4-col) */
+.kg { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.kc {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--accent);
+  border-radius: 2px;
+  padding: 8px 10px 6px;
+}
+.kc.sk { border-top-color: var(--accent); }
+.kc.sp { border-top-color: var(--ok); }
+.kc.so { border-top-color: var(--warn); }
+.kc.sr { border-top-color: var(--crit); }
+.kl { font-size: 10px; color: var(--text-muted); margin-bottom: 2px; }
+.kv { font-size: 22px; font-weight: 300; color: var(--text-strong); line-height: 1.1; }
+.km { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+
+/* Table */
+.mxw { overflow-x: auto; }
+.mx { width: 100%; border-collapse: collapse; font-size: 11px; }
+.mx th {
+  background: var(--bg-canvas);
+  font-weight: 700;
+  color: var(--text);
+  padding: 5px 8px;
+  text-align: right;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.mx th:first-child { text-align: left; }
+.mx td {
+  padding: 4px 8px;
+  text-align: right;
+  color: var(--text-body);
+  border-bottom: .5px solid var(--row-divider);
+  white-space: nowrap;
+}
+.mx td:first-child { text-align: left; color: var(--text-muted); font-weight: 600; }
+.mx tr:hover td { background: var(--row-hover-bg); }
+
+/* Chips / pills */
+.chip {
+  display: inline-flex;
+  background: var(--chip-default-bg);
+  color: var(--chip-default-fg);
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+.chip.g { background: var(--chip-g-bg); color: var(--chip-g-fg); }
+.chip.w { background: var(--chip-w-bg); color: var(--chip-w-fg); }
+.chip.r { background: var(--chip-r-bg); color: var(--chip-r-fg); }
+
+/* Warn bar */
+.warn-bar {
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  border-radius: 2px;
+  padding: 6px 10px;
+  font-size: 11px;
+  color: var(--warn-fg);
+}
+.warn-bar.err {
+  background: var(--crit-bg);
+  border-color: var(--crit-border);
+  color: var(--crit-fg);
+}
+
+/* Empty state */
+.nd {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 150px;
+  gap: 5px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+/* Workcenter header metadata */
+.wc-label { color: var(--text-faint); margin-right: 2px; }
+.wc-value { color: var(--text); font-weight: 600; }
+.wc-value.mono {
+  font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+/* Time filter button group (sidebar > TIME FILTER: Day / Month) */
+.gbr {
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
+}
+.gb {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  border: 1px solid var(--border-strong);
+  border-radius: 2px;
+  background: var(--bg-card);
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.gb:hover:not(.on) { background: var(--bg-canvas); }
+.gb.on {
+  background: var(--accent);
+  color: #ffffff;
+  border-color: var(--accent);
+}
+
+/* ---- Phase 7 time-filter controls ---- */
+/* Each mode's body sits under the Day/Month toggle; the inactive one
+   is display:none so the sidebar never grows beyond what's needed. */
+.filter-body {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.filter-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 600;
+  letter-spacing: .02em;
+}
+.date-input {
+  width: 100%;
+  padding: 4px 6px;
+  font-size: 11px;
+  font-family: inherit;
+  border: 1px solid var(--border-strong);
+  border-radius: 2px;
+  background: var(--bg-card);
+  color: var(--text);
+}
+.date-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+/* Dark mode: invert the native date input's calendar-picker glyph.
+   The default is a black SVG (Chromium/WebKit), which is invisible
+   against --bg-card when data-theme="dark". filter:invert(1) flips it
+   to white. Firefox renders a different picker UI and won't match
+   this pseudo; the styling is a no-op there. */
+:root[data-theme="dark"] .date-input::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  cursor: pointer;
+}
+.month-pickers {
+  display: flex;
+  gap: 4px;
+}
+.month-select {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  font-size: 11px;
+  font-family: inherit;
+  border: 1px solid var(--border-strong);
+  border-radius: 2px;
+  background: var(--bg-card);
+  color: var(--text);
+}
+.month-select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+/* Month-only dropdown (narrower) vs year (wider). Same class so
+   balance is 1:1 flex; month labels are short enough. */
+
+/* History table (Week/Month view): similar to .mx but first column is a date. */
+.mx td.mono, .mx th.mono {
+  font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+/* ---- conveyor-totals chart (Phase 5) ---- */
+.wc-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 4px;
+  border-top: 1px dashed var(--border);
+  margin-top: 2px;
+}
+
+.chart-subtitle {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 11px;
+  flex-wrap: wrap;
+}
+.chart-subtitle-label {
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-weight: 700;
+  font-size: 10px;
+}
+.chart-subtitle-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+.chart-subtitle-meta { font-size: 10px; }
+
+.chart-wrap {
+  position: relative;
+  width: 100%;
+  height: 180px;
+}
+
+.conveyor-chart-canvas { width: 100% !important; height: 100% !important; }
+
+.chart-empty {
+  padding: 8px 4px;
+  font-size: 11px;
+  font-style: italic;
+}
+
+
+/* ---- Phase 8: Details modal + weather strip + Details button ---- */
+
+/* Modal backdrop covers the viewport; flex centers the dialog. */
+.details-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.details-modal {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  box-shadow: 0 10px 36px rgba(0, 0, 0, 0.28);
+  max-width: 600px;
+  width: calc(100% - 32px);
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.details-modal-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-canvas);
+}
+
+.details-modal-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-strong);
+}
+
+.details-modal-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 6px;
+  font-family: inherit;
+  transition: color .12s;
+}
+.details-modal-close:hover { color: var(--text-strong); }
+.details-modal-close:focus { outline: 1px solid var(--accent); outline-offset: 2px; }
+
+.details-modal-body {
+  padding: 12px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  font-size: 11px;
+  color: var(--text);
+}
+
+/* Section label inside the modal body (Report / Weather / Notes) */
+.dm-section-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+/* Two-column key/value grid for the Report metadata section */
+.dm-meta {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+}
+.dm-meta-key { color: var(--text-muted); }
+.dm-meta-value { color: var(--text); font-weight: 600; }
+.dm-meta-value.mono {
+  font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+/* 4-column grid for the weather cells */
+.dm-weather {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.dm-weather-cell {
+  background: var(--bg-canvas);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 6px 8px;
+}
+.dm-weather-label {
+  font-size: 9px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 2px;
+}
+.dm-weather-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+/* Notes block: styled like a quote, preserves line breaks. */
+.dm-notes {
+  background: var(--bg-canvas);
+  border-left: 3px solid var(--accent);
+  padding: 8px 10px;
+  white-space: pre-wrap;
+  color: var(--text-body);
+  border-radius: 2px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.dm-empty {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 11px;
+}
+
+/* Details button -- used in table rows and in the single-report panel
+   header. Subtle by default, clearer on hover / focus. */
+.details-btn {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  font-family: inherit;
+  line-height: 1.4;
+  transition: color .12s, border-color .12s, background .12s;
+}
+.details-btn:hover {
+  color: var(--text-strong);
+  border-color: var(--border-strong);
+  background: var(--bg-canvas);
+}
+.details-btn:focus {
+  outline: none;
+  border-color: var(--accent);
+  color: var(--text-strong);
+}
+
+/* Weather chip row in the single-report panel header */
+.weather-strip {
+  display: inline-flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.weather-strip-value {
+  color: var(--text);
+  font-weight: 600;
+}
+.weather-strip-sep {
+  color: var(--text-faint);
+}
+
+
+/* ---- Phase 8.1: weather icons + revised modal weather layout ---- */
+
+/* Wrapper for the inline SVG icon. inline-flex so it aligns with
+   adjacent text on its baseline; aspect-ratio set via width/height
+   on the inner <svg class="wi">. currentColor lets the icon track
+   the surrounding text color (light/dark theme aware). */
+.wi-wrap {
+  display: inline-flex;
+  align-items: center;
+  color: inherit;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.wi-wrap .wi { display: block; width: 14px; height: 14px; }
+.wi-wrap.wi-strip .wi { width: 13px; height: 13px; }
+.wi-wrap.wi-modal .wi { width: 28px; height: 28px; }
+
+/* Summary cell in the Weather column of the history table. */
+.weather-summary-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.weather-summary-inline .weather-temp {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* Modal weather header row: big icon + primary (severity-picked)
+   condition name, sitting above the three metric cells. */
+.dm-weather-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.dm-weather-primary {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-strong);
+  text-transform: capitalize;
+}
+
+/* When used with .dm-weather, switches the grid to 3 columns
+   (temp / humidity / wind) since Phase 8.1 pulled Conditions out
+   into its own header row. */
+.dm-weather.dm-weather-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+/* "All conditions: …" line under the metric cells. Muted + italic so
+   it reads as context rather than a primary field. */
+.dm-weather-full {
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.dm-weather-full-label {
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-right: 4px;
+}
+.dm-weather-full-text {
+  font-style: italic;
+}
+
+
+/* ---- Phase 10b: View tabs (Dashboard / Trends) ---- */
+
+.view-tabs {
+  display: flex;
+  align-items: center;
+  height: 40px;
+  border-right: 1px solid var(--divider-dark);
+}
+.vtab {
+  height: 40px;
+  padding: 0 14px;
+  background: none;
+  border: none;
+  font-size: 11px;
+  font-family: inherit;
+  font-weight: 600;
+  color: var(--shell-text-muted, #c8c6c4);
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  transition: color .15s, background .15s, border-color .15s;
+}
+.vtab:hover:not(.on) {
+  background: var(--shell-hover-bg, #3b3a39);
+  color: var(--shell-text, #f3f2f1);
+}
+.vtab.on {
+  color: var(--shell-text, #f3f2f1);
+  border-bottom-color: var(--accent);
+}
+
+/* ---- Trends view layout ---- */
+
+.trends-main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 18px;
+}
+
+.trends-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 10px 14px;
+  flex-wrap: wrap;
+}
+.trends-control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.trends-status {
+  margin-left: auto;
+  font-size: 10px;
+  font-style: italic;
+}
+
+.trends-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.trend-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 10px 14px 14px;
+}
+.trend-panel-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.trend-panel-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-strong);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.trend-panel-meta {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.trend-chart-wrap {
+  position: relative;
+  width: 100%;
+  height: 260px;
+}
+.trend-chart-canvas {
+  width: 100% !important;
+  height: 100% !important;
+}

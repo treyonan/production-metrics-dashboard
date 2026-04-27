@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Production Metrics - Dolese Bros Co</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<script>
+(function () {
+  try {
+    var t = localStorage.getItem("pmd-theme");
+    if (t !== "light" && t !== "dark") {
+      t = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+        ? "dark" : "light";
+    }
+    document.documentElement.setAttribute("data-theme", t);
+  } catch (e) {
+    document.documentElement.setAttribute("data-theme", "light");
+  }
+})();
+</script>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="shell">
+
+  <div class="topbar">
+    <div class="tlogo">
+      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M1 2 L10 7 L1 12 L4 7 Z" fill="#F2C811"/><path d="M1 2 L10 7 L1 12 L4 7 Z" fill="#0F5C36" transform="translate(1,1) scale(.85)"/></svg>
+      <b>Production Metrics</b><s>&nbsp;&middot; Dolese Bros Co</s>
+    </div>
+    <div class="site-tog" id="site-tog" role="tablist" aria-label="Site selector"></div>
+    <div class="view-tabs" id="view-tabs" role="tablist" aria-label="View selector">
+      <button class="vtab on" data-view="dashboard" role="tab" aria-selected="true">Dashboard</button>
+      <button class="vtab"    data-view="trends"    role="tab" aria-selected="false">Trends</button>
+    </div>
+    <div style="flex:1"></div>
+    <button class="export-btn" id="export-btn" type="button" disabled
+            aria-label="Export current view as XLSX" title="Export current view as XLSX">
+      <svg viewBox="0 0 14 14" aria-hidden="true">
+        <path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"
+              d="M7 1.5 v7.2 M4.3 6 L7 8.7 L9.7 6"/>
+        <path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"
+              d="M2 10.5 v1.5 h10 v-1.5"/>
+      </svg>
+      <span>Export</span>
+    </button>
+    <button class="theme-toggle" id="theme-toggle" type="button"
+            aria-label="Toggle light / dark theme" title="Toggle theme"></button>
+    <span class="health-pill" id="health-pill" title="API health">checking...</span>
+    <span class="refresh-lbl" id="refresh-lbl">&mdash;</span>
+  </div>
+
+  <!-- ===== Dashboard view ===== -->
+  <div class="canvas" id="dashboard-view">
+
+    <aside class="sidebar">
+      <div class="site-strip" id="site-strip">
+        <span class="site-id" id="site-strip-id">&mdash;</span>
+        <span class="site-nm" id="site-strip-name">&mdash;</span>
+      </div>
+
+      <div class="sb">
+        <div class="sh">TIME FILTER</div>
+        <div class="sd">
+          <!-- Phase 7: absolute-window picker. Mode toggle swaps between
+               a single-day picker and a month-year picker. -->
+          <div class="gbr mode-toggle" id="mode-toggle" role="tablist" aria-label="Time filter mode">
+            <button type="button" class="gb on" data-mode="day"   role="tab" aria-selected="true">Day</button>
+            <button type="button" class="gb"    data-mode="month" role="tab" aria-selected="false">Month</button>
+          </div>
+
+          <div class="filter-body" id="day-body">
+            <label class="filter-label" for="day-date">Date</label>
+            <input class="date-input" type="date" id="day-date"
+                   min="2020-01-01" aria-label="Select a production date">
+          </div>
+
+          <div class="filter-body" id="month-body" style="display:none">
+            <label class="filter-label">Month</label>
+            <div class="month-pickers">
+              <select class="month-select" id="month-month" aria-label="Month">
+                <option value="1">January</option>
+                <option value="2">February</option>
+                <option value="3">March</option>
+                <option value="4">April</option>
+                <option value="5">May</option>
+                <option value="6">June</option>
+                <option value="7">July</option>
+                <option value="8">August</option>
+                <option value="9">September</option>
+                <option value="10">October</option>
+                <option value="11">November</option>
+                <option value="12">December</option>
+              </select>
+              <select class="month-select" id="month-year" aria-label="Year"></select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sb">
+        <div class="sh">ACTIVE FILTERS</div>
+        <div class="sd" id="chips"></div>
+      </div>
+
+      <div style="flex:1"></div>
+
+      <div class="sb">
+        <div class="sh">SOURCE</div>
+        <div class="sd small">
+          <div><span class="muted">Name:</span> <span id="src-name">&mdash;</span></div>
+          <div><span class="muted">Status:</span> <span id="src-status">&mdash;</span></div>
+          <div><span class="muted">Detail:</span> <span id="src-detail">&mdash;</span></div>
+          <div><span class="muted">Checked:</span> <span id="src-checked">&mdash;</span></div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="warn-bar err" id="err-bar" style="display:none"></div>
+      <div id="wc-panels"></div>
+      <div class="nd" id="empty-state" style="display:none">No production data for this selection.</div>
+    </main>
+
+  </div>
+
+  <!-- ===== Trends view (Phase 10b) ===== -->
+  <div class="canvas" id="trends-view" style="display:none">
+    <main class="main trends-main">
+      <div class="trends-controls">
+        <div class="trends-control-group">
+          <label class="filter-label" for="trends-from-month">From month</label>
+          <input type="month" class="date-input" id="trends-from-month" aria-label="Trends from-month">
+        </div>
+        <div class="trends-control-group">
+          <label class="filter-label" for="trends-to-month">To month</label>
+          <input type="month" class="date-input" id="trends-to-month" aria-label="Trends to-month">
+        </div>
+        <span class="trends-status muted" id="trends-status">&mdash;</span>
+      </div>
+
+      <div class="warn-bar err" id="trends-err-bar" style="display:none"></div>
+      <div class="trends-grid" id="trends-grid"></div>
+      <div class="nd" id="trends-empty-state" style="display:none">No production data in this range.</div>
+    </main>
+  </div>
+</div>
+
+<!-- Phase 8: Details modal (shared by single-report and multi-report panels).
+     Hidden until openDetailsModal() is called from a Details button. -->
+<div class="details-modal-backdrop" id="details-modal" style="display:none"
+     role="dialog" aria-modal="true" aria-labelledby="details-modal-title">
+  <div class="details-modal">
+    <div class="details-modal-header">
+      <h2 class="details-modal-title" id="details-modal-title">Report Details</h2>
+      <button class="details-modal-close" type="button" aria-label="Close details">&times;</button>
+    </div>
+    <div class="details-modal-body" id="details-modal-body">
+      <!-- filled dynamically by openDetailsModal() -->
+    </div>
+  </div>
+</div>
+
+<script src="vendor/chart.umd.js"></script>
+<script src="vendor/xlsx.full.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
