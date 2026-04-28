@@ -112,7 +112,7 @@ class SqlProductionReportSource:
           3=SITE_ID        4=DEPARTMENT_ID  5=PAYLOAD   6=DTM
           7=SHIFT          8=WEATHER_CONDITIONS
           9=AVG_TEMP      10=AVG_HUMIDITY  11=MAX_WIND_SPEED
-         12=NOTES
+         12=NOTES         13=DEPT_NAME (Phase 12)
         """
         payload_raw = row[5]
         payload: dict[str, Any] = json.loads(payload_raw) if payload_raw else {}
@@ -136,4 +136,8 @@ class SqlProductionReportSource:
             avg_humidity=_to_float_or_none(row[10]),
             max_wind_speed=_to_float_or_none(row[11]),
             notes=str(row[12]) if row[12] is not None else None,
+            # Phase 12: DEPT_NAME from the Departments LEFT JOIN, with
+            # underscores already replaced by spaces at the SQL layer.
+            # Defensive str() and None-check -- LEFT JOIN can miss.
+            department_name=str(row[13]) if row[13] is not None else None,
         )

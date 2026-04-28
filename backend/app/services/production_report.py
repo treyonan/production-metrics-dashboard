@@ -309,6 +309,12 @@ class MonthlyRollup:
     total_runtime_minutes: float
     tph: float | None
     report_count: int
+    # Phase 12: human-readable name from Departments LEFT JOIN. None
+    # when the source is CSV or when no Departments row exists. All
+    # rows in a (department_id, month) bucket share the same dept_id
+    # and therefore the same department_name -- we take it from the
+    # first row in the group.
+    department_name: str | None = None
 
 
 def _runtime_minutes_from_workcenter(wc: Any) -> float:
@@ -421,6 +427,11 @@ async def get_monthly_rollup(
         else:
             tph = None
 
+        # Phase 12: lift department_name off the first row in the
+        # group. All rows in a (dept_id, month) bucket share the same
+        # dept_id and therefore the same Departments row.
+        dept_name = group[0].department_name if group else None
+
         out.append(
             MonthlyRollup(
                 department_id=dept_id,
@@ -429,6 +440,7 @@ async def get_monthly_rollup(
                 total_runtime_minutes=total_runtime_min,
                 tph=tph,
                 report_count=len(group),
+                department_name=dept_name,
             )
         )
 

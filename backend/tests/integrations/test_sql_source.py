@@ -79,10 +79,11 @@ class FakePool:
         return _AsyncCtx(FakeConnection(self._cursor))
 
 
-# Column order for select_all.sql (Phase 8). Any test that passes a row
-# tuple through the fake cursor uses exactly these 13 columns. Helper
-# below builds a tuple with enrichment fields defaulted to None so the
-# older tests can keep their focused assertions.
+# Column order for select_all.sql (Phase 12 -- 14 columns total).
+# Any test that passes a row tuple through the fake cursor uses
+# exactly these columns. Helper below builds a tuple with all
+# enrichment fields defaulted to None so older tests can keep their
+# focused assertions; new Phase 12 tests pass dept_name explicitly.
 def _row(
     *,
     id=101,
@@ -98,12 +99,14 @@ def _row(
     avg_humidity=None,
     max_wind_speed=None,
     notes=None,
+    dept_name=None,  # Phase 12 -- DEPT_NAME from Departments LEFT JOIN.
 ):
     if prod_date is None:
         prod_date = datetime(2026, 4, 22)
     return (
         id, prod_date, prod_id, site_id, department_id, payload, dtm,
         shift, weather_conditions, avg_temp, avg_humidity, max_wind_speed, notes,
+        dept_name,
     )
 
 
@@ -172,6 +175,8 @@ async def test_fetch_rows_casts_ints_to_strings_and_parses_payload() -> None:
     assert r.avg_humidity is None
     assert r.max_wind_speed is None
     assert r.notes is None
+    # Phase 12 enrichment defaulted to None when not populated.
+    assert r.department_name is None
 
 
 @pytest.mark.asyncio
@@ -246,6 +251,34 @@ async def test_fetch_rows_tolerates_null_enrichment_from_left_join_miss() -> Non
 
 
 @pytest.mark.asyncio
+async def test_fetch_rows_reads_department_name_from_dept_join() -> None:
+    """Phase 12: department_name from the Departments LEFT JOIN lands on
+    the dataclass. Underscores in the upstream value are already
+    replaced with spaces by the SQL-side REPLACE() (D8) -- this test
+    asserts the source layer passes that string through unchanged.
+    """
+    row = _row(id=401, prod_id="PR_DEPT_NAMED", dept_name="North Crusher")
+    pool = FakePool(FakeCursor(rows=[row]))
+    src = SqlProductionReportSource(pool=pool)
+    r = (await src.fetch_rows())[0]
+    assert r.department_name == "North Crusher"
+    assert isinstance(r.department_name, str)
+
+
+@pytest.mark.asyncio
+async def test_fetch_rows_tolerates_null_department_name_from_left_join_miss() -> None:
+    """Defensive: a production report whose DEPARTMENT_ID has no
+    matching row in [DailyProductionEntry].[dbo].[Departments] gets
+    NULL from the LEFT JOIN. The dataclass reports None and the
+    frontend falls back to department_id display."""
+    row = _row(id=402, prod_id="PR_NO_DEPT", dept_name=None)
+    pool = FakePool(FakeCursor(rows=[row]))
+    src = SqlProductionReportSource(pool=pool)
+    r = (await src.fetch_rows())[0]
+    assert r.department_name is None
+
+
+@pytest.mark.asyncio
 async def test_list_site_ids_returns_sorted_distinct_strings() -> None:
     r1 = _row(id=1, prod_id="P1", site_id=101, department_id=127)
     r2 = _row(id=2, prod_id="P2", site_id=102, department_id=127)
@@ -273,4 +306,7 @@ def test_load_query_reads_ping_and_select_all() -> None:
     assert "FROM [UNS].[SITE_PRODUCTION_RUN_REPORTS]" in select_all
     assert "[UNS].[SITE_PRODUCTION_RUN_HISTORY]" in select_all
     assert "[UNS].[SITE_PRODUCTION_RUN_COMMENTS]" in select_all
+    # Phase 12: cross-database Departments JOIN with name normalization.
+    assert "[DailyProductionEntry].[dbo].[Departments]" in select_all
+    assert "REPLACE(d.[Name], '_', ' ')" in select_all
     assert "SELECT *" not in select_all

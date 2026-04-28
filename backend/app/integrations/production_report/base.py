@@ -43,6 +43,15 @@ class ProductionReportRow:
     the CSV source has no weather data so every CSV row reports None;
     SQL rows whose LEFT JOIN misses (e.g. a production report with no
     history row yet) also report None field-by-field.
+
+    ``department_name`` (Phase 12) comes from a cross-database LEFT JOIN
+    against ``[DailyProductionEntry].[dbo].[Departments]``. The CSV
+    source has no Departments table and returns ``None``; SQL rows
+    whose Departments lookup misses also return ``None``. The frontend
+    falls back to ``department_id`` display when the name is null.
+    Underscores in the upstream name are normalized to spaces at the
+    SQL layer (D8) so every consumer sees the same display string.
+    Phase 13 (CSV removal) will tighten this to non-null ``str``.
     """
 
     id: int
@@ -59,6 +68,9 @@ class ProductionReportRow:
     avg_humidity: float | None = field(default=None)
     max_wind_speed: float | None = field(default=None)
     notes: str | None = field(default=None)
+    # Phase 12 enrichment. Optional, default None until Phase 13
+    # removes CSV and the contract becomes non-null.
+    department_name: str | None = field(default=None)
 
 
 @runtime_checkable

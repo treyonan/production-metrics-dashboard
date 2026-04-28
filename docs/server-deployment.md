@@ -161,24 +161,65 @@ stays up and degrades gracefully — see "Troubleshooting" below.
 
 ## Updates after dev-box changes
 
-The dev-side workflow is `git push` from the Windows box. Server side:
+The dev-side workflow is `git push` from the Windows box. The server-side
+update sequence is below — three steps in order, with a decision point in
+the middle on whether a rebuild is required.
+
+### Step 1 — Pull the latest
 
 ```bash
 cd /opt/production-metrics-dashboard
 git pull
+```
 
-# If only frontend or context/sample-data changed → no rebuild needed,
-# they're bind-mounted read-only and re-read on the next request.
+### Step 2 — See what changed and decide on rebuild
 
-# If backend code, requirements.txt, or the Dockerfile changed → rebuild:
+```bash
+# Files touched in this pull:
+git log --stat HEAD@{1}..HEAD
+```
+
+Three buckets, only one applies per pull:
+
+| What changed | Action | Why |
+|---|---|---|
+| **Only `frontend/` or `context/sample-data/`** | Nothing. Skip to Step 3. | Bind-mounted read-only at `./frontend:/app/frontend:ro` and `./context:/app/context:ro`. Container reads the file on every request, so the new bytes are live the moment `git pull` finishes. |
+| **`backend/app/` Python, `backend/requirements.txt`, or `backend/Dockerfile`** | `docker compose up -d --build` | Python code + the image's installed dependencies are baked into the image at build time. Without `--build`, the container keeps running the old code. |
+| **Only `docker-compose.yml`** (e.g. new `extra_hosts` entry, port change) | `docker compose up -d` | Compose detects the config diff and recreates the container *without* rebuilding the image. Faster than `--build`. |
+
+If the pull touches both buckets — e.g. backend code AND `docker-compose.yml`
+— `docker compose up -d --build` covers both.
+
+### Step 3 — Verify the new code is running
+
+```bash
+# build_tag identifies the running image. Compare to BUILD_TAG in
+# backend/app/main.py for the version you just pulled.
+curl -s http://localhost:8001/api/__ping
+
+# If you bumped BUILD_TAG and the response still shows the OLD tag,
+# the rebuild didn't take. Re-run with --build.
+
+# Frontend-only changes don't bump BUILD_TAG; verify those by
+# hard-refreshing the browser (Ctrl+Shift+R) and looking at
+# DevTools Network → app.js → Response for the new code.
+```
+
+### TL;DR for the common case (frontend-only push)
+
+```bash
+cd /opt/production-metrics-dashboard
+git pull
+# done — hard-refresh browser
+```
+
+### TL;DR for backend code changes
+
+```bash
+cd /opt/production-metrics-dashboard
+git pull
 docker compose up -d --build
-
-# If only docker-compose.yml changed (e.g. a new extra_hosts entry):
-docker compose up -d              # picks up compose-side changes without
-                                  # rebuilding the image
-
-# Always confirm the new build is live by hitting /api/__ping and
-# comparing build_tag to BUILD_TAG in backend/app/main.py
+docker compose logs -f api      # watch startup, Ctrl+C to detach
 curl -s http://localhost:8001/api/__ping
 ```
 

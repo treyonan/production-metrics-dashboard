@@ -1835,6 +1835,132 @@ columns in the XLSX too.
       data appears for every asset of a given report (same-shift
       pattern as Weather/Notes).
 
+## Phase 12 -- Department name lookup + display (IMPLEMENTED 2026-04-28, browser QA pending)
+
+### Goal
+
+Replace `Department ID: <int>` with the department's human-readable
+name in the dashboard (panel headers, history-panel headers, Trends
+legends) by adding a cross-database LEFT JOIN to
+`[DailyProductionEntry].[dbo].[Departments]` on every production-report
+fetch. Keep both `department_id` and `department_name` in the API
+response, modal, and XLSX export -- the dashboard hides the ID from
+primary UI but never loses it.
+
+### Decisions
+
+- **D1 -- LEFT JOIN, not INNER.** A production report with no matching
+  Departments row still comes back, just with `department_name=null`.
+  Per Trey's Q4 the name will never be null in practice, but defensive
+  LEFT JOIN protects against schema or data drift.
+- **D2 -- Cross-database query.** Use fully-qualified
+  `[DailyProductionEntry].[dbo].[Departments]`. Same SQL Server
+  instance is assumed (Trey: "you should have access"). If a future
+  separation forces a linked-server, that's a separate concern.
+- **D3 -- Display column is `Name`** (Trey clarification, not `Department`
+  as the original example showed). JOIN selects `d.[Name] AS DEPT_NAME`.
+- **D4 -- Type tolerance for nullability.** `department_name: str | None`
+  on both `ProductionReportRow` and `ProductionReportEntry` for now.
+  CSV source returns `None`. Phase 13 (CSV removal) will tighten to
+  `str` once CSV is gone.
+- **D5 -- ID stays in the contract.** `department_id` is unchanged.
+  Existing API consumers (and any pivot tables built on the export's
+  "Department ID" column) keep working without modification.
+- **D6 -- Display rules:**
+  - Panel headers (workcenter, history): show `Department: <name>`.
+    Fallback to `Department ID: <id>` if name is null.
+  - Trends view legend / category axis: show `<name>` directly. Same
+    null fallback.
+  - Details modal: add `Department Name` row alongside the existing
+    `Department ID` row. Both visible.
+  - XLSX export: add a `Department` column immediately after
+    `Department ID`. Doesn't disturb existing column order.
+- **D7 -- CSV source kept intact for this phase.** Returns
+  `department_name=None`. Phase 13 removes CSV entirely; not bundled
+  here so Phase 12 can ship and be verified without simultaneous
+  test-suite migration.
+- **D8 -- Underscores in `Name` are normalized to spaces.** The
+  upstream `Departments.[Name]` column may carry underscores
+  (e.g. `North_Crusher`). The dashboard / export should read
+  "North Crusher". Done once at the SQL layer via
+  `REPLACE(d.[Name], '_', ' ') AS DEPT_NAME` so the transformation
+  is the single source of truth and every downstream surface
+  (panel headers, Trends legends, modal, XLSX export) inherits it
+  for free. Consistent with the project's "export mirrors display"
+  rule -- users see the same string everywhere. If a future caller
+  needs the raw underscored form, we add a separate column then;
+  YAGNI now.
+
+### Files modified
+
+- [x] `backend/app/integrations/production_report/queries/select_all.sql`
+      -- added cross-database
+      `LEFT JOIN [DailyProductionEntry].[dbo].[Departments] d
+      ON d.[Id] = rr.DEPARTMENT_ID` and
+      `REPLACE(d.[Name], '_', ' ') AS DEPT_NAME` (D8 normalization).
+- [x] `backend/app/integrations/production_report/base.py` -- added
+      `department_name: str | None = field(default=None)` to
+      `ProductionReportRow`.
+- [x] `backend/app/integrations/production_report/sql_source.py` --
+      `_row_to_dataclass` reads DEPT_NAME from `row[13]` with
+      defensive `str()` + None-check; updated column-order docstring.
+- [x] `backend/app/integrations/production_report/csv_source.py` --
+      no change required; dataclass default supplies `None` since
+      `_parse_row` doesn't enumerate the optional Phase 8/12 fields.
+- [x] `backend/app/schemas/production_report.py` --
+      added optional `department_name` to `ProductionReportEntry`
+      AND `MonthlyRollupEntry` (the Trends rollup also surfaces it).
+- [x] `backend/app/api/routes/production_report.py` -- `_to_entry`
+      and `_to_rollup_entry` both propagate `department_name`.
+- [x] `backend/app/services/production_report.py` -- added
+      `department_name` to the `MonthlyRollup` dataclass; populated
+      from `group[0].department_name` (all rows in a (dept, month)
+      bucket share the dept). Bundled here so Trends chart legends
+      can read names, not just IDs -- avoids a separate frontend
+      lookup map.
+- [x] `backend/tests/integrations/test_sql_source.py` -- extended the
+      `_row` tuple helper to include `dept_name`; added two new
+      tests (positive read + LEFT JOIN miss); asserted on the new
+      JOIN/REPLACE in `test_load_query_reads_ping_and_select_all`.
+- [x] `frontend/app.js`:
+  - Added `deptName` and `deptHeader` helpers near `fmt1`/`placeholderize`.
+  - Single-report panel header uses `deptHeader(entry.department_name, entry.department_id)`.
+  - History panel lifts the name off `entries[0]` and uses `deptHeader`.
+  - Modal shows a new `Department Name` row right after `Department ID`
+    (em-dash on null since the ID row above already covers identity).
+  - Export inserts `Department` column right after `Department ID`,
+    sourced via `strOrEmpty(entry.department_name)` so null becomes
+    a truly blank cell.
+  - Trends view legend uses `deptLabel(dept)` which calls `deptName`
+    on the rollup entry's `department_name`.
+
+### Verification
+
+- [ ] `pytest` passes against the existing CSV fixtures.
+- [ ] Live SQL: hit `/api/production-report/latest` against the deployed
+      Linux container. Confirm every entry has a populated
+      `department_name` matching `[Departments].[Name]` for that
+      `DEPARTMENT_ID`.
+- [ ] Dashboard: workcenter panels and history panels show the name.
+      Modal shows both id and name. Export `.xlsx` has a `Department`
+      column right after `Department ID`.
+- [ ] Trends view: chart legend reads names, not IDs.
+- [ ] Negative path (defensive): in DevTools console, mutate one
+      entry's `department_name` to null, re-render, confirm the
+      panel falls back to `Department ID: <id>` rather than rendering
+      "Department: null".
+
+### Out of scope (deferred to Phase 13)
+
+- Removing the CSV source entirely (Trey approved removal but it's a
+  separate refactor with its own test-suite migration).
+- Tightening `department_name` from `str | None` to `str` (waits on
+  CSV removal).
+- Caching the Departments lookup table (the JOIN runs once per
+  request and the table is small; revisit only if metrics show a
+  problem).
+- Multilingual or per-tenant overrides of department names.
+
 ### Phase 11.1 -- Group Site fields by base type (IMPLEMENTED 2026-04-28)
 
 Upstream emits Site keys interleaved by ordinal

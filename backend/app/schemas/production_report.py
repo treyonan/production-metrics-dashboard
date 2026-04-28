@@ -21,6 +21,20 @@ class ProductionReportEntry(BaseModel):
     prod_id: str = Field(description="Upstream production-report identifier.")
     site_id: str = Field(description="Plant site identifier.")
     department_id: str = Field(description="Workcenter / department identifier.")
+    department_name: str | None = Field(
+        default=None,
+        description=(
+            "Human-readable department name from "
+            "[DailyProductionEntry].[dbo].[Departments].[Name]. "
+            "Underscores in the upstream value are normalized to "
+            "spaces at the SQL layer (Phase 12, D8). Null when the "
+            "source is CSV (no Departments table available) or when "
+            "the SQL LEFT JOIN finds no matching department row -- "
+            "consumers fall back to department_id display in that "
+            "case. Phase 13 (CSV removal) will tighten this to "
+            "non-null str."
+        ),
+    )
     payload: dict[str, Any] = Field(
         description=(
             "Raw parsed PAYLOAD JSON. Shape evolving; see "
@@ -209,6 +223,15 @@ class MonthlyRollupEntry(BaseModel):
     """
 
     department_id: str = Field(description="Workcenter / department identifier.")
+    department_name: str | None = Field(
+        default=None,
+        description=(
+            "Human-readable department name from Departments LEFT JOIN "
+            "(Phase 12). All rows in a (dept_id, month) bucket share "
+            "the same dept_id and therefore the same name. Null when "
+            "the source is CSV or when no Departments row matches."
+        ),
+    )
     month: str = Field(
         description=(
             "Year-month identifier in YYYY-MM form (e.g. '2026-04'). "

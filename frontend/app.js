@@ -90,6 +90,20 @@
   const fmtInt = (v) => (v === null || v === undefined ? "\u2014" : Math.round(Number(v)).toString());
   const placeholderize = (s) => (s === "_" || s === "None" || !s ? "\u2014" : s);
   const fmtDate = (iso) => new Date(iso).toLocaleDateString();
+  // Phase 12: department display helpers.
+  // deptName  -> bare name string; falls back to "Dept <id>" so chart
+  //              legends and other label-only contexts always read.
+  // deptHeader -> "Department: <Name>" with id-style fallback used by
+  //              workcenter / history panel headers.
+  // Both treat any non-string / empty-trim value as null.
+  const deptName = (name, id) => {
+    if (name && typeof name === "string" && name.trim()) return name;
+    return `Dept ${id}`;
+  };
+  const deptHeader = (name, id) => {
+    if (name && typeof name === "string" && name.trim()) return `Department: ${name}`;
+    return `Department ID: ${id}`;
+  };
   const timeAgo = (isoStr) => {
     if (!isoStr) return "\u2014";
     const d = new Date(isoStr);
@@ -470,7 +484,7 @@
     // pill. The chip strip is inline so it folds cleanly below the
     // metadata on narrow viewports.
     const headerChildren = [
-      el("span", { class: "wc-title" }, `Department ID: ${entry.department_id}`),
+      el("span", { class: "wc-title" }, deptHeader(entry.department_name, entry.department_id)),
       el("span", { class: "wc-sub" }, [
         el("span", { class: "wc-label" }, "Prod. Date: "),
         el("span", { class: "wc-value" }, fmtDate(entry.prod_date)),
@@ -557,9 +571,13 @@
       el("tbody", {}, entries.map(historyRow)),
     ]);
 
+    // Phase 12: name lifted off any entry in the group -- they all share
+    // the same department_id and therefore the same Departments lookup
+    // result. Falls back to id-only display when name is null.
+    const deptDisplayName = entries.length ? entries[0].department_name : null;
     return el("section", { class: "wc-panel" }, [
       el("div", { class: "wc-header" }, [
-        el("span", { class: "wc-title" }, `Department ID: ${deptId}`),
+        el("span", { class: "wc-title" }, deptHeader(deptDisplayName, deptId)),
         el("span", { class: "wc-sub" }, [
           el("span", { class: "wc-label" }, "Range: "),
           el("span", { class: "wc-value" }, rangeLabel),
@@ -816,6 +834,10 @@
             "Site": siteMeta.name || "",
             "Site ID": entry.site_id,
             "Department ID": entry.department_id,
+            // Phase 12: Department Name column sits next to the ID.
+            // Both are kept in the export per the "export mirrors
+            // display" rule. strOrEmpty turns null -> truly blank cell.
+            "Department": strOrEmpty(entry.department_name),
             "Prod. Date": entry.prod_date || "",
             "Production ID": entry.prod_id || "",
             "Asset": k,
@@ -1185,6 +1207,14 @@
       el("div", { class: "dm-meta" }, [
         el("div", { class: "dm-meta-key" }, "Department ID"),
         el("div", { class: "dm-meta-value" }, String(entry.department_id)),
+        // Phase 12: Department Name row sits directly below the ID. Both
+        // are kept visible -- the dashboard hides ID from primary UI but
+        // the modal is a "show me everything we have on this report" view.
+        // Em-dash on null since the ID row above already covers identity.
+        el("div", { class: "dm-meta-key" }, "Department Name"),
+        el("div", { class: "dm-meta-value" },
+          (entry.department_name && typeof entry.department_name === "string"
+            && entry.department_name.trim()) ? entry.department_name : "—"),
         el("div", { class: "dm-meta-key" }, "Prod. Date"),
         el("div", { class: "dm-meta-value" }, fmtDate(entry.prod_date)),
         el("div", { class: "dm-meta-key" }, "Production ID"),
@@ -1549,6 +1579,17 @@
     }
     const deptIds = [...byDept.keys()].sort();
 
+    // Phase 12: dept_id -> human-readable name lookup. All rollup
+    // entries for a given dept share the same department_name (Phase 12
+    // backend guarantees), so we just take the first one we see. Falls
+    // back to "Dept <id>" via deptName() when name is null (CSV path
+    // or pre-Phase-12 server). Used as the chart-legend label.
+    const deptLabel = (dept) => {
+      const firstRollup = byDept.get(dept).values().next().value;
+      const name = firstRollup ? firstRollup.department_name : null;
+      return deptName(name, dept);
+    };
+
     // Helper to build datasets for a particular metric extractor.
     const buildDatasets = (extractor) => deptIds.map((dept, idx) => {
       const data = months.map((m) => {
@@ -1558,7 +1599,7 @@
         return (v === null || v === undefined) ? null : v;
       });
       return {
-        label: `Dept ${dept}`,
+        label: deptLabel(dept),
         data,
         borderColor: TREND_COLORS[idx % TREND_COLORS.length],
         backgroundColor: TREND_COLORS[idx % TREND_COLORS.length],
