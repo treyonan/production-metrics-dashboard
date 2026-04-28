@@ -68,34 +68,32 @@ endpoints every 30–300 seconds.
                          ▼
           ┌──────────────────────────────────────────────┐
           │  Source implementation  (integrations/*)     │
-          │  — CsvProductionReportSource (local file)    │
-          │      or                                      │
           │  — SqlProductionReportSource (aioodbc pool)  │
+          │  — SqlIntervalMetricSource (+ Flow REST API) │
           └──────────────┬───────────────────────────────┘
                          ▼
-             CSV file  ─or─  SQL Server (Azure Managed)
+             SQL Server (Azure) + Flow API (MQTT->REST)
 ```
 
 Three ideas hold the whole thing together.
 
-**One abstraction boundary.** Routes and services never know whether
-their data came from a file or a database. They depend on the
-`ProductionReportSource` Protocol (`integrations/production_report/base.py`).
-Two concrete classes implement it today; swapping between them is a
-configuration change, not a code change.
+**One abstraction boundary.** Routes and services never know they're
+talking to SQL. They depend on the `ProductionReportSource` Protocol
+(`integrations/production_report/base.py`). The SQL implementation is
+one concrete class; tests inject fixture-backed source implementations
+via DI.
 
 **Dependency injection, not globals.** The source is resolved per
 request by a FastAPI `Depends(...)` provider in `api/dependencies.py`.
-That provider reads `Settings.production_report_backend` and either
-hands back a `CsvProductionReportSource` or a `SqlProductionReportSource`
-wired to the app's pool. Tests swap it out via `app.dependency_overrides`
-— no monkeypatching, no module globals.
+That provider fetches the SQL pool from `app.state` (populated at
+lifespan startup) and hands back a `SqlProductionReportSource` instance.
+Tests swap it out via `app.dependency_overrides` — no monkeypatching,
+no module globals.
 
 **Async all the way down.** Every handler, service, and source method
-is `async def`. The CSV source wraps its blocking file I/O in
-`asyncio.to_thread`; the SQL source uses `aioodbc` natively. That keeps
-the event loop free so other requests aren't starved while a slow
-source is in flight.
+is `async def`. The SQL source uses `aioodbc` natively for truly
+asynchronous database calls. That keeps the event loop free so other
+requests aren't starved while a slow database query is in flight.
 
 ---
 
@@ -108,28 +106,35 @@ backend/app/
 │   ├── config.py           # Settings via pydantic-settings
 │   ├── correlation.py      # X-Correlation-ID middleware + ContextVar
 │   ├── logging.py          # structlog → JSON; stamps correlation IDs
-│   └── snapshot.py         # Snapshot-cache Protocol (seam; not active yet)
+│   └── snapshot.py         # Snapshot-cache Protocol + in-memory impl
 ├── api/
-│   ├── dependencies.py     # Depends(...) providers — pick CSV vs SQL
+│   ├── dependencies.py     # Depends(...) providers for sources
 │   └── routes/
 │       ├── health.py       # GET /api/health
 │       ├── sites.py        # GET /api/sites
-│       └── production_report.py  # GET /latest, GET /range, GET /latest-date
+│       ├── production_report.py  # GET /latest, /range, /latest-date, /monthly-rollup
+│       └── metrics.py      # GET /metrics/conveyor/{interval}, /conveyor/subjects
 ├── schemas/                # Pydantic response models
 │   ├── health.py
 │   ├── sites.py
-│   └── production_report.py
+│   ├── production_report.py
+│   └── metrics.py
 ├── services/               # Source-agnostic business logic
 │   ├── sites.py
-│   └── production_report.py
+│   ├── production_report.py
+│   └── metrics.py
 └── integrations/
     ├── production_report/
     │   ├── base.py         # Protocol + ProductionReportRow + SourceStatus
-    │   ├── csv_source.py   # CsvProductionReportSource
     │   ├── sql_source.py   # SqlProductionReportSource
     │   └── queries/        # *.sql files loaded at construction time
     │       ├── ping.sql
     │       └── select_all.sql
+    ├── metrics/
+    │   ├── base.py         # Protocol + domain types
+    │   └── sql_source.py   # SqlIntervalMetricSource
+    ├── external/
+    │   └── flow_client.py  # Flow REST API client (httpx-based)
     └── sql/
         ├── pool.py         # aioodbc.create_pool wrapper
         └── queries.py      # load_query() helper
@@ -175,7 +180,8 @@ the result against the `Settings` Pydantic model.
 
 **Middleware and routers are registered.** `CorrelationIdMiddleware`
 is installed first so it wraps every subsequent request. Routers are
-mounted under `/api/<domain>` prefixes.
+mounted under `/api/<domain>` prefixes (health, sites, production-report,
+metrics).
 
 **The lifespan context opens.** FastAPI calls the `lifespan`
 async-context-manager once at startup and once at shutdown:
@@ -186,26 +192,49 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     configure_logging(settings.log_level)
 
+    # Create SQL pool (required for production-report and metrics sources)
     app.state.sql_pool = None
-    if settings.production_report_backend == "sql":
-        if settings.db_conn_string is None:
-            log.error("sql_pool.not_created", reason="backend=sql but no DSN")
-        else:
-            try:
-                app.state.sql_pool = await create_pool(
-                    settings.db_conn_string.get_secret_value()
-                )
-                log.info("sql_pool.created")
-            except Exception as exc:
-                log.error("sql_pool.create_failed", error_type=type(exc).__name__, error_message=str(exc))
+    if settings.db_conn_string is None:
+        log.error("sql_pool.not_created", reason="db_conn_string not configured")
+    else:
+        try:
+            app.state.sql_pool = await create_pool(
+                settings.db_conn_string.get_secret_value()
+            )
+            log.info("sql_pool.created")
+        except Exception as exc:
+            log.error("sql_pool.create_failed", error_type=type(exc).__name__, error_message=str(exc))
+
+    # Create Flow API client (optional; required for metrics endpoints)
+    app.state.flow_client = None
+    if settings.flow_api_key is not None:
+        try:
+            app.state.flow_client = FlowClient(
+                api_key=settings.flow_api_key.get_secret_value(),
+                timeout=settings.flow_api_timeout_seconds,
+            )
+            log.info("flow_client.created")
+        except Exception as exc:
+            log.error("flow_client.not_created", error_type=type(exc).__name__, error_message=str(exc))
+
+    # Create snapshot cache for interval metrics (always present)
+    app.state.snapshot_store = InMemorySnapshotStore()
 
     try:
         yield                      # ── app runs here ──
     finally:
+        # Shutdown: close Flow client first, then SQL pool
+        flow_client = getattr(app.state, "flow_client", None)
+        if flow_client is not None:
+            await flow_client.close()
+            log.info("flow_client.closed")
+
         pool = getattr(app.state, "sql_pool", None)
         if pool is not None:
             pool.close()
             await pool.wait_closed()
+            log.info("sql_pool.closed")
+
         log.info("app.shutdown")
 ```
 
@@ -219,13 +248,12 @@ production-report endpoints return **503 Service Unavailable** from
 the DI provider rather than bubbling a 500. The dashboard can surface
 a per-tile error state instead of blanking the whole page.
 
-**Pool stored on `app.state`, not a module global.** That keeps the
-pool tied to the app lifecycle, keeps tests from leaking pools between
+**Pool and clients stored on `app.state`, not module globals.** That keeps
+them tied to the app lifecycle, keeps tests from leaking resources between
 runs, and is the standard FastAPI idiom for per-app resources.
 
-After `yield`, the pool is closed and drained. Shutdown logs
-`sql_pool.closed` (or `sql_pool.close_failed` if `.close()` itself
-throws).
+After `yield`, the Flow client and SQL pool are closed. Shutdown logs
+success or failure for each.
 
 ---
 
@@ -286,8 +314,9 @@ Two things happen before the function body runs.
 
 **Query params are coerced and validated.** `site_id: Annotated[str | None, Query(...)]`
 tells FastAPI to parse `?site_id=...` as an optional string. On the
-`/history` endpoint, `days: Annotated[int, Query(ge=1, le=365)]` adds
-range validation — out-of-range values get a **422 Unprocessable Entity**
+`/range` endpoint, `from_date: Annotated[date, Query(...)]` and
+`to_date: Annotated[date, Query(...)]` validate ISO-8601 dates and
+range semantics — out-of-range or malformed values get a **422 Unprocessable Entity**
 with a Pydantic error body, *never reaching* the handler body.
 
 **Dependencies are resolved.** `ProductionReportSourceDep` expands to
@@ -297,24 +326,32 @@ FastAPI calls that provider and passes the return value in as the
 
 ### 4.3  Dependency resolution
 
-`api/dependencies.py` is the switchboard that picks which concrete
-source the request gets:
+`api/dependencies.py` provides the concrete source implementations:
 
 ```python
 def get_production_report_source(request: Request) -> ProductionReportSource:
-    settings = get_settings()
-    if settings.production_report_backend == "sql":
-        pool = getattr(request.app.state, "sql_pool", None)
-        if pool is None:
-            raise HTTPException(
-                status_code=503,
-                detail=("SQL source unavailable: pool not initialized. "
-                        "Check startup log for sql_pool.create_failed or "
-                        "sql_pool.not_created."),
-            )
-        return SqlProductionReportSource(pool=pool)
-    return CsvProductionReportSource(settings.production_report_csv_path)
+    """Return the SQL production-report source.
+
+    Returns 503 when the SQL pool failed to initialize (bad DSN,
+    network issue at startup, etc.) -- the API stays up so /api/health
+    can surface the unhealthy source rather than the whole process
+    refusing requests.
+    """
+    pool = getattr(request.app.state, "sql_pool", None)
+    if pool is None:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "SQL source unavailable: pool not initialized. "
+                "Check uvicorn startup log for 'sql_pool.create_failed' "
+                "or 'sql_pool.not_created'."
+            ),
+        )
+    return SqlProductionReportSource(pool=pool)
 ```
+
+Similarly, `get_interval_metric_source` requires both the SQL pool (for
+tag registry) and the Flow API client. It returns 503 if either is missing.
 
 Three things to notice:
 
@@ -336,9 +373,10 @@ a generic failure.
 
 **Test override path.** `backend/tests/conftest.py` registers
 `app.dependency_overrides[get_production_report_source] = lambda: CsvProductionReportSource(sample_csv_path)`.
-Every test runs against the committed sample TSV file regardless of
-what `PMD_PRODUCTION_REPORT_BACKEND` is set to. Overrides are cleared
-in the fixture teardown so tests don't leak state.
+Every test runs against the committed sample data file (CSV reader under
+`tests/_fixtures/csv_source.py`) regardless of whether SQL is configured.
+This allows the test suite to run without a SQL Server. Overrides are
+cleared in the fixture teardown so tests don't leak state.
 
 ### 4.4  Service layer
 
@@ -382,31 +420,7 @@ not carry a DTM.
 
 ### 4.5  Source layer
 
-`source.fetch_rows()` resolves to one of two implementations.
-
-**CSV path** (`integrations/production_report/csv_source.py`):
-
-```python
-async def fetch_rows(self) -> list[ProductionReportRow]:
-    return await asyncio.to_thread(self._fetch_rows_sync)
-
-def _fetch_rows_sync(self) -> list[ProductionReportRow]:
-    rows: list[ProductionReportRow] = []
-    with self._path.open("r", encoding="utf-8", newline="") as f:
-        reader = csv.DictReader(f, delimiter="\t")
-        for raw in reader:
-            rows.append(self._parse_row(raw))
-    return rows
-```
-
-The file I/O is blocking, so we run it on a worker thread via
-`asyncio.to_thread`. The event loop keeps servicing other requests
-while the thread reads the file. `_parse_row` handles the tab
-delimiter (the file is `.csv`-extensioned but tab-separated), the
-`M/D/YY H:MM` date format, and the doubled-quote-escaped JSON in the
-`PAYLOAD` column. Empty `DTM` cells parse to `None`.
-
-**SQL path** (`integrations/production_report/sql_source.py`):
+`source.fetch_rows()` is implemented in `integrations/production_report/sql_source.py`:
 
 ```python
 async def fetch_rows(self) -> list[ProductionReportRow]:
@@ -422,20 +436,32 @@ async def fetch_rows(self) -> list[ProductionReportRow]:
 This is natively async — aioodbc's `acquire()`, `cursor()`, `execute()`,
 and `fetchall()` all return awaitables. The combined `async with`
 acquires a connection from the pool, opens a cursor against it, runs
-the query loaded at construction time, and releases both when the
-block exits (even on exception).
+the parameterized query (`integrations/production_report/queries/select_all.sql`,
+loaded at construction time), and releases both when the block exits
+(even on exception).
 
-`_row_to_dataclass` does the type normalisation that keeps the two
-sources interchangeable:
+The SQL query includes LEFT JOINs to the Departments table (for `department_name`,
+Phase 12) and SITE_PRODUCTION_RUN_HISTORY (for enrichment fields like shift,
+weather, temp, humidity, wind_speed, notes — Phase 8). Missing enrichment
+values default to None.
 
-| SQL column       | SQL type       | `ProductionReportRow` field | Note                                   |
-|------------------|----------------|-----------------------------|----------------------------------------|
-| `ID`             | int            | `id: int`                   | straight cast                          |
-| `PRODDATE`       | datetime       | `prod_date: datetime`       | driver returns `datetime` directly     |
-| `PROD_ID`        | varchar        | `prod_id: str`              | —                                      |
-| `SITE_ID`        | int            | `site_id: str`              | **cast to str** — matches JSON/frontend |
-| `DEPARTMENT_ID`  | int            | `department_id: str`        | **cast to str** — same reason          |
-| `PAYLOAD`        | nvarchar(max)  | `payload: dict[str, Any]`   | `json.loads` (empty → `{}`)            |
+`_row_to_dataclass` does the type normalisation:
+
+| SQL column       | SQL type       | `ProductionReportRow` field   | Note                                   |
+|------------------|----------------|-------------------------------|----------------------------------------|
+| `ID`             | int            | `id: int`                     | straight cast                          |
+| `PRODDATE`       | datetime       | `prod_date: datetime`         | driver returns `datetime` directly     |
+| `PROD_ID`        | varchar        | `prod_id: str`                | —                                      |
+| `SITE_ID`        | int            | `site_id: str`                | **cast to str** — matches JSON/frontend |
+| `DEPARTMENT_ID`  | int            | `department_id: str`          | **cast to str** — same reason          |
+| `DEPARTMENT_NAME`| varchar        | `department_name: str`        | Phase 12: from LEFT JOIN; fallback `f"Dept {id}"` on miss |
+| `PAYLOAD`        | nvarchar(max)  | `payload: dict[str, Any]`     | `json.loads` (empty → `{}`)            |
+| `SHIFT`          | varchar        | `shift: str \| None`          | Phase 8: enrichment field              |
+| `WEATHER_CONDITIONS` | varchar    | `weather_conditions: str \| None` | Phase 8                                |
+| `AVG_TEMP`       | float          | `avg_temp: float \| None`     | Phase 8                                |
+| `AVG_HUMIDITY`   | float          | `avg_humidity: float \| None` | Phase 8                                |
+| `MAX_WIND_SPEED` | float          | `max_wind_speed: float \| None` | Phase 8                              |
+| `NOTES`          | nvarchar       | `notes: str \| None`          | Phase 8                                |
 | `DTM`            | datetime NULL  | `dtm: datetime \| None`     | NULL passes through as `None`          |
 
 Those int→str casts are the key to the boundary holding. The CSV path
@@ -498,20 +524,20 @@ Four contract points:
 The Protocol is `@runtime_checkable` so `isinstance(x, ProductionReportSource)`
 works — useful in tests and for FastAPI's type introspection.
 
-### 5.2  The two implementations
+### 5.2  The SQL implementation
 
-| Aspect             | `CsvProductionReportSource`      | `SqlProductionReportSource`             |
-|--------------------|----------------------------------|------------------------------------------|
-| Backing store      | Tab-delimited file on disk       | `IA_ENTERPRISE.[UNS].[SITE_PRODUCTION_RUN_REPORTS]` |
-| Driver             | stdlib `csv`, `json`             | `aioodbc` + ODBC Driver 17 for SQL Server |
-| Concurrency model  | `asyncio.to_thread(sync_fn)`     | Native async, pool-backed (1–4 conns)    |
-| Auth               | POSIX file perms                 | SQL auth (UID/PWD in DSN)                |
-| Health check       | File exists + header readable    | `SELECT 1` returns `1`                   |
-| Constructor input  | `Path` to the file               | `aioodbc.Pool` instance                  |
-| Selected when      | `production_report_backend=csv`  | `production_report_backend=sql`          |
+| Aspect             | Details                                                      |
+|--------------------|--------------------------------------------------------------|
+| Backing store      | `[FLOW_CURATED].[dbo].[SITE_PRODUCTION_RUN_REPORTS]` + metadata JOINs |
+| Driver             | `aioodbc` + Microsoft ODBC Driver 17 for SQL Server          |
+| Concurrency model  | Native async, pool-backed (1–4 conns)                        |
+| Auth               | SQL auth (UID/PWD in DSN); read-only account recommended     |
+| Health check       | `SELECT 1` returns `1`                                       |
+| Constructor input  | `aioodbc.Pool` instance (created at lifespan startup)        |
 
-They look nothing alike internally. They look identical from the
-outside.
+The SQL source is the only production implementation (Phase 13). The CSV
+reader survives under `tests/_fixtures/csv_source.py` purely as test
+infrastructure so the API test suite can run without SQL Server.
 
 ### 5.3  Query file loading
 
@@ -549,11 +575,10 @@ async def create_pool(dsn, *, minsize=1, maxsize=4) -> aioodbc.Pool:
     return await aioodbc.create_pool(dsn=dsn, minsize=minsize, maxsize=maxsize)
 ```
 
-The import is lazy so that an environment without `aioodbc` installed
-(or without the ODBC driver on the host) doesn't fail to import the
-whole app — the CSV backend still works, and `/api/health` can still
-respond. The failure is deferred to the point where someone actually
-tries to use SQL.
+The import is lazy so that the app can still import and start up even if
+`aioodbc` is not installed (possible in dev environments). The failure
+to create the pool is deferred to lifespan startup and logged; `/api/health`
+still responds with the unhealthy source state, and endpoints return 503.
 
 Sizing: a minimum of 1 and maximum of 4 connections is generous for a
 single-worker uvicorn serving a polling dashboard. If the deployment
@@ -759,17 +784,7 @@ of use via `.get_secret_value()` (see `main.py` lifespan).
 accepts either prefix so existing deployment tooling that sets
 `DB_CONN_STRING` works without modification.
 
-### 7.2  Backend switch
-
-```python
-production_report_backend: Literal["csv", "sql"] = "csv"
-```
-
-`Literal[...]` means anything other than those two strings fails
-validation at startup with a clear Pydantic error. The DI provider
-branches on this field.
-
-### 7.3  Cached access
+### 7.2  Cached access
 
 ```python
 @lru_cache
@@ -840,11 +855,11 @@ Three distinct failure modes, handled at different layers:
 because a misconfigured DSN during a deploy shouldn't prevent the
 rest of the app from serving.
 
-**Upstream source down per request.** When `production_report_backend=sql`
-and the pool is `None`, the DI provider raises `HTTPException(503, ...)`
-with a diagnostic detail pointing at the startup log event name
-(`sql_pool.create_failed` / `sql_pool.not_created`). The client gets
-a clean 503 JSON body, not a stack trace.
+**Upstream source down per request.** When the SQL pool is `None` (pool
+creation failed at lifespan startup), the DI provider raises
+`HTTPException(503, ...)` with a diagnostic detail pointing at the startup
+log event name (`sql_pool.create_failed` / `sql_pool.not_created`). The
+client gets a clean 503 JSON body, not a stack trace.
 
 **Source ping returns `ok=False`.** `SqlProductionReportSource.ping()`
 catches every exception and converts it to `SourceStatus(ok=False, detail=...)`.
@@ -895,8 +910,9 @@ test suite fast and deterministic while still exercising the
 int→str coercion, JSON parsing, and null-DTM handling that make up
 the source's contract.
 
-Run: `cd backend && pytest` — currently **30 passing** (22 API-level,
-8 SQL source).
+Run: `cd backend && pytest` — see `tasks/todo.md` for the current test
+count. Tests cover API endpoints, services, SQL source mappings, metrics
+fetching, and snapshot caching.
 
 ---
 
@@ -933,14 +949,17 @@ Two things you'll likely do next.
 
 ### 12.1  Adding a new production-report source
 
-Say we add an Ignition Web API as a third source.
+Say we add an Ignition Web API as a second production-report source.
 
 1. Create `integrations/production_report/ignition_source.py`.
 2. Implement `ping()`, `fetch_rows()`, `list_site_ids()`, and `name`
-   against the Protocol.
-3. Add `"ignition"` to the `production_report_backend` Literal type.
-4. Add a branch to `api/dependencies.py`.
-5. Add any new config fields to `core/config.py`.
+   against the `ProductionReportSource` Protocol.
+3. Update `api/dependencies.py` to conditionally instantiate the new source
+   (based on a new config field like `ignition_gateway_url`).
+4. Add any new config fields to `core/config.py` (e.g. API keys, timeouts,
+   instance URLs).
+5. Add tests under `tests/integrations/test_ignition_source.py`.
+6. Update `ARCHITECTURE.md` to document the new source.
 
 No changes to routes, services, or schemas.
 
@@ -1012,9 +1031,11 @@ the codebase yet:
   When it lands, it'll be middleware-level (bearer token or OIDC) and
   documented here.
 - **Response caching.** The `SnapshotStore` Protocol in `core/snapshot.py`
-  is shipped as an interface for later. Routes don't use it today; they
-  hit the source on every request. Revisit when polling concurrency
-  makes it uneconomical.
+  is used for interval-metric responses (Phase 9+) where the same query
+  repeated within a short TTL (hourly: 5 min, shiftly: 15 min) should not
+  hit the Flow API again. Production-report endpoints still hit SQL on
+  every request; caching those is deferred until polling concurrency makes
+  it uneconomical.
 - **Rate limiting / retry / circuit breakers.** Not needed on a
   read-only intranet API serving ~dozens of clients. When external
   REST sources land, retries with exponential backoff go in the
@@ -1026,4 +1047,4 @@ the codebase yet:
 
 ---
 
-*Last updated: 2026-04-23, against build tag `2026-04-23-sql-step3`.*
+*Last updated: 2026-04-28, against build tag reflecting Phase 13 (SQL-only production source).*

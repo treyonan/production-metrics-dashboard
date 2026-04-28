@@ -79,13 +79,14 @@ charts.
                                                             |
                                            +----------------+-----------------+-----------------+
                                            v                                  v                 v
-                                 +-------------------+             +-------------------+   +----------+
-                                 |  csv_source.py    |             |  sql_source.py    |   |  ...     |
-                                 |  (today)          |             |  (next)           |   |          |
-                                 +-------------------+             +-------------------+   +----------+
+                                 +-------------------+             +-------------------+   +-------------------+
+                                 | sql_source.py     |             | flow_client.py    |   |  (future)         |
+                                 | (production       |             | (interval metrics)|   |  ignition,        |
+                                 |  reports)         |             | REST API          |   |  other sources    |
+                                 +-------------------+             +-------------------+   +-------------------+
                                            |                                  |
                                            v                                  v
-                                   sample.csv on disk                  SQL Server via aioodbc
+                                  SQL Server (Azure)            Flow API (MQTT -> REST)
 ```
 
 The three columns moving right from FastAPI correspond to the "three
@@ -132,11 +133,11 @@ Here's every hop the request makes:
    ```
 
 5. **Dependency injection.** `get_production_report_source` in
-   `app/api/dependencies.py` is an `lru_cache`'d factory that returns
-   a process-wide `CsvProductionReportSource` instance wired up from
-   `Settings.production_report_csv_path`. Tests override this
-   dependency via `app.dependency_overrides` to inject fixtures or
-   alternate source implementations.
+   `app/api/dependencies.py` returns an `SqlProductionReportSource`
+   instance wired to the SQL pool (created at lifespan startup from
+   `Settings.db_conn_string`). Tests override this dependency via
+   `app.dependency_overrides` to inject fixtures or test-only source
+   implementations (like the CSV-backed fixture).
 
 6. **Service call.** The route calls one business-logic function:
    ```python
@@ -147,11 +148,13 @@ Here's every hop the request makes:
    reduces to one row per `(site_id, department_id)` by
    `(prod_date, dtm)` max, and sorts the result.
 
-7. **Source call.** `CsvProductionReportSource.fetch_rows()` opens
-   the CSV via `asyncio.to_thread` (file I/O is blocking — wrapping
-   in a thread keeps the event loop free), parses rows with
-   `csv.DictReader`, unescapes the embedded JSON payload, and returns
-   typed `ProductionReportRow` instances.
+7. **Source call.** `SqlProductionReportSource.fetch_rows()` runs a
+   parameterized SQL query (from `integrations/sql/queries/select_all.sql`)
+   via `aioodbc` against the Azure Managed SQL instance. The query
+   includes LEFT JOINs to the Departments table (for `department_name`)
+   and Site metadata tables (for enrichment fields like shift, weather,
+   notes). Results are parsed into typed `ProductionReportRow` instances;
+   missing enrichment values default to None.
 
 8. **Pydantic serialization.** The route wraps the rows in a
    `ProductionReportLatestResponse` (from `app/schemas/production_report.py`).
@@ -164,8 +167,9 @@ Here's every hop the request makes:
    workcenter panels, schedules the next poll.
 
 Worth noting: at no point does the route handler touch the file
-system, parse CSV, know about SQL Server, or format dates. Every
-layer has one job.
+system, format dates, or branch on configuration. Every layer has
+one job, and the Protocol abstraction keeps SQL internals out of
+the route and service code.
 
 ---
 
@@ -236,8 +240,16 @@ class ProductionReportRow:
     prod_id: str
     site_id: str
     department_id: str
+    department_name: str  # Phase 12: from Departments LEFT JOIN
     payload: dict[str, Any]
     dtm: datetime
+    # Phase 8: enrichment fields from site metadata JOINs (optional)
+    shift: str | None = None
+    weather_conditions: str | None = None
+    avg_temp: float | None = None
+    avg_humidity: float | None = None
+    max_wind_speed: float | None = None
+    notes: str | None = None
 
 
 @runtime_checkable
@@ -250,33 +262,35 @@ class ProductionReportSource(Protocol):
 ```
 
 The Protocol says: "anything with these methods and a `name` is a
-production-report source." The CSV implementation
-(`CsvProductionReportSource`) satisfies it by having those methods;
-the SQL implementation (coming next) will satisfy it the same way.
+production-report source." The SQL implementation
+(`SqlProductionReportSource`) satisfies it by having those methods.
 Services and routes only know about the Protocol — they never import
-the concrete classes.
+the concrete class. (The CSV reader still exists under
+`tests/_fixtures/csv_source.py` purely as test infrastructure.)
 
 ### Why async everywhere
 
-Every Protocol method is `async`. CSV reads are synchronous file
-I/O, but the CSV source wraps them in `asyncio.to_thread(...)` so
-the event loop stays free. This keeps the Protocol uniform: when we
-add SQL (truly async via `aioodbc`) or REST (truly async via
-`httpx`), no interface change. Adding a blocking source is cheap
-(one `to_thread` wrapper); removing async-ness from the interface
-later would be painful.
+Every Protocol method is `async`. This keeps the interface uniform
+across sources with different I/O characteristics. The SQL source uses
+`aioodbc` (truly async). External sources (Flow REST API) use
+`httpx.AsyncClient` (truly async). If we add a blocking source (file,
+SFTP, etc.) in the future, a simple `asyncio.to_thread(...)` wrapper
+keeps the event loop free. Adding async to a fundamentally blocking
+operation later is cheap; removing async-ness from the interface would
+require rewiring every consumer.
 
 ### What this buys us
 
-- **Swap implementations with a DI change.** Point
-  `get_production_report_source` at `SqlProductionReportSource`
-  instead of `CsvProductionReportSource`. The route, service, and
-  tests are unchanged.
-- **Test without infrastructure.** Inject a fixture-backed source;
-  no SQL Server, no ODBC driver, no network.
-- **Introduce new sources without touching routes or services.**
-  Adding a weather feed or an Ignition historian read doesn't churn
-  the request-path code.
+- **Testability without infrastructure.** Tests inject a fixture-backed
+  source (the CSV reader under `tests/_fixtures/csv_source.py`) via DI.
+  No SQL Server, no ODBC driver, no network required.
+- **Upgrade production independently.** When Flow publishes monthly
+  aggregates or Ignition historian SQL improves, a new source
+  implementation can be dropped in. Routes and services never change.
+- **Degrade gracefully per source.** If the SQL pool fails to initialize
+  (bad DSN, firewall, etc.), `/api/health` surfaces the error; the API
+  stays up and surfaces 503 per endpoint rather than crashing the whole
+  process.
 
 ---
 
@@ -293,25 +307,39 @@ mount. No build step.
 | `GET /api/sites` | On page load | Populate the top-bar site toggle. |
 | `GET /api/health` | On load + every poll | Color-code the health pill in the top bar; fill the source-status panel in the sidebar. |
 | `GET /api/production-report/latest?site_id={id}` | Today mode: on load + every poll + on site toggle | Render the per-workcenter panels (KPI cards + per-asset table). |
-| `GET /api/production-report/history?site_id={id}&days={N}` | Week / Month mode: on mode switch + every poll + on site toggle | Render the per-workcenter history panels (KPI cards + per-date history table). |
+| `GET /api/production-report/range?site_id={id}&from_date={ISO}&to_date={ISO}` | Week / Month mode: on mode switch + every poll + on site toggle | Render the per-workcenter history panels (per-report table). |
+| `GET /api/production-report/latest-date?site_id={id}` | On load and mode switch | Return the newest production date for a site (used to default the day picker). |
+| `GET /api/production-report/monthly-rollup?site_id={id}&from_month={YYYY-MM}&to_month={YYYY-MM}` | Trends tab | Monthly aggregates per workcenter (total tons, TPH, etc.). |
+| `GET /api/metrics/conveyor/subjects?site_id={id}` | Metrics tab (future) | List of metric tags available for the site. |
+| `GET /api/metrics/conveyor/{interval}?site_id={id}&from_date={ISO}&to_date={ISO}` | Metrics tab (future) | Interval-bucketed metrics (hourly or shiftly) from Flow. |
 
 ### Time-period modes
 
-The dashboard sidebar has three buttons — `Today`, `Week`, `Month` —
-that switch the current data view. Each button maps directly to a
-backend endpoint and a rendering variant:
+The dashboard sidebar has a day/month picker (replaces the earlier
+Today/Week/Month buttons; Phase 7+). The picker drives the time window:
 
-| Mode | Endpoint | View |
-|---|---|---|
-| Today (default) | `/api/production-report/latest` | KPI cards + per-asset table (C1, C3–C8, ...). Single row per workcenter. |
-| Week | `/api/production-report/history?days=7` | KPI cards (from the latest row in the window) + per-workcenter history table with columns `Prod. Date | Report ID | Availability % | Performance % | Runtime (min) | Total (tons)`. One row per production report. |
-| Month | `/api/production-report/history?days=31` | Same layout as Week, 31-day window. |
+- **Day mode** — user picks a specific calendar date via native date input.
+  The API receives `from_date=to_date=<picked_date>`. Calls
+  `/api/production-report/range?site_id={id}&from_date=...&to_date=...`.
+  Default on first load is the newest date with data via
+  `/api/production-report/latest-date?site_id={id}`.
+  Renders per-asset table (C1, C3–C8, ...) if a single report exists for
+  the workcenter that day; renders history table if multiple reports exist
+  (e.g., multi-shift day).
 
-Button clicks fire an **immediate fetch** via `refreshData()`; they
-don't wait for the next 30s poll tick. Site-toggle clicks do the same.
+- **Month mode** — user picks a month + year from dropdowns. Current month
+  auto-caps at today; past months render the full month. Calls
+  `/api/production-report/range?site_id={id}&from_date=YYYY-MM-01&to_date=YYYY-MM-<last>`.
+  Always renders history table (one row per report). The conveyor-totals
+  chart also renders, showing belt-scaled tons summed across all reports
+  in the window.
 
-The `/history` `days` parameter is validated at the query layer
-(`1 ≤ days ≤ 365`); out-of-range values return HTTP 422.
+The `/range` endpoint validates that `from_date <= to_date` and that the
+window does not exceed 400 days (exclusive-inclusive range).
+
+Both endpoints include a `conveyor_totals` envelope field showing per-conveyor
+belt-scale tonnage summed across the result set, plus the mode product
+description for each conveyor.
 
 ### Polling loop (simplified)
 
@@ -422,8 +450,8 @@ HTTP 404 if the workcenter doesn't exist.
    ```
 
 4. **Add tests** in `backend/tests/api/test_production_report.py`.
-   Use the existing `client` fixture; it wires the real sample CSV
-   into `app.dependency_overrides`.
+   Use the existing `client` fixture; it injects a CSV-backed test source
+   via `app.dependency_overrides` so tests run without SQL Server.
    ```python
    def test_workcenter_latest_happy(client):
        r = client.get("/api/production-report/101/127")
@@ -634,17 +662,19 @@ class Settings(BaseSettings):
     api_version: str = "0.1.0"
     environment: str = "local"
     log_level: str = "INFO"
-    production_report_csv_path: Path = _DEFAULT_CSV_PATH
     site_names: dict[str, str] = Field(default_factory=...)
     frontend_dir: Path = _DEFAULT_FRONTEND_DIR
+    db_conn_string: SecretStr | None = None  # ODBC DSN; required for production
+    flow_api_key: SecretStr | None = None    # Bearer token; optional for metrics
+    metrics_cache_ttl_hourly_s: int = 300
+    metrics_cache_ttl_shiftly_s: int = 900
+    # ... plus max-points, max-window constraints for metrics validation
 ```
 
 Override any field via the `PMD_<FIELD_NAME>` environment variable or
 a `backend/.env` file. `.env.example` documents the supported
 variables. `get_settings()` is `lru_cache`'d so the class is
-instantiated once per process; tests that mutate env should call
-`get_settings.cache_clear()` and
-`get_production_report_source.cache_clear()`.
+instantiated once per process.
 
 When adding a new setting: add the field to `Settings`, add an example
 to `.env.example`, document in `backend/README.md`.
