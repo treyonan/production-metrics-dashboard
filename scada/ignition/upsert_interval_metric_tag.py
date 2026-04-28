@@ -67,20 +67,40 @@ before wiring the trigger:
             subject_type   VARCHAR(32)  NOT NULL DEFAULT 'conveyor',
             enabled        BIT          NOT NULL DEFAULT 1,
             DTM            DATETIME2    NOT NULL DEFAULT SYSUTCDATETIME(),
-            CONSTRAINT PK_INTERVAL_METRIC_TAGS
-              PRIMARY KEY (site_id, asset, metric_name, interval)
+            -- Unique constraint (not PK) so department_id can be NULL
+            -- for site-level metrics. SQL Server unique constraints
+            -- allow a single NULL per uniqued-column combination, which
+            -- is the right semantics here: at most one site-level row
+            -- per (site, asset, metric, interval), AND distinct rows
+            -- per non-NULL department_id (so the same physical asset
+            -- can carry per-department metrics independently).
+            CONSTRAINT UQ_INTERVAL_METRIC_TAGS
+              UNIQUE (site_id, department_id, asset, metric_name, interval)
         );
     END;
     GO
 
+    -- Migration from the original PK-only schema (run once, 2026-04-28):
+    --   ALTER TABLE [FLOW].[INTERVAL_METRIC_TAGS]
+    --     DROP CONSTRAINT PK_INTERVAL_METRIC_TAGS;
+    --   ALTER TABLE [FLOW].[INTERVAL_METRIC_TAGS]
+    --     ADD CONSTRAINT UQ_INTERVAL_METRIC_TAGS
+    --       UNIQUE (site_id, department_id, asset, metric_name, interval);
+
 Idempotency / soft-delete behavior
 ----------------------------------
-* MERGE on the natural key (site_id, asset, metric_name, interval).
+* MERGE on the natural key
+  (site_id, department_id, asset, metric_name, interval).
+* department_id was added to the key on 2026-04-28 so the same physical
+  asset (e.g. conveyor C4) can carry independent metric rows when it's
+  shared across multiple workcenters. Each row keeps its own
+  history_url because Flow publishes the metric per department.
 * A new tag's first publish INSERTs with enabled=1.
-* Subsequent publishes UPDATE history_url + department_id + subject_type
-  + DTM. They DO NOT touch the `enabled` column, so a manual
-  `enabled=0` soft-delete survives subsequent publishes. Re-enable a
-  soft-deleted tag by flipping it back to 1 manually.
+* Subsequent publishes UPDATE history_url + subject_type + DTM. They
+  DO NOT touch `department_id` (it's part of the identity now -- moving
+  a tag between departments is a delete + insert, not an in-place
+  update) and DO NOT touch `enabled` so a manual `enabled=0`
+  soft-delete survives. Re-enable by flipping it back to 1 manually.
 * DTM bumps on every publish, so it doubles as a "last seen" signal
   the API can surface as freshness ("3 conveyors silent for 6 hours").
 """
@@ -148,6 +168,13 @@ def upsert_interval_metric_tag(
     Upsert one row into [FLOW].[INTERVAL_METRIC_TAGS]. Idempotent;
     safe to call on every Flow value-change message.
 
+    Natural key is (site_id, department_id, asset, metric_name,
+    interval). Calling this once with department_id=127 and again
+    with department_id=130 for the same conveyor will produce TWO
+    rows -- by design. Pass None for site-level metrics (one such
+    row per site/asset/metric/interval combination is enforced by
+    SQL Server's NULL semantics in unique constraints).
+
     Args:
         payload (dict): Deserialized Flow Software MQTT payload --
             either the 'Measure Event Period Value Data' shape
@@ -168,8 +195,11 @@ def upsert_interval_metric_tag(
             string in modelAttributes.Site (e.g. 'Big_Canyon'), and
             the API filters on the numeric id.
         department_id (int or None): Workcenter / department
-            identifier (e.g. 127, 130). Pass None for site-level
-            tags that don't roll up to one specific workcenter.
+            identifier (e.g. 127, 130). Part of the natural key
+            since 2026-04-28: a given conveyor in two departments
+            produces two distinct rows. Pass None for site-level
+            tags that don't roll up to one specific workcenter
+            (only one such row per site/asset/metric/interval).
         subject_type (str): One of 'conveyor', 'equipment',
             'workcenter', 'site'. Default 'conveyor'.
         database (str): Ignition database connection name. Default
@@ -216,38 +246,55 @@ def upsert_interval_metric_tag(
     interval = _determine_interval(payload)
 
     # ---- MERGE the row ----
-    # Natural key is (site_id, asset, metric_name, interval).
+    # Natural key is (site_id, department_id, asset, metric_name, interval).
+    # department_id is part of the key as of 2026-04-28 so the same
+    # physical asset (e.g. conveyor C4) can have separate rows when it
+    # belongs to multiple workcenters -- each row carries its own
+    # history_url because Flow publishes a department-scoped metric.
+    #
+    # The ON clause handles NULL department_id specially: in SQL,
+    # NULL = NULL evaluates to UNKNOWN (treated as false in WHERE/ON),
+    # so a naive equality check would fail to match site-level rows
+    # whose department_id is NULL. The OR-IS-NULL pair below is the
+    # standard fix.
+    #
+    # `department_id` is NOT in the UPDATE SET -- it's part of the
+    # identity now. Moving a tag between departments is an
+    # insert+delete operation, not an in-place update.
+    #
     # `enabled` deliberately omitted from UPDATE so a manual
     # soft-delete (enabled=0) survives subsequent publishes.
     sql = """
         MERGE [FLOW].[INTERVAL_METRIC_TAGS] AS target
         USING (SELECT
                 ? AS site_id,
+                ? AS department_id,
                 ? AS asset,
                 ? AS metric_name,
                 ? AS interval) AS src
-            ON target.site_id    = src.site_id
-           AND target.asset      = src.asset
-           AND target.metric_name = src.metric_name
-           AND target.interval   = src.interval
+            ON target.site_id      = src.site_id
+           AND target.asset        = src.asset
+           AND target.metric_name  = src.metric_name
+           AND target.interval     = src.interval
+           AND (target.department_id = src.department_id
+                OR (target.department_id IS NULL AND src.department_id IS NULL))
         WHEN MATCHED THEN UPDATE SET
             history_url   = ?,
-            department_id = ?,
             subject_type  = ?,
             DTM           = SYSUTCDATETIME()
         WHEN NOT MATCHED THEN INSERT
-            (site_id, asset, metric_name, interval, history_url,
-             department_id, subject_type, enabled, DTM)
+            (site_id, department_id, asset, metric_name, interval,
+             history_url, subject_type, enabled, DTM)
             VALUES (?, ?, ?, ?, ?, ?, ?, 1, SYSUTCDATETIME());
     """
     args = [
-        # USING source row (4 args)
-        site_id, asset, metric_name, interval,
-        # WHEN MATCHED UPDATE values (3 args)
-        history_url, department_id, subject_type,
+        # USING source row (5 args -- now includes department_id)
+        site_id, department_id, asset, metric_name, interval,
+        # WHEN MATCHED UPDATE values (2 args -- department_id removed)
+        history_url, subject_type,
         # WHEN NOT MATCHED INSERT values (7 args)
-        site_id, asset, metric_name, interval,
-        history_url, department_id, subject_type,
+        site_id, department_id, asset, metric_name, interval,
+        history_url, subject_type,
     ]
 
     try:
