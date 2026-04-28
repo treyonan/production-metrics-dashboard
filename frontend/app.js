@@ -751,12 +751,52 @@
     return (s === "_" || s === "None") ? null : s;
   }
 
+  // Phase 11b: value mapping for Site:* export columns. Same null /
+  // None / "" -> blank-cell convention as strOrEmpty, but kept separate
+  // so it can also pass numbers / booleans through (Site values are
+  // mostly strings per payload-schema.md, but Loads_15_Ton is numeric-
+  // looking and future fields may be too) and JSON-stringify any
+  // nested object that turns up later.
+  function _siteValueForExport(v) {
+    if (v === null || v === undefined) return null;
+    if (typeof v === "string") {
+      const trimmed = v.trim();
+      if (trimmed === "" || trimmed === "None") return null;
+      return v;
+    }
+    if (typeof v === "number" || typeof v === "boolean") return v;
+    try { return JSON.stringify(v); } catch { return String(v); }
+  }
+
   function shapeAssetRows(payload, siteMeta) {
     // One row per (workcenter, report, asset). Groups by department
     // then by newest-first within the group so the exported order
     // mirrors what the dashboard renders.
     const rows = [];
     const entries = payload.entries || [];
+
+    // Phase 11b: discover the union of payload.Metrics.Site keys across
+    // every entry in the current selection. We use this list to append
+    // one column per known Site field at the tail of every row --
+    // consistent column set across the whole sheet even when individual
+    // reports have different Site shapes. Column order matches the
+    // modal: grouped by base type via _sortSiteKeys (Phase 11.1) so
+    // exporters and on-screen viewers see the same field ordering.
+    const discoveredSiteKeys = [];
+    const seenSiteKeys = new Set();
+    for (const e of entries) {
+      const so = e.payload && e.payload.Metrics && e.payload.Metrics.Site;
+      if (so && typeof so === "object") {
+        for (const k of Object.keys(so)) {
+          if (!seenSiteKeys.has(k)) {
+            seenSiteKeys.add(k);
+            discoveredSiteKeys.push(k);
+          }
+        }
+      }
+    }
+    const siteKeys = _sortSiteKeys(discoveredSiteKeys);
+
     const grouped = new Map();
     for (const e of entries) {
       if (!grouped.has(e.department_id)) grouped.set(e.department_id, []);
@@ -766,12 +806,13 @@
     for (const deptId of sortedDepts) {
       for (const entry of grouped.get(deptId)) {
         const metrics = entry.payload && entry.payload.Metrics ? entry.payload.Metrics : {};
+        const siteObj = (metrics.Site && typeof metrics.Site === "object") ? metrics.Site : {};
         const assetKeys = Object.keys(metrics)
           .filter((k) => /^C\d+$/.test(k))
           .sort((a, b) => parseInt(a.slice(1), 10) - parseInt(b.slice(1), 10));
         for (const k of assetKeys) {
           const m = metrics[k] || {};
-          rows.push({
+          const row = {
             "Site": siteMeta.name || "",
             "Site ID": entry.site_id,
             "Department ID": entry.department_id,
@@ -795,7 +836,16 @@
             "Avg Humidity": numOrEmpty(entry.avg_humidity),
             "Max Wind": numOrEmpty(entry.max_wind_speed),
             "Notes": strOrEmpty(entry.notes),
-          });
+          };
+          // Phase 11b: dynamically discovered Site:* columns appended
+          // at the end of the row. Same key formatting as the modal so
+          // the column header reads identically to the modal label. A
+          // report whose Site lacks a discovered key gets a blank cell
+          // (per _siteValueForExport's null-on-missing rule).
+          for (const sk of siteKeys) {
+            row[_formatSiteLabel(sk)] = _siteValueForExport(siteObj[sk]);
+          }
+          rows.push(row);
         }
       }
     }
@@ -1007,6 +1057,112 @@
     ]);
   }
 
+  // Phase 11 helpers: dynamic rendering of entry.payload.Metrics.Site.
+  // The Site object is operator-captured plant context (loader operators,
+  // shot numbers, manual loads, ...). payload-schema.md explicitly calls
+  // it "open-ended" -- new keys may show up upstream and the modal must
+  // render them without a frontend change. Hence: dynamic key iteration
+  // over Object.keys() rather than a hard-coded field list.
+
+  function _formatSiteLabel(key) {
+    // snake_case -> "Title Case With Spaces". Preserves the upstream
+    // "One"/"Two" word forms rather than rewriting to "1"/"2" -- matches
+    // what operators see in the source system.
+    return String(key)
+      .split("_")
+      .map(part => part.length > 0 ? part[0].toUpperCase() + part.slice(1) : part)
+      .join(" ");
+  }
+
+  // Phase 11.1: Site fields display grouped by base type instead of
+  // upstream insertion order. Upstream emits keys interleaved by
+  // ordinal (Loader_Operator_One, Shot_Number_One, Loader_Operator_Two,
+  // ...) but the operator's mental model is "all loader operators, then
+  // all shot numbers." Grouping by prefix matches that.
+  const _ORDINAL_WORDS = [
+    "One", "Two", "Three", "Four", "Five",
+    "Six", "Seven", "Eight", "Nine", "Ten",
+  ];
+
+  function _parseSiteOrdinal(key) {
+    // Detect trailing "_One".."_Ten" or "_1","_2",... suffixes.
+    // ordinal=0 means "no trailing ordinal" -- the whole key is the
+    // prefix and the field forms a one-member group on its own.
+    const parts = String(key).split("_");
+    if (parts.length >= 2) {
+      const last = parts[parts.length - 1];
+      const wordIdx = _ORDINAL_WORDS.indexOf(last);
+      if (wordIdx !== -1) {
+        return { prefix: parts.slice(0, -1).join("_"), ordinal: wordIdx + 1 };
+      }
+      if (/^\d+$/.test(last)) {
+        return { prefix: parts.slice(0, -1).join("_"), ordinal: parseInt(last, 10) };
+      }
+    }
+    return { prefix: String(key), ordinal: 0 };
+  }
+
+  function _sortSiteKeys(keys) {
+    // Stable sort: across prefix groups, keep first-seen order; within
+    // a group, ordinal ascending. Keys with no ordinal go in their own
+    // single-member group at whatever first-seen position they hold.
+    // E.g. given:
+    //   Loader_Operator_One, Shot_Number_One, Loader_Operator_Two,
+    //   Loads_15_Ton, Shot_Number_Two
+    // returns:
+    //   Loader_Operator_One, Loader_Operator_Two, Shot_Number_One,
+    //   Shot_Number_Two, Loads_15_Ton
+    const parsed = keys.map((k, idx) => ({ key: k, idx, ..._parseSiteOrdinal(k) }));
+    const prefixIndex = new Map();
+    for (const p of parsed) {
+      if (!prefixIndex.has(p.prefix)) prefixIndex.set(p.prefix, prefixIndex.size);
+    }
+    return parsed
+      .slice()
+      .sort((a, b) => {
+        const pi = prefixIndex.get(a.prefix) - prefixIndex.get(b.prefix);
+        if (pi !== 0) return pi;
+        // same prefix: ordinal ascending. Ties (shouldn't happen but
+        // be defensive) fall back to original insertion order.
+        const oi = a.ordinal - b.ordinal;
+        if (oi !== 0) return oi;
+        return a.idx - b.idx;
+      })
+      .map(p => p.key);
+  }
+
+  function _formatSiteValue(v) {
+    // Match the rest of the modal's null/missing convention: render
+    // null, undefined, "", and the literal placeholder string "None"
+    // (per payload-schema.md Quirks) all as em-dash so the eye treats
+    // "field not filled" uniformly.
+    if (v === null || v === undefined) return "—";
+    if (typeof v === "string") {
+      const trimmed = v.trim();
+      if (trimmed === "" || trimmed === "None") return "—";
+      return v;
+    }
+    if (typeof v === "number" || typeof v === "boolean") return String(v);
+    // Defensive: payload-schema.md warns the Site shape is fluid and
+    // future fields may nest. JSON-stringify rather than printing
+    // "[object Object]" or throwing.
+    try { return JSON.stringify(v); } catch { return String(v); }
+  }
+
+  function _siteMetaRows(siteObj) {
+    // Flat list of alternating key/value DOM nodes for the dm-meta
+    // 2-column grid. Keys are grouped by base type via _sortSiteKeys
+    // (e.g. all loader operators together, then all shot numbers),
+    // not raw upstream insertion order -- upstream emits ordinals
+    // interleaved (One, One, Two, Two) and that's confusing to read.
+    const rows = [];
+    for (const key of _sortSiteKeys(Object.keys(siteObj))) {
+      rows.push(el("div", { class: "dm-meta-key" }, _formatSiteLabel(key)));
+      rows.push(el("div", { class: "dm-meta-value" }, _formatSiteValue(siteObj[key])));
+    }
+    return rows;
+  }
+
   function _onBackdropClick(e) {
     // Only close on backdrop click, not on clicks inside the dialog.
     const modal = $("details-modal");
@@ -1037,6 +1193,22 @@
         el("div", { class: "dm-meta-value" }, entry.shift || "\u2014"),
       ]),
     ]));
+
+    // Section: Site (Phase 11). Operator-captured plant context --
+    // loader operators, shot numbers, manual load counts, and any
+    // future fields the upstream system adds. Rendered dynamically:
+    // iterates whatever keys are present in payload.Metrics.Site so
+    // a new field appears in the modal without a frontend change.
+    // See payload-schema.md "Section: Site" for current known fields
+    // and the Quirks list for "None"/placeholder semantics.
+    const siteObj = entry.payload && entry.payload.Metrics && entry.payload.Metrics.Site;
+    const siteSection = [el("div", { class: "dm-section-label" }, "Site")];
+    if (siteObj && typeof siteObj === "object" && Object.keys(siteObj).length > 0) {
+      siteSection.push(el("div", { class: "dm-meta" }, _siteMetaRows(siteObj)));
+    } else {
+      siteSection.push(el("div", { class: "dm-empty" }, "No site data for this report."));
+    }
+    body.appendChild(el("div", {}, siteSection));
 
     // Section: Weather. Header row shows the severity-picked icon as
     // the at-a-glance summary; three numeric cells show the shift

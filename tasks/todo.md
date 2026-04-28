@@ -1727,6 +1727,160 @@ Files to create / modify:
       against the sample CSV: happy path, missing params,
       malformed month, inverted window, oversized window, empty
       result for a window with no data, division-by-zero guard
+
+## Phase 11 -- Site metadata in modal + XLSX export (IMPLEMENTED 2026-04-28, browser QA pending)
+
+### Goal
+
+Render every key/value pair from `entry.payload.Metrics.Site` in the
+existing Details modal alongside Weather and Notes. Display must be
+**dynamic** -- the operator-input field set is explicitly open-ended
+per `payload-schema.md`, and different sites or future payloads may
+carry different keys.
+
+### Why frontend-only
+
+The payload is already a passthrough field on
+`ProductionReportEntry.payload` (`dict[str, Any]`). The Site object
+arrives at the frontend untouched. No backend, schema, or SQL change
+is required -- this is purely a render concern in `openDetailsModal()`.
+
+### Decisions
+
+- **D1 -- Frontend-only**, no Pydantic model, no API change. The
+  schema doc explicitly calls Site "open-ended"; adding a typed model
+  now would lock the shape and create churn when fields are added
+  upstream.
+- **D2 -- Reuse `dm-meta` styling.** The existing 2-column key/value
+  grid used for the Report section is the right pattern; same look
+  for an analogous data block.
+- **D3 -- Section order: Report -> Site -> Weather -> Notes.** Site
+  is operator-captured plant context, sits naturally next to weather
+  and notes which are also shift-context fields.
+- **D4 -- Render in insertion order.** `Object.keys()` returns keys
+  in insertion order; that matches whatever sequence upstream emits,
+  which is the right "as-the-operator-saw-it" ordering.
+- **D5 -- Label formatting.** snake_case -> "Title Case With Spaces"
+  (e.g. `Loader_Operator_One` -> "Loader Operator One"). Keep the
+  upstream "One/Two" wording rather than rewriting to "1/2" -- matches
+  what operators see in the source system.
+- **D6 -- Value formatting** consistent with the rest of the modal:
+  - `null` -> em-dash
+  - `"None"` (string literal) -> em-dash (per `payload-schema.md`
+    Quirks: `"None"` is a placeholder, not real data)
+  - `""` (empty string) -> em-dash
+  - numbers -> `String(value)`
+  - strings -> as-is
+  - nested objects -> `JSON.stringify(value)` (defensive; Site has
+    no nesting today but the schema doc warns the shape is fluid)
+- **D7 -- Empty / missing Site.** If `entry.payload?.Metrics?.Site`
+  is absent or has zero own-keys, render the standard `dm-empty`
+  line ("No site data for this report.") matching the Weather and
+  Notes empty-state pattern.
+
+### Files to modify
+
+- [x] `frontend/app.js` -- added `_formatSiteLabel`, `_formatSiteValue`,
+      `_siteMetaRows` helpers near `_weatherCell`; inserted the
+      Site section in `openDetailsModal()` between Report and Weather.
+      Uses `entry.payload?.Metrics?.Site` with optional-chain-style
+      guards so undefined payloads don't blow up the modal.
+- [x] `frontend/app.css` -- no changes (reused `dm-section-label`,
+      `dm-meta`, `dm-meta-key`, `dm-meta-value`, `dm-empty` classes
+      from existing modal sections).
+
+### Phase 11b -- Site fields in XLSX export
+
+Per the standing rule (`memory/feedback_export_mirrors_display.md`):
+**every field in the modal must also be in the export.**
+Site fields added to the modal in Phase 11 must therefore become
+columns in the XLSX too.
+
+#### Decisions
+
+- **D8 -- Column placement: append at end of row** (after `Notes`).
+  Preserves existing column order so anyone with pivot tables built
+  on Phase 8's column set keeps working without rebuilds.
+- **D9 -- Column naming: bare formatted labels** via
+  `_formatSiteLabel(key)`, e.g. "Loader Operator One". Matches the
+  modal headers. No prefix (collision risk with existing columns is
+  low; revisit only if upstream adds a Site field whose formatted
+  label collides with an existing header like "Notes" or "Shift").
+- **D10 -- Dynamic column discovery.** Gather every unique Site key
+  across all entries in the current selection, preserving first-seen
+  insertion order. Emit one column per discovered key. Each row gets
+  a value for every discovered key; null when that specific report's
+  Site lacks the key. Mirrors the modal's dynamic-by-design rendering.
+- **D11 -- Value mapping**: null / undefined / "" / "None" -> truly
+  blank cell (so `=COUNTA()` returns 0, `=AVERAGE()` skips). Strings
+  as-is. Numbers as-is. Future nested objects -> `JSON.stringify`.
+  Reuses the strOrEmpty/numOrEmpty pattern already in the export.
+
+#### Files
+
+- [x] `frontend/app.js` -- modified `shapeAssetRows()` to discover
+      Site keys upfront and append one column per key. Added
+      `_siteValueForExport(v)` helper near `numOrEmpty`/`strOrEmpty`.
+
+#### Verification
+
+- [ ] Export from site 101, day view: confirm five Site columns
+      appear at the end of the sheet, after `Notes`.
+- [ ] Open exported file in Excel: confirm `"None"` Site values are
+      truly blank cells (=COUNTA returns 0; not the literal text).
+- [ ] DevTools test: inject a new Site key in `_lastPayload`, click
+      Export, confirm the new column appears in the output.
+- [ ] Multi-shift day or month view: confirm Site columns repeat
+      correctly per (workcenter, report, asset) row -- same Site
+      data appears for every asset of a given report (same-shift
+      pattern as Weather/Notes).
+
+### Phase 11.1 -- Group Site fields by base type (IMPLEMENTED 2026-04-28)
+
+Upstream emits Site keys interleaved by ordinal
+(`Loader_Operator_One`, `Shot_Number_One`, `Loader_Operator_Two`, ...)
+which makes the modal hard to scan. Grouped by prefix instead so all
+loader operators sit together, then all shot numbers, etc.
+
+Helper added: `_sortSiteKeys(keys)` detects trailing `_One`.."_Ten"
+or pure-digit `_1`/`_2` suffixes, groups by prefix in first-seen
+order, sorts by ordinal within each group. Keys with no ordinal
+remain in their first-seen position as single-member groups.
+
+- [x] `_sortSiteKeys`, `_parseSiteOrdinal`, `_ORDINAL_WORDS` added
+      near `_formatSiteLabel`.
+- [x] `_siteMetaRows` (modal) wraps `Object.keys()` in `_sortSiteKeys`.
+- [x] `shapeAssetRows` (export) wraps the discovered key list in
+      `_sortSiteKeys` so column order matches modal order.
+
+Modal and export stay in sync because both go through the same sort.
+
+### Verification
+
+- [ ] Day view, latest report on site 101: open Details modal and
+      confirm all five sample-payload Site keys render with formatted
+      labels.
+- [ ] Same report: confirm `Shot_Number_One: "None"` displays as
+      em-dash, not the literal string `"None"`.
+- [ ] Site 102 (synthetic, may have no/sparse Site data): confirm
+      empty-state path renders without a console error.
+- [ ] Simulate a future schema change in DevTools console:
+      `_lastPayload.entries[0].payload.Metrics.Site.New_Field = "test"`
+      then re-open the modal -> confirm the new key renders with no
+      code change. (Validates D1 / D4 / D5.)
+- [ ] Theme toggle light/dark: confirm the new section respects
+      existing `dm-meta` styling without color drift.
+
+### Out of scope
+
+- Backend changes -- none needed; payload already passes through.
+- Pydantic typing of Site -- explicitly deferred per D1.
+- Per-field tooltips / help text -- operators recognize these
+  field names from the source system.
+- Surfacing Site fields anywhere other than the modal (e.g. as
+  separate columns in the table or the XLSX export). Out of scope
+  unless explicitly requested -- the table is already wide and
+  the export columns are stable.
       on tph when runtime is 0.
 - [ ] `backend/app/main.py` -- bump `BUILD_TAG`.
 
