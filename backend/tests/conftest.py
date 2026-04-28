@@ -1,9 +1,13 @@
 """Shared pytest fixtures.
 
-``client`` gives you a FastAPI ``TestClient`` wired to the real sample
-CSV -- no env vars to set, no mocking of FS, and the production-report
-source dependency is overridden per-test so anything on ``app.state``
-from the normal startup doesn't leak between tests.
+``client`` gives you a FastAPI ``TestClient`` wired to a deterministic,
+file-backed test source. The production code path is SQL-only as of
+Phase 13 (2026-04-28); the CSV reader survives under
+``tests/_fixtures/csv_source.py`` purely as test infrastructure so the
+~30 API tests can run without a SQL Server connection.
+
+The DI override is per-test so anything on ``app.state`` from the
+normal startup doesn't leak between tests.
 """
 
 from __future__ import annotations
@@ -15,8 +19,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.api.dependencies import get_production_report_source
-from app.integrations.production_report.csv_source import CsvProductionReportSource
 from app.main import app
+from tests._fixtures.csv_source import CsvProductionReportSource
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 SAMPLE_CSV_PATH = _REPO_ROOT / "context" / "sample-data" / "production-report" / "sample.csv"
@@ -33,7 +37,11 @@ def sample_csv_path() -> Path:
 
 @pytest.fixture
 def client(sample_csv_path: Path) -> Iterator[TestClient]:
-    """TestClient with the production-report source bound to the sample CSV."""
+    """TestClient with the production-report DI bound to the test fixture.
+
+    The fixture is a CSV reader (test-only, lives under tests/_fixtures/)
+    that returns deterministic rows. Production never sees CSV.
+    """
     app.dependency_overrides[get_production_report_source] = lambda: CsvProductionReportSource(
         sample_csv_path
     )

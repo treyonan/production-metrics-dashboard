@@ -171,7 +171,7 @@ class ConveyorAggregate:
 def _coerce_total(value: Any) -> float:
     """Normalize a CX.Total value to a float. ``None``/non-numeric/non-finite => 0.0.
 
-    SQL can deliver numerics as ``Decimal``; CSV gives us ``int``/``float``
+    SQL can deliver numerics as ``Decimal``; the test fixture gives us ``int``/``float``
     already via ``json.loads``. All three round-trip through ``float(...)``.
     Anything that raises (a stray string, etc.) is treated as missing
     rather than propagating -- defensive because the payload isn't schema-
@@ -304,17 +304,12 @@ class MonthlyRollup:
     """
 
     department_id: str
+    department_name: str
     month: str  # YYYY-MM
     total_tons: float
     total_runtime_minutes: float
     tph: float | None
     report_count: int
-    # Phase 12: human-readable name from Departments LEFT JOIN. None
-    # when the source is CSV or when no Departments row exists. All
-    # rows in a (department_id, month) bucket share the same dept_id
-    # and therefore the same department_name -- we take it from the
-    # first row in the group.
-    department_name: str | None = None
 
 
 def _runtime_minutes_from_workcenter(wc: Any) -> float:
@@ -427,20 +422,20 @@ async def get_monthly_rollup(
         else:
             tph = None
 
-        # Phase 12: lift department_name off the first row in the
-        # group. All rows in a (dept_id, month) bucket share the same
-        # dept_id and therefore the same Departments row.
-        dept_name = group[0].department_name if group else None
-
+        # Phase 12: lift department_name off any row in the group. All
+        # rows in a (dept_id, month) bucket share the same dept_id and
+        # therefore the same Departments row. Group is guaranteed
+        # non-empty (we only build groups when at least one row lands
+        # in the bucket) so direct index is safe.
         out.append(
             MonthlyRollup(
                 department_id=dept_id,
+                department_name=group[0].department_name,
                 month=ym,
                 total_tons=total_tons,
                 total_runtime_minutes=total_runtime_min,
                 tph=tph,
                 report_count=len(group),
-                department_name=dept_name,
             )
         )
 

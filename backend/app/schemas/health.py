@@ -13,7 +13,7 @@ OverallStatus = Literal["ok", "degraded", "down"]
 class SourceHealth(BaseModel):
     """Reachability of a single data source."""
 
-    name: str = Field(description="Short source identifier, e.g. 'csv:production_report'.")
+    name: str = Field(description="Short source identifier, e.g. 'sql:production_report'.")
     ok: bool = Field(description="True when the source responded to a ping successfully.")
     detail: str = Field(description="Human-readable diagnostic message.")
     checked_at: datetime = Field(description="UTC timestamp the source ping completed.")

@@ -21,18 +21,15 @@ class ProductionReportEntry(BaseModel):
     prod_id: str = Field(description="Upstream production-report identifier.")
     site_id: str = Field(description="Plant site identifier.")
     department_id: str = Field(description="Workcenter / department identifier.")
-    department_name: str | None = Field(
-        default=None,
+    department_name: str = Field(
         description=(
             "Human-readable department name from "
             "[DailyProductionEntry].[dbo].[Departments].[Name]. "
             "Underscores in the upstream value are normalized to "
-            "spaces at the SQL layer (Phase 12, D8). Null when the "
-            "source is CSV (no Departments table available) or when "
-            "the SQL LEFT JOIN finds no matching department row -- "
-            "consumers fall back to department_id display in that "
-            "case. Phase 13 (CSV removal) will tighten this to "
-            "non-null str."
+            "spaces at the SQL layer (Phase 12, D8). Always populated "
+            "in production responses -- the SQL source synthesizes a "
+            "'Dept <id>' fallback (and logs a warning) on the rare "
+            "LEFT JOIN miss so consumers never see null."
         ),
     )
     payload: dict[str, Any] = Field(
@@ -48,14 +45,14 @@ class ProductionReportEntry(BaseModel):
         )
     )
     # Phase 8 enrichment fields. All optional on the wire because the
-    # CSV source has no weather data, and the SQL LEFT JOINs can miss
-    # if a report doesn't yet have a history row.
+    # SQL LEFT JOINs can miss if a report doesn't yet have a history
+    # row.
     shift: str | None = Field(
         default=None,
         description=(
             "Shift identifier for this production report. Comes from "
             "SITE_PRODUCTION_RUN_HISTORY via a LEFT JOIN; null when "
-            "the history row is absent or the source is CSV."
+            "the history row is absent."
         ),
     )
     weather_conditions: str | None = Field(
@@ -223,13 +220,13 @@ class MonthlyRollupEntry(BaseModel):
     """
 
     department_id: str = Field(description="Workcenter / department identifier.")
-    department_name: str | None = Field(
-        default=None,
+    department_name: str = Field(
         description=(
             "Human-readable department name from Departments LEFT JOIN "
             "(Phase 12). All rows in a (dept_id, month) bucket share "
-            "the same dept_id and therefore the same name. Null when "
-            "the source is CSV or when no Departments row matches."
+            "the same dept_id and therefore the same name. Always "
+            "populated -- the SQL source synthesizes a fallback on a "
+            "JOIN miss (see ProductionReportEntry.department_name)."
         ),
     )
     month: str = Field(

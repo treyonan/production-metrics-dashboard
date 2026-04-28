@@ -28,8 +28,8 @@ from app.integrations.metrics.base import (
     IntervalMetricPoint,
     IntervalMetricSubject,
 )
-from app.integrations.production_report.csv_source import CsvProductionReportSource
 from app.main import app
+from tests._fixtures.csv_source import CsvProductionReportSource
 
 
 class _FakeMetricsSource:
@@ -52,8 +52,9 @@ class _FakeMetricsSource:
 
 @pytest.fixture
 def metrics_client(sample_csv_path) -> Iterator[TestClient]:
-    """TestClient with both production-report (CSV) and metrics (fake)
-    sources wired. Each test sets ``app.state.fake_metrics_source`` /
+    """TestClient with production-report DI bound to the test fixture
+    source (tests/_fixtures/csv_source.py) and metrics DI bound to a
+    hand-rolled fake. Each test sets ``app.state.fake_metrics_source`` /
     ``app.state.snapshot_store`` and the override pulls them out."""
 
     def metrics_override(request: Request):

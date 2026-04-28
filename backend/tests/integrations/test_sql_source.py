@@ -175,8 +175,11 @@ async def test_fetch_rows_casts_ints_to_strings_and_parses_payload() -> None:
     assert r.avg_humidity is None
     assert r.max_wind_speed is None
     assert r.notes is None
-    # Phase 12 enrichment defaulted to None when not populated.
-    assert r.department_name is None
+    # Phase 12 + 13: department_name is non-null in the contract; the
+    # SQL source synthesizes "Dept <id>" on a JOIN miss. Helper builds
+    # rows with dept_name=None by default, so we should see the
+    # fallback string here.
+    assert r.department_name == "Dept 127"
 
 
 @pytest.mark.asyncio
@@ -266,16 +269,18 @@ async def test_fetch_rows_reads_department_name_from_dept_join() -> None:
 
 
 @pytest.mark.asyncio
-async def test_fetch_rows_tolerates_null_department_name_from_left_join_miss() -> None:
-    """Defensive: a production report whose DEPARTMENT_ID has no
-    matching row in [DailyProductionEntry].[dbo].[Departments] gets
-    NULL from the LEFT JOIN. The dataclass reports None and the
-    frontend falls back to department_id display."""
-    row = _row(id=402, prod_id="PR_NO_DEPT", dept_name=None)
+async def test_fetch_rows_synthesizes_dept_name_fallback_on_left_join_miss() -> None:
+    """Phase 13: department_name is non-null in the source-row contract.
+    A production report whose DEPARTMENT_ID has no matching row in
+    [DailyProductionEntry].[dbo].[Departments] gets NULL from the
+    LEFT JOIN; the source synthesizes a deterministic 'Dept <id>'
+    fallback (and logs a warning) so downstream code never sees null.
+    """
+    row = _row(id=402, prod_id="PR_NO_DEPT", department_id=999, dept_name=None)
     pool = FakePool(FakeCursor(rows=[row]))
     src = SqlProductionReportSource(pool=pool)
     r = (await src.fetch_rows())[0]
-    assert r.department_name is None
+    assert r.department_name == "Dept 999"
 
 
 @pytest.mark.asyncio

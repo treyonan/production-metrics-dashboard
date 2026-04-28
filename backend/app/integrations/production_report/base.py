@@ -1,9 +1,13 @@
 """Production-report source Protocol and shared types.
 
-Every production-report source (CSV, SQL, future REST) implements
-``ProductionReportSource``. Routes / services depend on the Protocol,
-never on a concrete class -- swapping sources is a DI change, not a
-code change.
+Every production-report source implements ``ProductionReportSource``.
+Routes / services depend on the Protocol, never on a concrete class --
+swapping sources is a DI change, not a code change.
+
+As of Phase 13 (2026-04-28), ``SqlProductionReportSource`` is the
+only production implementation. A test-only CSV-backed implementation
+lives under ``tests/_fixtures/csv_source.py`` and is wired only via
+``conftest.py``'s dependency overrides.
 """
 
 from __future__ import annotations
@@ -32,26 +36,28 @@ class ProductionReportRow:
     current rows. Callers treat it as data, not structure, for now.
 
     ``dtm`` is the upstream write timestamp. The SQL table allows NULL
-    on this column, so the field is ``datetime | None``. The CSV source
-    returns None when the cell is empty; SQL source returns None when
-    the row's DTM is NULL. Services handle None by treating it as the
-    oldest possible timestamp for sort-ordering purposes.
+    on this column, so the field is ``datetime | None``. The SQL source
+    returns None when the row's DTM is NULL. Services handle None by
+    treating it as the oldest possible timestamp for sort-ordering
+    purposes.
 
     Enrichment fields (Phase 8) come from joins against
     ``SITE_PRODUCTION_RUN_HISTORY`` (shift, weather) and
-    ``SITE_PRODUCTION_RUN_COMMENTS`` (notes). All default to ``None``:
-    the CSV source has no weather data so every CSV row reports None;
+    ``SITE_PRODUCTION_RUN_COMMENTS`` (notes). All default to ``None``;
     SQL rows whose LEFT JOIN misses (e.g. a production report with no
-    history row yet) also report None field-by-field.
+    history row yet) report None field-by-field.
 
-    ``department_name`` (Phase 12) comes from a cross-database LEFT JOIN
-    against ``[DailyProductionEntry].[dbo].[Departments]``. The CSV
-    source has no Departments table and returns ``None``; SQL rows
-    whose Departments lookup misses also return ``None``. The frontend
-    falls back to ``department_id`` display when the name is null.
-    Underscores in the upstream name are normalized to spaces at the
-    SQL layer (D8) so every consumer sees the same display string.
-    Phase 13 (CSV removal) will tighten this to non-null ``str``.
+    ``department_name`` comes from a cross-database LEFT JOIN against
+    ``[DailyProductionEntry].[dbo].[Departments]``. The SQL source
+    synthesizes a ``f"Dept {department_id}"`` fallback (and logs a
+    warning) when the JOIN misses, so this field is always populated
+    in production responses -- the frontend can display it without
+    null-check fallbacks. Underscores in the upstream name are
+    normalized to spaces at the SQL layer (Phase 12, D8).
+
+    No ``| None`` default: every source must populate this field.
+    Phase 13 (2026-04-28) made SQL the only production source and
+    tightened the contract.
     """
 
     id: int
@@ -59,6 +65,7 @@ class ProductionReportRow:
     prod_id: str
     site_id: str
     department_id: str
+    department_name: str
     payload: dict[str, Any]
     dtm: datetime | None
     # Phase 8 enrichment. Optional, default None.
@@ -68,9 +75,6 @@ class ProductionReportRow:
     avg_humidity: float | None = field(default=None)
     max_wind_speed: float | None = field(default=None)
     notes: str | None = field(default=None)
-    # Phase 12 enrichment. Optional, default None until Phase 13
-    # removes CSV and the contract becomes non-null.
-    department_name: str | None = field(default=None)
 
 
 @runtime_checkable
@@ -78,9 +82,9 @@ class ProductionReportSource(Protocol):
     """Contract every production-report source must satisfy.
 
     ``name`` is a short identifier used in health-check output.
-    All methods are async so that future SQL / REST implementations
-    compose cleanly; blocking sources (e.g. CSV file I/O) wrap their
-    work in ``asyncio.to_thread``.
+    All methods are async so that current and future implementations
+    compose cleanly; blocking sources wrap their work in
+    ``asyncio.to_thread``.
     """
 
     name: str

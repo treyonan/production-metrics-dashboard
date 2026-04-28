@@ -1961,6 +1961,159 @@ primary UI but never loses it.
   problem).
 - Multilingual or per-tenant overrides of department names.
 
+## Phase 13 -- Remove CSV as a production source (IMPLEMENTED 2026-04-28, browser QA pending)
+
+### Goal
+
+Remove CSV from the production code path. SQL becomes the only
+configured production-report source going forward; APIs (Flow) remain
+the metric source as before. The 28+ tests that currently use the
+CSV-backed `client` fixture continue to work -- CSV becomes
+test-fixture infrastructure rather than a production option.
+
+### Decisions
+
+- **D1 -- Production-only removal.** `CsvProductionReportSource` is
+  dropped from production wiring (Settings, DI, lifespan, package
+  exports) but the file stays under
+  `backend/app/integrations/production_report/csv_source.py` with a
+  prominent `TEST-ONLY -- not registered in production` banner. The
+  `tests/conftest.py` `client` fixture imports it directly (not via
+  `__init__`) and uses it as a deterministic fixture-backed source.
+  Migrating the 28+ tests to mocked SQL would be ~10x more work for
+  no production-side benefit.
+- **D2 -- `department_name` tightens to non-null `str`.** Trey
+  confirmed "name will never be null." With CSV gone from production,
+  every row goes through SQL. SQL source synthesizes a `f"Dept {id}"`
+  fallback (and logs a warning) on the rare LEFT JOIN miss so we
+  never raise a ValidationError on a real production response.
+  Pydantic models drop the `| None` on department_name. Frontend
+  fallbacks remain as defense-in-depth (cheap, harmless).
+- **D3 -- Settings simplification.** Remove
+  `production_report_backend`, `production_report_csv_path`, and
+  `_DEFAULT_CSV_PATH` from `core/config.py`. `db_conn_string` becomes
+  required (no default of `None`); startup fails fast if it's missing
+  rather than degrading to CSV.
+- **D4 -- sample.csv stays under `context/sample-data/`.** It's the
+  test fixture and conceptually paired with `payload-schema.md` /
+  `payload-example.json` which document the canonical PAYLOAD shape.
+  Moving it would ripple through doc references for no real win.
+  The Dockerfile still COPYs `context/` so the docs ship in the
+  image; the `.dockerignore` could exclude `sample.csv` specifically
+  to keep the image lean (small saving, optional).
+- **D5 -- Historical docs are not rewritten.** `tasks/decisions/*`,
+  `tasks/specs/*`, prior `tasks/todo.md` entries, and `lessons.md`
+  are records of decisions made at the time. They keep mentioning
+  CSV. Only current-state docs (CLAUDE.md, RUNBOOK.md, ARCHITECTURE.md,
+  PAYLOAD-CONTRACT.md, docs/*, README.mds, backend/.env.example,
+  session-*-prompt.md) are updated to reflect SQL-only.
+- **D6 -- Health endpoint name unchanged.** SqlProductionReportSource's
+  `name` stays `"sql:production_report"`. Tests using the CSV fixture
+  still see `"csv:production_report"` in their fixture context --
+  that's expected, the test isn't running against the production
+  source.
+
+### Files to delete
+- [ ] `backend/tests/integrations/test_csv_source.py` -- 5 tests that
+      verified `CsvProductionReportSource` behavior in isolation. No
+      production value once CSV is non-production; the fixture is
+      exercised end-to-end by every API test that uses `client`.
+
+### Files to modify
+
+#### Backend production code
+
+- [ ] `backend/app/core/config.py` -- remove `_DEFAULT_CSV_PATH`,
+      `production_report_csv_path`, `production_report_backend`.
+      `db_conn_string` becomes `SecretStr` (no default `None`).
+- [ ] `backend/app/api/dependencies.py` -- collapse
+      `get_production_report_source` to a single SQL path. No
+      conditional branching, no Settings read. Import-list cleaned.
+- [ ] `backend/app/main.py` -- lifespan unconditionally creates the
+      SQL pool. Remove the `if backend == 'sql'` gate. Update
+      structlog event names if needed.
+- [ ] `backend/app/integrations/production_report/__init__.py` --
+      remove `CsvProductionReportSource` from `__all__`/exports.
+- [ ] `backend/app/integrations/production_report/base.py` -- tighten
+      `department_name` field on `ProductionReportRow` to `str` (no
+      `| None`); update docstring.
+- [ ] `backend/app/integrations/production_report/sql_source.py` --
+      `_row_to_dataclass` synthesizes `f"Dept {id}"` and logs a
+      warning when DEPT_NAME column is NULL (LEFT JOIN miss).
+      Tighten field via the dataclass constraint.
+- [ ] `backend/app/schemas/production_report.py` -- tighten
+      `department_name` on `ProductionReportEntry` AND
+      `MonthlyRollupEntry` to non-null `str`. Update docstrings.
+- [ ] `backend/app/integrations/production_report/csv_source.py` --
+      add `# TEST-ONLY -- not registered in production` banner.
+      Module docstring updated. Class behavior unchanged.
+- [ ] `backend/.env.example` -- remove `PMD_PRODUCTION_REPORT_BACKEND`
+      and `PMD_PRODUCTION_REPORT_CSV_PATH` lines. Mark
+      `DB_CONN_STRING` as required.
+
+#### Tests
+- [ ] `backend/tests/conftest.py` -- update fixture docstring to
+      clarify CSV is test-only fixture data, not a production source.
+      Keep the import + override pattern.
+- [ ] `backend/tests/api/test_health.py` -- audit for hardcoded
+      `production_report_backend` assertions; update.
+- [ ] `backend/tests/services/test_conveyor_totals.py` -- audit
+      (currently constructs `ProductionReportRow` directly).
+- [ ] Audit other test files surfaced in the grep
+      (`test_metrics.py`, `test_metrics_sql_source.py`,
+      `test_sql_source.py`) for explicit CSV references; update.
+- [ ] After tighten of `department_name` to `str`, tests that
+      construct `ProductionReportRow` without that field will need
+      updating (or we keep the dataclass default to a synthesized
+      sentinel and surface that as a test-only quirk).
+
+#### Frontend
+- [ ] `frontend/app.js` -- one comment update at line 1585
+      (`CSV path or pre-Phase-12 server` -> `defensive fallback`).
+      No behavior change.
+
+#### Documentation (current-state only)
+- [ ] `CLAUDE.md` -- remove "CSV" from Tech Stack and Architecture
+      sections. Update "When in Doubt" if it mentions CSV.
+- [ ] `RUNBOOK.md` -- remove the CSV-source setup section and any
+      references in troubleshooting / config tables.
+- [ ] `ARCHITECTURE.md` (root) -- remove CSV path from data-flow
+      diagrams and source-layer descriptions.
+- [ ] `backend/ARCHITECTURE.md` -- remove CSV path from source
+      abstraction discussion.
+- [ ] `PAYLOAD-CONTRACT.md` -- review (likely just one mention).
+- [ ] `docs/data-flows.md` -- remove CSV path.
+- [ ] `docs/server-deployment.md` -- remove
+      `PMD_PRODUCTION_REPORT_BACKEND` from the `.env` config example.
+- [ ] `backend/README.md` -- remove CSV setup.
+- [ ] `context/sample-data/production-report/README.md` -- update
+      to "test fixture data" framing.
+- [ ] `session-starter-prompt.md` -- review.
+
+### Verification
+
+- [ ] `pytest` passes (expect 100 tests after deleting the 5 CSV-source
+      isolation tests).
+- [ ] App starts without `PMD_PRODUCTION_REPORT_BACKEND` set in env.
+- [ ] App fails fast (clear error) when `DB_CONN_STRING` is missing.
+- [ ] `/api/health` reports `sql:production_report` against a real
+      backend.
+- [ ] `/api/production-report/latest` returns `department_name` as
+      a `str` (never `null`) in production response.
+- [ ] LEFT JOIN miss path: synthesize a row whose `DEPARTMENT_ID`
+      doesn't exist in `Departments`, hit `/latest`, confirm response
+      has `department_name="Dept <id>"` and a warning was logged.
+- [ ] `grep -ri csv backend/app/` returns nothing except the
+      TEST-ONLY banner inside csv_source.py.
+- [ ] `grep -ri csv` against current-state docs returns nothing.
+
+### Out of scope
+- Migrating the API test suite to mocked SQL fixtures (substantial
+  test rewrite; low ROI given CSV is now non-production).
+- Removing `context/sample-data/` entirely.
+- Adding auth, rate limits, or other unrelated production-readiness
+  improvements.
+
 ### Phase 11.1 -- Group Site fields by base type (IMPLEMENTED 2026-04-28)
 
 Upstream emits Site keys interleaved by ordinal

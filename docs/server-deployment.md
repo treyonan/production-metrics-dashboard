@@ -135,8 +135,6 @@ Edit `backend/.env` and set the values that aren't placeholders:
   `tcp:` server prefix.
 - `FLOW_API_KEY` — bearer token for Flow REST API. Per-deployment
   secret; never check in.
-- `PRODUCTION_REPORT_BACKEND` — `sql` for live, `csv` for fallback /
-  smoke testing.
 - Anything else `.env.example` flags as required.
 
 ```bash

@@ -1582,8 +1582,9 @@
     // Phase 12: dept_id -> human-readable name lookup. All rollup
     // entries for a given dept share the same department_name (Phase 12
     // backend guarantees), so we just take the first one we see. Falls
-    // back to "Dept <id>" via deptName() when name is null (CSV path
-    // or pre-Phase-12 server). Used as the chart-legend label.
+    // back to "Dept <id>" via deptName() defensively, though Phase 13's
+    // server-side contract guarantees department_name is always
+    // populated. Used as the chart-legend label.
     const deptLabel = (dept) => {
       const firstRollup = byDept.get(dept).values().next().value;
       const name = firstRollup ? firstRollup.department_name : null;

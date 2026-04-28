@@ -11,6 +11,21 @@ commands and URLs live in `RUNBOOK.md`.
 
 ---
 
+> **Phase 13 update (2026-04-28):** the document was authored when CSV
+> and SQL were both production-source options selected by
+> `PMD_PRODUCTION_REPORT_BACKEND`. Phase 13 consolidated to SQL-only --
+> `SqlProductionReportSource` is now the single production
+> implementation. The CSV reader survives under
+> `backend/tests/_fixtures/csv_source.py` purely as a deterministic
+> test fixture so the API test suite can run without SQL Server.
+> The Protocol-pattern rationale below still stands (it's why the
+> consolidation was a near-zero-code change at the consumer layer);
+> code examples that reference `Settings.production_report_backend`
+> or `Settings.production_report_csv_path` are historical -- those
+> fields are gone.
+
+---
+
 ## 1. What this is
 
 A read-only HTTP API plus a static HTML/JS dashboard that together

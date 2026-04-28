@@ -8,9 +8,9 @@ Protocol; routes and services depend only on the Protocol.
 Today there's exactly one implementation -- ``SqlIntervalMetricSource``,
 which reads tag rows from ``[FLOW].[INTERVAL_METRIC_TAGS]`` on the
 enterprise SQL server and fans out per-tag history fetches to Flow's
-REST API via ``FlowClient``. Future implementations (e.g. a CSV
-fixture for offline tests, or a different vendor's REST API) plug
-into the same Protocol.
+REST API via ``FlowClient``. Future implementations (e.g. a different
+vendor's REST API, or a fixture for offline tests) plug into the same
+Protocol.
 """
 
 from __future__ import annotations

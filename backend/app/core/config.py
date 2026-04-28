@@ -8,14 +8,12 @@ evaluate once per process; tests that need overrides should call
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
 
 from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Repo root = backend/app/core/config.py -> parents[3]
 _REPO_ROOT = Path(__file__).resolve().parents[3]
-_DEFAULT_CSV_PATH = _REPO_ROOT / "context" / "sample-data" / "production-report" / "sample.csv"
 _DEFAULT_FRONTEND_DIR = _REPO_ROOT / "frontend"
 
 # Human-readable names for site IDs present in the data. The source layer
@@ -52,15 +50,6 @@ class Settings(BaseSettings):
         description="structlog filtering level: DEBUG / INFO / WARNING / ERROR.",
     )
 
-    production_report_csv_path: Path = Field(
-        default=_DEFAULT_CSV_PATH,
-        description=(
-            "Path to the production-report TSV export. Defaults to the "
-            "sample under context/ for local dev. Override via env when the "
-            "real file lives elsewhere."
-        ),
-    )
-
     site_names: dict[str, str] = Field(
         default_factory=lambda: dict(_DEFAULT_SITE_NAMES),
         description="Lookup of site_id -> display name. Unknown IDs fall back to 'Site <id>'.",
@@ -74,25 +63,24 @@ class Settings(BaseSettings):
         ),
     )
 
-    # ---- SQL backend (optional; used only when production_report_backend='sql') ----
+    # ---- SQL backend ----
+    #
+    # Phase 13 (2026-04-28) made SQL the only production-report source.
+    # db_conn_string is required; if it's missing the lifespan logs the
+    # error and the SQL pool stays None, which surfaces as a clean 503
+    # from /api/production-report/* via the DI provider rather than a
+    # crash.
 
     db_conn_string: SecretStr | None = Field(
         default=None,
         description=(
-            "ODBC connection string for the SQL Server production-report source. "
-            "Consumed only when production_report_backend='sql'. Stored as SecretStr "
-            "so pydantic keeps it out of default logs and repr()s."
+            "ODBC connection string for the SQL Server production-report "
+            "source. Required in production -- if unset the SQL pool fails "
+            "to initialize and /api/production-report/* returns 503. "
+            "Stored as SecretStr so pydantic keeps it out of default "
+            "logs and repr()s."
         ),
         validation_alias=AliasChoices("PMD_DB_CONN_STRING", "DB_CONN_STRING"),
-    )
-
-    production_report_backend: Literal["csv", "sql"] = Field(
-        default="csv",
-        description=(
-            "Which concrete ProductionReportSource the DI provider instantiates. "
-            "'csv' (default) reads from production_report_csv_path. 'sql' reads "
-            "from the SQL Server pool built from db_conn_string."
-        ),
     )
 
     # ---- Phase 9: Flow API integration for interval metrics ----

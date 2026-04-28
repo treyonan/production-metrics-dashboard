@@ -39,30 +39,29 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         version=settings.api_version,
         frontend_dir=str(settings.frontend_dir),
         frontend_dir_is_dir=settings.frontend_dir.is_dir(),
-        production_report_backend=settings.production_report_backend,
     )
 
-    # Optional SQL pool -- only created when the SQL backend is selected.
-    # If creation fails, we stay up and degraded: /api/health surfaces the
-    # unhealthy source; /api/production-report/* returns 503 via the DI
+    # SQL pool -- the only production-report source path as of Phase 13.
+    # If creation fails (bad DSN, driver missing, network unreachable),
+    # we stay up and degraded: /api/health surfaces the unhealthy
+    # source and /api/production-report/* returns 503 via the DI
     # provider rather than 500.
     app.state.sql_pool = None
-    if settings.production_report_backend == "sql":
-        if settings.db_conn_string is None:
+    if settings.db_conn_string is None:
+        log.error(
+            "sql_pool.not_created",
+            reason="DB_CONN_STRING not set; /api/production-report/* will 503",
+        )
+    else:
+        try:
+            app.state.sql_pool = await create_pool(settings.db_conn_string.get_secret_value())
+            log.info("sql_pool.created")
+        except Exception as exc:  # noqa: BLE001 -- degrade-gracefully on any driver error
             log.error(
-                "sql_pool.not_created",
-                reason="production_report_backend=sql but db_conn_string not set",
+                "sql_pool.create_failed",
+                error_type=type(exc).__name__,
+                error_message=str(exc),
             )
-        else:
-            try:
-                app.state.sql_pool = await create_pool(settings.db_conn_string.get_secret_value())
-                log.info("sql_pool.created")
-            except Exception as exc:  # noqa: BLE001 -- degrade-gracefully on any driver error
-                log.error(
-                    "sql_pool.create_failed",
-                    error_type=type(exc).__name__,
-                    error_message=str(exc),
-                )
 
     # Phase 9: Flow API client + in-process SnapshotStore.
     # Both are created unconditionally (even if FLOW_API_KEY is unset)

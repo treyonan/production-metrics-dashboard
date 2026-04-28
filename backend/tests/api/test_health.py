@@ -5,7 +5,12 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 
-def test_health_returns_ok_with_csv_source(client: TestClient) -> None:
+def test_health_returns_ok_against_test_fixture_source(client: TestClient) -> None:
+    """Health endpoint reports the source it's wired to. In test
+    contexts the ``client`` fixture overrides DI to a CSV-backed test
+    fixture (tests/_fixtures/csv_source.py) so the source name is
+    'csv:production_report' here. In production the source is
+    SqlProductionReportSource and reports 'sql:production_report'."""
     resp = client.get("/api/health")
     assert resp.status_code == 200
     body = resp.json()

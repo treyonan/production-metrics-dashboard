@@ -80,31 +80,29 @@ contract) and `context/sample-data/production-report/payload-schema.md`
 ### How our API gets it
 
 The source-Protocol layer (`integrations/production_report/base.py`)
-defines a `ProductionReportSource` Protocol with two interchangeable
-implementations:
+defines a `ProductionReportSource` Protocol with one production
+implementation:
 
 - `SqlProductionReportSource` -- reads via `aioodbc` against a
   connection pool created at lifespan startup. The pool is shared
-  with future SQL sources (e.g. interval metrics) on the same
-  database.
-- `CsvProductionReportSource` -- reads from a tab-delimited committed
-  sample file under `context/sample-data/production-report/`. Used
-  for tests and for offline development; selected via
-  `PMD_PRODUCTION_REPORT_BACKEND=csv`.
+  with the interval-metrics tag registry on the same database.
 
-Both implementations emit the same `ProductionReportRow` frozen
-dataclass (13 fields). Routes and services call the Protocol; they
-never know which implementation produced the rows. Swapping
-backends is a configuration change, not a code change. This is the
-same pattern that made the original CSV → SQL swap a zero-code
-diff at the consumer layer.
+A test-only fixture-backed implementation (`tests/_fixtures/csv_source.py`)
+also satisfies the Protocol so the API test suite can run without a
+SQL Server connection. Production never sees the test fixture.
+
+The implementation emits a `ProductionReportRow` frozen dataclass
+(14 fields as of Phase 12). Routes and services call the Protocol;
+they never know which implementation produced the rows. Swapping in
+a future source (a different vendor's REST API, etc.) is a
+configuration change at the DI provider, not a consumer-side change.
 
 The service layer (`services/production_report.py`) wraps the source:
 
 - `get_range(source, from_date, to_date, site_id)` -- filters rows
   by site + an inclusive calendar-date window, sorts newest-first.
-  Pure Python predicate -- works on whatever `fetch_rows()`
-  returned, indifferent to whether the rows came from CSV or SQL.
+  Pure Python predicate -- works on whatever `fetch_rows()` returned,
+  indifferent to which Protocol implementation produced the rows.
 - `get_latest_per_workcenter(source, site_id)` -- reduces to one
   row per `(site_id, department_id)`, latest `prod_date` wins.
 - `get_latest_date(source, site_id)` -- returns the newest
@@ -546,7 +544,7 @@ Each domain is a folder:
 - `integrations/<domain>/base.py` -- Protocol + dataclass row type +
   any shared dataclasses.
 - `integrations/<domain>/<source>.py` -- one file per concrete
-  source implementation (CSV / SQL / REST / etc.).
+  source implementation (SQL, REST, etc.).
 - `services/<domain>.py` -- service functions.
 - `api/routes/<domain>.py` -- route handlers.
 - `schemas/<domain>.py` -- Pydantic response models.
@@ -584,8 +582,11 @@ For deep-dives on specific layers:
 For the *why* behind specific decisions:
 
 - `tasks/decisions/001-stack-and-source-boundary.md` -- why we
-  chose the Protocol-based source pattern (CSV/SQL interchangeable)
-  and where the source boundary lives.
+  chose the Protocol-based source pattern (sources interchangeable
+  behind a single contract) and where the source boundary lives.
+  The doc was authored when CSV and SQL were both production
+  options; Phase 13 (2026-04-28) consolidated to SQL-only, but the
+  Protocol-pattern rationale still stands.
 - `tasks/decisions/002-absolute-time-filter.md` -- why the
   dashboard uses absolute date windows (day picker / month picker)
   instead of rolling Today/Week/Month buttons.

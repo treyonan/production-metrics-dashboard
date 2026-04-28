@@ -59,7 +59,7 @@ def _to_entry(r: ProductionReportRow) -> ProductionReportEntry:
         prod_id=r.prod_id,
         site_id=r.site_id,
         department_id=r.department_id,
-        department_name=r.department_name,  # Phase 12; None for CSV.
+        department_name=r.department_name,  # Phase 12; non-null per Phase 13 contract.
         payload=r.payload,
         dtm=r.dtm,
         # Phase 8 enrichment (all optional; default to None if absent).
@@ -287,7 +287,7 @@ def _months_between(a: date, b: date) -> int:
 def _to_rollup_entry(r: MonthlyRollup) -> MonthlyRollupEntry:
     return MonthlyRollupEntry(
         department_id=r.department_id,
-        department_name=r.department_name,  # Phase 12; None for CSV.
+        department_name=r.department_name,  # Phase 12; non-null per Phase 13 contract.
         month=r.month,
         total_tons=r.total_tons,
         total_runtime_minutes=r.total_runtime_minutes,

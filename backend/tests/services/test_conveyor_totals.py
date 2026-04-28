@@ -47,6 +47,7 @@ def _row(
         prod_id=f"TEST_{row_id:03d}",
         site_id=site_id,
         department_id=department_id,
+        department_name=f"Dept {department_id}",
         payload={"Metrics": metrics or {}},
         dtm=None,
     )
@@ -278,6 +279,7 @@ def test_no_metrics_key_in_payload() -> None:
             prod_id="TEST",
             site_id="101",
             department_id="127",
+            department_name="Dept 127",
             payload={},  # no Metrics at all
             dtm=None,
         ),
@@ -294,6 +296,7 @@ def test_metrics_not_a_dict_is_skipped() -> None:
             prod_id="TEST",
             site_id="101",
             department_id="127",
+            department_name="Dept 127",
             payload={"Metrics": "not a dict"},
             dtm=None,
         ),

@@ -1,11 +1,23 @@
 # Production report sample data
 
+## Status
+
+These files are **test-fixture data**, not a production data path.
+Phase 13 (2026-04-28) made `SqlProductionReportSource` the only
+production source. The committed `sample.csv` is consumed only by
+`tests/_fixtures/csv_source.py` (test infrastructure) so the API
+test suite can run without a SQL Server connection. Edit only when
+adjusting test behavior or reproducing a SQL-side scenario in
+unit tests.
+
 ## Contents
 
 - `sample.csv` — tab-delimited export of the upstream production-report
-  dataset. **Contains real + synthetic rows.**
+  dataset, kept for use as a deterministic test fixture. **Contains
+  real + synthetic rows.**
 - `payload-example.json` — clean single-row example of the current
-  `PAYLOAD` JSON shape.
+  `PAYLOAD` JSON shape. Useful as canonical reference for anyone
+  reading the schema doc.
 - `payload-schema.md` — documentation of the PAYLOAD structure.
 
 ## Real vs. synthetic rows in `sample.csv`
@@ -37,5 +49,9 @@ For each real row:
 See `tasks/decisions/001-stack-and-source-boundary.md` for the decision
 to go synthetic for multi-site demonstration during the POC phase.
 
-When SQL integration lands, the SQL source will replace the CSV entirely
-and synthetic data will no longer be in play.
+After Phase 13, the synthetic rows are exercised only by the test suite.
+Real production data comes from SQL Server (Big Canyon Quarry today,
+plus other sites as they're commissioned). The synthetic rows are
+useful test data because they let the API tests cover the multi-site
+code paths (site filtering, sort ordering across sites, etc.) without
+requiring a second real SQL site.

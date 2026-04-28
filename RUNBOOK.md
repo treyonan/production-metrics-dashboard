@@ -235,7 +235,7 @@ From `backend/` with the venv active:
 pytest                    # run all tests (expected: 30 passing)
 pytest -v                 # verbose
 pytest tests/api          # API tests only
-pytest tests/integrations # source-layer unit tests only (CSV + SQL)
+pytest tests/integrations # source-layer unit tests (SQL + Flow)
 pytest -k range           # single-pattern filter (only the /range cases)
 ```
 
@@ -254,24 +254,20 @@ ruff format .             # apply format
 ruff format --check .     # format dry-run (CI mode)
 ```
 
-## Edit the sample data (for demos)
+## Test fixture data
 
-The CSV source re-reads the file on every API poll. Edits appear on
-the dashboard within one refresh cycle — true in both the venv path
-(file is read directly) and the Docker path (file is bind-mounted
-read-only from the host).
+The committed file `context/sample-data/production-report/sample.csv`
+is consumed by the test suite via `tests/_fixtures/csv_source.py` to
+provide deterministic data without needing SQL Server. It is **not**
+loaded by the production app (Phase 13 made SQL the only production
+source). Edit it only when you want to adjust test behavior or
+reproduce a SQL-side scenario in unit tests.
 
 - File: `context/sample-data/production-report/sample.csv`.
 - Open in a **plain text editor** (VS Code / Notepad++). Excel will
   mangle the tabs and JSON escapes.
 - PAYLOAD column is a JSON string with `""` double-escaped quotes;
   keep that format when editing.
-- Latest row per `(site_id, department_id)` is what Today view shows.
-  Find the row with the max PRODDATE for the workcenter you want to change.
-- For Week/Month view, multiple rows matter — edit several rows in the
-  window to see richer time-series behavior.
-- Bad edits surface as a 500 in the red error bar; revert and the next
-  poll recovers.
 - Real vs synthetic rows: site 101 (IDs 40-101) real, site 102
   (IDs 201-262) synthetic. See the README alongside the file.
 

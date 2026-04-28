@@ -1,8 +1,8 @@
 # Backend — production-metrics-dashboard
 
-Read-only FastAPI service aggregating plant production metrics. Runs
-against a local CSV source today; SQL Server and Ignition sources slot
-in later behind the same Protocol.
+Read-only FastAPI service aggregating plant production metrics from
+SQL Server (production reports) and Flow's REST API (interval
+metrics). Future sources slot in behind the same Protocol.
 
 ## Prerequisites
 
@@ -52,11 +52,12 @@ ruff format .
 Set via environment variables (prefixed `PMD_`) or a `.env` file in
 `backend/`. See `.env.example` for the full list.
 
-| Variable                           | Default                                                     | Purpose                                            |
-| ---------------------------------- | ----------------------------------------------------------- | -------------------------------------------------- |
-| `PMD_ENVIRONMENT`                  | `local`                                                     | Deployment label surfaced in `/api/health`.        |
-| `PMD_LOG_LEVEL`                    | `INFO`                                                      | structlog filter (DEBUG/INFO/WARNING/ERROR).       |
-| `PMD_PRODUCTION_REPORT_CSV_PATH`   | `<repo>/context/sample-data/production-report/sample.csv`   | CSV file the production-report source reads.      |
+| Variable                  | Default     | Purpose                                                                                                  |
+| ------------------------- | ----------- | -------------------------------------------------------------------------------------------------------- |
+| `PMD_ENVIRONMENT`         | `local`     | Deployment label surfaced in `/api/health`.                                                              |
+| `PMD_LOG_LEVEL`           | `INFO`      | structlog filter (DEBUG/INFO/WARNING/ERROR).                                                             |
+| `DB_CONN_STRING`          | _required_  | ODBC connection string for SQL Server. SqlProductionReportSource fails to initialize if unset (503).     |
+| `FLOW_API_KEY`            | _optional_  | Bearer token for Flow REST API. `/api/metrics/*` returns 503 from the DI provider when this is unset.    |
 
 ## Layout
 
@@ -76,7 +77,14 @@ app/
   integrations/
     production_report/
       base.py                 # ProductionReportSource Protocol
-      csv_source.py           # CSV impl (current)
+      sql_source.py           # SQL Server impl (production)
+      queries/                # *.sql query files
+    metrics/
+      base.py                 # IntervalMetricSource Protocol
+      sql_source.py           # SQL tag registry + Flow REST fan-out
+      queries/                # *.sql query files
+    external/
+      flow_client.py          # httpx wrapper for Flow REST API
   services/
     production_report.py      # latest-per-workcenter business logic
   schemas/

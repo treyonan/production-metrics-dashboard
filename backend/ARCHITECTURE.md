@@ -11,13 +11,31 @@ focuses on the FastAPI code.
 
 ---
 
+> **Phase 13 update (2026-04-28):** the document was authored when CSV
+> and SQL were both production sources selectable by
+> `PMD_PRODUCTION_REPORT_BACKEND`. Phase 13 made
+> `SqlProductionReportSource` the only production implementation. CSV
+> survives as a test-only fixture under `tests/_fixtures/csv_source.py`
+> so the existing ~30 API tests can run without SQL Server. The
+> `production_report_backend` and `production_report_csv_path`
+> Settings fields are gone, the `get_production_report_source` DI
+> provider no longer branches, and `department_name` on
+> `ProductionReportRow` / `ProductionReportEntry` is non-null
+> (the SQL source synthesizes a `Dept <id>` fallback on the rare
+> Departments LEFT JOIN miss). Sections below that reference the
+> conditional branching, the missing Settings fields, or the CSV
+> source file under `app/integrations/...` describe historical
+> state -- the Protocol pattern itself still holds.
+
+---
+
 ## 1. High-level workflow
 
-The backend is a read-only FastAPI service. It exposes four HTTP
-endpoints, pulls its data from one of two interchangeable sources
-(a local CSV file or a SQL Server instance), shapes it with Pydantic,
-and returns JSON. The frontend polls those endpoints every 30–300
-seconds.
+The backend is a read-only FastAPI service. It exposes a handful of
+HTTP endpoints, pulls its production-report data from a SQL Server
+instance and its interval-metric data from Flow's REST API, shapes
+both with Pydantic, and returns JSON. The frontend polls those
+endpoints every 30–300 seconds.
 
 ```
                    ┌──────────────────────────────┐
