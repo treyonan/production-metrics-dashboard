@@ -269,6 +269,30 @@ class MonthlyRollupEntry(BaseModel):
             "with 2 reports is less reliable than one with 28."
         )
     )
+    avg_tph_fed: float | None = Field(
+        default=None,
+        description=(
+            "Phase 14a. Simple arithmetic mean of per-report "
+            "Workcenter.Rate (with fallback to Total / Runtime when "
+            "Rate is null but both denominators are present and "
+            "Runtime > 0) across every report in this (department, "
+            "month) bucket. Drives the manager-style 'Total TPH "
+            "Fed' bar chart on the Trends tab. Null when no report "
+            "in the bucket has a usable value."
+        ),
+    )
+    avg_runtime_pct: float | None = Field(
+        default=None,
+        description=(
+            "Phase 14a. Simple arithmetic mean of per-report "
+            "Workcenter.Availability (Runtime / Scheduled_Runtime "
+            "as a percent, capped at 100). Falls back to Runtime / "
+            "Scheduled_Runtime * 100 when Availability is null but "
+            "both denominators are present and Scheduled_Runtime "
+            "> 0. Drives the manager-style 'Runtime %' bar chart. "
+            "Null when no report in the bucket has a usable value."
+        ),
+    )
 
 
 class MonthlyRollupResponse(BaseModel):

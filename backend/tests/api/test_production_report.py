@@ -343,6 +343,8 @@ def test_monthly_rollup_rollup_entry_fields_present(client) -> None:
     expected = {
         "department_id", "month", "total_tons",
         "total_runtime_hours", "tph", "report_count",
+        # Phase 14a:
+        "avg_tph_fed", "avg_runtime_pct",
     }
     assert expected.issubset(sample.keys())
     # Month always YYYY-MM.

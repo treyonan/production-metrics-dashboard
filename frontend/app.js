@@ -1635,10 +1635,63 @@
       yLabel: "Tons/hr",
       yFormat: (v) => `${fmt1(v)} tph`,
     }));
+
+    // Phase 14a: per-workcenter bar chart sections. One section
+    // header + two bar panels (Total TPH Fed, Runtime %) per dept.
+    // Section ordering follows the same alphabetical deptIds sort
+    // used by the multi-workcenter line charts above.
+    const buildBarDataset = (dept, extractor, idx) => {
+      const color = TREND_COLORS[idx % TREND_COLORS.length];
+      const data = months.map((m) => {
+        const r = byDept.get(dept).get(m);
+        if (!r) return null;
+        const v = extractor(r);
+        return (v === null || v === undefined) ? null : v;
+      });
+      return {
+        label: deptLabel(dept),
+        data,
+        backgroundColor: color,
+        borderColor: color,
+        borderWidth: 1,
+      };
+    };
+
+    deptIds.forEach((dept, idx) => {
+      grid.appendChild(
+        el("h3", { class: "trend-section-header" }, deptLabel(dept))
+      );
+
+      grid.appendChild(_renderTrendPanel({
+        title: "Total TPH Fed",
+        subtitle: "Average of Workcenter.Rate per month.",
+        labels: months,
+        datasets: [buildBarDataset(dept, (r) => r.avg_tph_fed, idx)],
+        yLabel: "Tons/hr",
+        yFormat: (v) => `${fmtInt(v)} tph`,
+        chartType: "bar",
+      }));
+
+      grid.appendChild(_renderTrendPanel({
+        title: "Runtime %",
+        subtitle: "Average of Workcenter.Availability per month.",
+        labels: months,
+        datasets: [buildBarDataset(dept, (r) => r.avg_runtime_pct, idx)],
+        yLabel: "%",
+        yFormat: (v) => `${fmt1(v)}%`,
+        chartType: "bar",
+      }));
+    });
   }
 
-  function _renderTrendPanel({ title, subtitle, labels, datasets, yLabel, yFormat }) {
+  function _renderTrendPanel({ title, subtitle, labels, datasets, yLabel, yFormat, chartType }) {
     const colors = _themeColors();
+    // Phase 14a: chartType defaults to "line" for backward-compat
+    // with the existing multi-workcenter trend charts. Bar charts
+    // are typically single-series (per-workcenter manager view)
+    // and hide the legend to reduce visual noise.
+    const _type = chartType || "line";
+    const _showLegend = _type === "line";
     const panel = el("section", { class: "trend-panel" }, [
       el("div", { class: "trend-panel-header" }, [
         el("span", { class: "trend-panel-title" }, title),
@@ -1653,7 +1706,7 @@
         // can come back as 0.
         setTimeout(() => {
           const chart = new Chart(canvas.getContext("2d"), {
-            type: "line",
+            type: _type,
             data: { labels, datasets },
             options: {
               responsive: true,
@@ -1661,7 +1714,7 @@
               animation: false,
               plugins: {
                 legend: {
-                  display: true,
+                  display: _showLegend,
                   position: "bottom",
                   labels: { color: colors.ink, font: { size: 10 } },
                 },

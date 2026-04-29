@@ -838,7 +838,10 @@ body {
 
 .trends-grid {
   display: grid;
-  grid-template-columns: 1fr;
+  /* Auto-fit responsive 2-column layout. Panels at >= 420px wide
+     get paired side-by-side; narrower viewports collapse to one
+     column. Section headers span all columns via grid-column 1/-1. */
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
   gap: 12px;
 }
 
@@ -873,4 +876,21 @@ body {
 .trend-chart-canvas {
   width: 100% !important;
   height: 100% !important;
+}
+
+/* Phase 14a: per-workcenter section headers in the Trends grid.
+   Spans all grid columns so the divider line runs full width. */
+.trend-section-header {
+  grid-column: 1 / -1;
+  margin: 18px 0 2px;
+  padding: 0 0 6px 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-strong);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 2px solid var(--border);
+}
+.trend-section-header:first-child {
+  margin-top: 4px;
 }

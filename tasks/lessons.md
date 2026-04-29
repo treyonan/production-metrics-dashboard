@@ -57,6 +57,30 @@ write-to-disk.
 via `tail -3 <path>` through bash afterward. The file-state notices
 at the top of tool responses reflect tool-cache state, not disk
 state — they cannot be trusted as disk-write confirmation.
+### Edit tool truncation, revisited again — 2026-04-28
+**Mistake**: Same failure mode bit me twice in one Phase 14a session.
+First time: chained Edits to `frontend/app.js` over the Total-column
+removal/restore work silently truncated the file at line 1671 (35
+lines lost from the tail, ending mid-string in a chart options block).
+Second time: chained Edits to `backend/app/{services,schemas,api/routes}/production_report.py`
+during Phase 14a additions truncated all three production files
+mid-content. Recovered both by `git checkout HEAD -- <files>` and a
+single Python-in-bash atomic rewrite using `str.replace` against
+unique anchors.
+**Why it happened**: Same root cause. I followed the "single Edit +
+tail verify" carve-out from the prior lesson, but a sequence of
+single-change Edits across the same file in the same session still
+triggers the corruption. The carve-out is too generous.
+**Rule (tightened)**: For ANY change to any file on this Windows mount,
+use the bash + Python rewrite pattern instead of the `Edit` tool. A
+single Python script that reads each file once, applies all
+substitutions in memory, and writes back is reliably atomic and shows
+a syntax-check pass at the end. The `Edit` tool's "file state is
+current" reassurance is unreliable on this mount and should be
+treated as advisory only. If you must use Edit, verify with `wc -l`
+and a `tail` AFTER the call -- the file's tracked-context view
+inside the harness can lie.
+
 ### Edit tool truncation, revisited — 2026-04-23
 **Mistake**: Despite the prior lesson, I used a chain of small targeted
 `Edit` calls to flip `[ ]` to `[x]` checkboxes in `tasks/todo.md` during

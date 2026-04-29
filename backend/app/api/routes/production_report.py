@@ -293,6 +293,8 @@ def _to_rollup_entry(r: MonthlyRollup) -> MonthlyRollupEntry:
         total_runtime_hours=r.total_runtime_hours,
         tph=r.tph,
         report_count=r.report_count,
+        avg_tph_fed=r.avg_tph_fed,           # Phase 14a
+        avg_runtime_pct=r.avg_runtime_pct,   # Phase 14a
     )
 
 

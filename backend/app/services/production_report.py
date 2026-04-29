@@ -310,6 +310,13 @@ class MonthlyRollup:
     total_runtime_hours: float
     tph: float | None
     report_count: int
+    # Phase 14a: simple-average per-report metrics for the
+    # manager-style bar charts (Total TPH Fed, Runtime %). None when
+    # no report in the bucket contributed a non-null value (after
+    # the per-report fallback chain in _avg_tph_fed_for_report /
+    # _avg_runtime_pct_for_report).
+    avg_tph_fed: float | None
+    avg_runtime_pct: float | None
 
 
 def _runtime_hours_from_workcenter(wc: Any) -> float:
@@ -331,6 +338,69 @@ def _runtime_hours_from_workcenter(wc: Any) -> float:
         except (TypeError, ValueError):
             pass
     return 0.0
+
+
+def _coerce_finite_float(v: Any) -> float | None:
+    """Float-coerce + finite-check helper. Returns None on failure or
+    on NaN/Inf so callers can treat 'no usable value' uniformly."""
+    if v is None:
+        return None
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return f if math.isfinite(f) else None
+
+
+def _avg_tph_fed_for_report(wc: Any) -> float | None:
+    """Phase 14a: per-report Total TPH Fed.
+
+    Prefer ``Workcenter.Rate`` (the upstream-computed value).
+    Fall back to ``Workcenter.Total / Workcenter.Runtime`` when Rate
+    is null but both Total and Runtime > 0 are present. Returns None
+    when neither path yields a usable value (e.g. workcenter didn't
+    run that day, or the payload is malformed). Monthly aggregation
+    averages across non-None reports; a bucket of all-None reports
+    rolls up to None and the chart shows a gap.
+    """
+    if not isinstance(wc, dict):
+        return None
+    rate = _coerce_finite_float(wc.get("Rate"))
+    if rate is not None:
+        return rate
+    total = _coerce_finite_float(wc.get("Total"))
+    runtime = _coerce_finite_float(wc.get("Runtime"))
+    if total is not None and runtime is not None and runtime > 0:
+        return total / runtime
+    return None
+
+
+def _avg_runtime_pct_for_report(wc: Any) -> float | None:
+    """Phase 14a: per-report Runtime %.
+
+    Prefer ``Workcenter.Availability`` (the upstream-computed
+    Runtime / Scheduled_Runtime ratio, expressed 0-100). Fall back
+    to ``Runtime / Scheduled_Runtime * 100`` capped at 100. Returns
+    None when neither path yields a usable value.
+    """
+    if not isinstance(wc, dict):
+        return None
+    avail = _coerce_finite_float(wc.get("Availability"))
+    if avail is not None:
+        return avail
+    runtime = _coerce_finite_float(wc.get("Runtime"))
+    sched = _coerce_finite_float(wc.get("Scheduled_Runtime"))
+    if runtime is not None and sched is not None and sched > 0:
+        return min(100.0, (runtime / sched) * 100.0)
+    return None
+
+
+def _mean_or_none(values: list[float | None]) -> float | None:
+    """Simple arithmetic mean over non-None values. None when empty."""
+    usable = [v for v in values if v is not None]
+    if not usable:
+        return None
+    return sum(usable) / len(usable)
 
 
 async def get_monthly_rollup(
@@ -400,18 +470,26 @@ async def get_monthly_rollup(
         agg = next(iter(totals.values()), None)
         total_tons = agg.grand_total if agg is not None else 0.0
 
-        total_runtime_hours = sum(
-            _runtime_hours_from_workcenter(
-                (r.payload or {}).get("Metrics", {}).get("Workcenter")
-            )
+        # Walk each report's Workcenter once for all per-report
+        # signals Phase 14a needs (runtime, TPH-fed, runtime-%).
+        wcs = [
+            (r.payload or {}).get("Metrics", {}).get("Workcenter")
             for r in group
-        )
+        ]
+        total_runtime_hours = sum(_runtime_hours_from_workcenter(wc) for wc in wcs)
 
         tph: float | None
         if total_runtime_hours > 0:
             tph = total_tons / total_runtime_hours
         else:
             tph = None
+
+        # Phase 14a: simple-average per-report metrics. Each helper
+        # returns None when the per-report value is unusable; the
+        # mean drops Nones and falls back to None when every entry
+        # in the bucket is None.
+        avg_tph_fed = _mean_or_none([_avg_tph_fed_for_report(wc) for wc in wcs])
+        avg_runtime_pct = _mean_or_none([_avg_runtime_pct_for_report(wc) for wc in wcs])
 
         # Phase 12: lift department_name off any row in the group. All
         # rows in a (dept_id, month) bucket share the same dept_id and
@@ -427,6 +505,8 @@ async def get_monthly_rollup(
                 total_runtime_hours=total_runtime_hours,
                 tph=tph,
                 report_count=len(group),
+                avg_tph_fed=avg_tph_fed,
+                avg_runtime_pct=avg_runtime_pct,
             )
         )
 

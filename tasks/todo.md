@@ -1961,6 +1961,244 @@ primary UI but never loses it.
   problem).
 - Multilingual or per-tenant overrides of department names.
 
+## Phase 14 -- Manager-style monthly bar charts on the Trends tab (PLANNED)
+
+### Goal
+
+Extend the Trends tab with the manager's monthly bar-chart set
+(`examples/production-charts/`). All data comes from the existing
+production-report payload; no SCADA-side or interval-metrics work
+required. Site-specific topology is read dynamically from the
+`Circuit.<id>.Description` and `Circuit.<id>.Line.<id>.Description`
+fields in the payload -- no frontend hard-coding of "57-1" / "Main
+Circuit" / etc.
+
+### Decisions
+
+- **D1 -- Aggregation: simple averages.** The PDF's "Average of TPH
+  Fed", "Average of Run Time %", "Average of 57-1 TPH" etc. are all
+  simple means across daily reports (`mean(daily Rate)`, NOT
+  `sum(Total)/sum(Runtime)`). Confirmed with Trey 2026-04-28. Can
+  revisit weighted averages later as a separate metric without
+  breaking the wire contract.
+- **D2 -- Surface: extend the existing Trends tab, don't introduce a
+  new "Management" tab yet.** Existing line charts (Total Tons by
+  Workcenter, TPH by Workcenter) stay; new bar charts join them in
+  the same grid. Re-evaluate tab separation after the Trends grid
+  fills out -- if it gets visually crowded, the manager's bar charts
+  graduate to their own tab in a future phase.
+- **D3 -- Universal rendering via Description fields.** Frontend
+  reads `payload.Metrics.Circuit` dynamically: top-level circuits
+  render as bar groups labeled from `Description`, sub-Lines render
+  as paired bars labeled from their own `Description`. No
+  conveyor-membership table needed in the payload; the Line node
+  already carries the aggregated Runtime + Total. A different site
+  with different topology renders its own circuits/lines from its
+  payload with zero frontend code change.
+- **D4 -- "Total" charts compose from line-level data.** "Total 57's
+  TPH" = `Line.A.tph + Line.B.tph` (sum of per-line averages, per
+  the PDF). Same for "Total 57's Yield" and "Total 57's Produced".
+  The backend emits per-line monthly aggregates plus per-circuit
+  monthly aggregates (for the cross-line totals); the frontend
+  renders whichever the chart needs.
+- **D5 -- Yield definition.** `yield_per_report = Line.Total /
+  Workcenter.Total`. Monthly yield = mean of per-report yields. PDF
+  numbers cross-check: site 101 January, 57-1 monthly yield ≈ 0.35;
+  Line A.A daily Total ≈ 1080 vs Workcenter.Total ≈ 3260 → 0.33
+  per-report yield, monthly average ≈ 0.35. Close enough that this
+  is the right formula.
+- **D6 -- One chart panel per workcenter.** Each production-report
+  payload is per-workcenter, so a single-workcenter chart matches
+  the data grain naturally and matches the manager's PDF style
+  (one series of bars per month, no per-dept multiplexing). Trends
+  layout: existing cross-workcenter line charts stay at the top
+  (Total Tons by Workcenter / TPH by Workcenter) as the
+  side-by-side overview; below them, sections grouped by
+  workcenter render the bar charts. Each workcenter section
+  contains its own copy of the Phase 14a workcenter charts and the
+  Phase 14b circuit/line charts. A workcenter with no Circuit
+  hierarchy in its payload (Wash Plant likely) just shows the
+  workcenter-level charts and skips the circuit panels.
+- **D7 -- Fallback for Rate and Availability when null.**
+  - `avg_tph_fed` per report: prefer `Workcenter.Rate`; if null,
+    fall back to `Workcenter.Total / Workcenter.Runtime` when both
+    are present and Runtime > 0. Else None for that report.
+  - `avg_runtime_pct` per report: prefer `Workcenter.Availability`;
+    if null, fall back to `min(100, Runtime / Scheduled_Runtime *
+    100)` when both are present and Scheduled_Runtime > 0. Else
+    None.
+  - Monthly average across reports skips Nones; if every report in
+    a (dept, month) bucket is None, the monthly value is None and
+    the chart shows a gap for that month.
+
+### Phase 14a -- Workcenter monthly bar charts (IMPLEMENTED 2026-04-28, browser QA pending)
+
+Two new chart panels per workcenter, added to the Trends grid in
+per-workcenter sections (one section per dept):
+- **Total TPH Fed** -- monthly mean of `Workcenter.Rate` (with
+  fallback to `Total / Runtime` per D7). Bar chart, single series,
+  one bar per month.
+- **Runtime %** -- monthly mean of `Workcenter.Availability`
+  (with fallback to `Runtime / Scheduled_Runtime * 100` per D7).
+  Same shape.
+
+#### Files to modify
+
+- [ ] `backend/app/services/production_report.py` -- extend
+      `MonthlyRollup` with `avg_tph_fed: float | None` and
+      `avg_runtime_pct: float | None`. Compute in `get_monthly_rollup`
+      as `mean(Workcenter.Rate for r in group if Rate is not None)`
+      and `mean(Workcenter.Availability for r in group)`. None when
+      no reports contribute a non-null value.
+- [ ] `backend/app/schemas/production_report.py` -- add the same
+      fields to `MonthlyRollupEntry` with descriptions.
+- [ ] `backend/app/api/routes/production_report.py` --
+      `_to_rollup_entry` propagates the new fields.
+- [ ] `backend/tests/api/test_production_report.py` -- extend the
+      shape-expected set in
+      `test_monthly_rollup_rollup_entry_fields_present`. Add at
+      least one positive test that verifies `avg_tph_fed` is the
+      mean of input Rates.
+- [ ] `frontend/app.js` -- two new `_renderTrendPanel(...)` calls in
+      `renderTrends()`. Use `Chart.js` `bar` type. Title each panel,
+      label per-bar values inline (matches the PDF style).
+      Per-workcenter colors reuse `TREND_COLORS`.
+
+#### Verification
+
+- [ ] `pytest` passes; new tests cover the avg fields.
+- [ ] Hit `/api/production-report/monthly-rollup` against fresh data
+      and eyeball that `avg_tph_fed` and `avg_runtime_pct` agree
+      with manual averages of Workcenter.Rate / Workcenter.Availability.
+- [ ] Trends tab renders the two new bar chart panels alongside the
+      existing line charts.
+- [ ] Compare numbers to the manager's PDF for a known month (e.g.
+      April 2026 if the data set has it).
+
+### Phase 14b -- Circuit / Line monthly bar charts
+
+Six chart panels powered by one new endpoint. The endpoint walks the
+Circuit hierarchy across reports and emits per-(circuit, line, month)
+aggregates dynamically.
+
+#### New endpoint
+
+`GET /api/production-report/circuit-monthly-rollup?site_id=...&from_month=YYYY-MM&to_month=YYYY-MM&department_id=...`
+
+Response shape (dynamic per site):
+```json
+{
+  "site_id": "101",
+  "department_id": "127",
+  "from_month": "2026-01",
+  "to_month": "2026-04",
+  "generated_at": "...",
+  "circuits": [
+    {
+      "id": "A",
+      "description": "Main Circuit",
+      "monthly": [
+        { "month": "2026-04", "total_tons": ..., "runtime_hours": ...,
+          "avg_tph": ..., "avg_yield": ..., "report_count": 30 }
+      ],
+      "lines": [
+        { "id": "A", "description": "57-1", "monthly": [...] },
+        { "id": "B", "description": "57-2", "monthly": [...] }
+      ]
+    },
+    { "id": "B", "description": "CR Circuit", "monthly": [...], "lines": [] }
+  ]
+}
+```
+
+Aggregation rules per (circuit, month) and per (circuit, line, month):
+- `total_tons` = sum of `node.Total` across reports in window
+- `runtime_hours` = sum of `node.Runtime` across reports
+- `avg_tph` = mean of per-report `node.Total / node.Runtime` where
+  `node.Runtime > 0`. None when no reports qualify.
+- `avg_yield` = mean of per-report `node.Total / Workcenter.Total`
+  where `Workcenter.Total > 0`. None otherwise.
+- `report_count` = number of reports contributing to this bucket.
+
+#### Six chart panels driven by the endpoint
+
+| Chart | Data path |
+|---|---|
+| 57's TPH per Circuit | Circuit A's lines, paired bars by line.description, value = `line.monthly[m].avg_tph` |
+| Total 57's TPH | Circuit A circuit-level, single bar, value = `circuit.monthly[m].avg_tph` (or sum of lines' avg_tph -- mathematically equivalent for the sum-of-means formulation) |
+| 57's Yield | Same shape as 57's TPH per Circuit, value = `line.monthly[m].avg_yield` |
+| Total 57's Yield | Same shape as Total 57's TPH, value = `circuit.monthly[m].avg_yield` |
+| Total 57's Produced | Circuit A circuit-level, single bar per month, value = `circuit.monthly[m].total_tons` |
+| 57's tons per circuit | Same shape as 57's TPH per Circuit, value = `line.monthly[m].total_tons` |
+
+Frontend renders these by iterating the response's circuits and
+their lines. Labels come from `description`. A site whose
+`Circuit.X.Description` is "Stone Crusher" renders that label
+instead of "Main Circuit" with no code change.
+
+#### Files to add / modify
+
+- [ ] `backend/app/services/production_report.py` -- new
+      dataclasses `LineMonthly`, `CircuitMonthly`,
+      `CircuitMonthlyRollup` (the response wrapper). New service
+      function `get_circuit_monthly_rollup(source, *, site_id,
+      from_month, to_month, department_id)` that walks each
+      report's `Metrics.Circuit` tree and emits the rollup.
+- [ ] `backend/app/schemas/production_report.py` -- Pydantic
+      mirrors of the above with descriptions.
+- [ ] `backend/app/api/routes/production_report.py` -- new route
+      `/circuit-monthly-rollup`. Same parameter validation as
+      `/monthly-rollup`.
+- [ ] `backend/tests/api/test_production_report.py` -- 4-6 new
+      tests: shape, dynamic descriptions, missing circuits, lines
+      vs. no-lines circuits, yield-zero handling.
+- [ ] `frontend/app.js` -- `refreshTrends` now fetches BOTH
+      `monthly-rollup` and `circuit-monthly-rollup`. Renders the
+      six new chart panels alongside the existing four (workcenter
+      lines + 14a workcenter bars).
+
+#### Verification
+
+- [ ] `pytest` passes.
+- [ ] Hit the new endpoint with January 2026 data; confirm avg_tph
+      and avg_yield numbers match the manager's PDF for Big Canyon
+      Jan-Apr 2026.
+- [ ] Site 102 (synthetic): confirm the dynamic rendering doesn't
+      break -- if site 102's payloads have a different `Circuit`
+      shape or no `Description` fields, the dashboard either
+      degrades gracefully (skip that panel for the site) or renders
+      the bars labeled by the raw `Circuit` keys (`A`, `B`).
+- [ ] Theme toggle light/dark works for all new panels.
+
+### Phase 14c -- Conveyor product-grouped comparison (DEFERRED)
+
+Compare conveyors that ran the same product over the window. Group
+by `Produced_Item_Code`, render paired bars per conveyor.
+
+Lower priority; the Phase 14b line-level charts already give the
+production-management view. Plan in detail when 14a/b ship.
+
+### Phase 14d -- Wash Plant TPH by Shift (DEFERRED)
+
+Wash plant is a separate department_id at site 101. Same machinery
+as Phase 14a (avg of Workcenter.Rate per month) but grouped by
+`(department_id, shift, month)`. Requires confirming the wash plant
+emits production reports through `[UNS].[SITE_PRODUCTION_RUN_REPORTS]`
+with `entry.shift` populated via the Phase 8 history join.
+
+### Out of scope (entire Phase 14)
+
+- Time-weighted averages instead of simple averages (D1 explicitly
+  defers; can add as a separate metric later).
+- A "Management" tab separate from Trends (D2 explicitly defers).
+- Adding conveyor-to-line membership at the payload level (D3
+  explicitly avoids; line-level metrics are already in the Circuit
+  hierarchy).
+- Backfilling historical data with the new payload field set --
+  assumes upstream data is already populating Workcenter.Rate /
+  Availability / Total / Scheduled_Runtime as documented in the
+  payload schema.
+
 ## Phase 13 -- Remove CSV as a production source (IMPLEMENTED 2026-04-28, browser QA pending)
 
 ### Goal
