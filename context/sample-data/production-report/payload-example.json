@@ -11,62 +11,70 @@
       "Availability": 0.0,
       "Runtime": 0.0,
       "Produced_Item_Description": "_",
-      "Belt_Scale_Availability": 100.0,
-      "Total": 0.0,
+      "Belt_Scale_Availability": 80.7,
+      "Rate": 15.7,
+      "Total": 79.3,
       "Produced_Item_Code": "_",
       "Performance": null
     },
     "C4": {
-      "Availability": 5.7,
-      "Runtime": 31.2,
+      "Availability": 71.8,
+      "Runtime": 3.6,
       "Produced_Item_Description": "#57",
-      "Belt_Scale_Availability": 100.0,
-      "Total": 0.0,
+      "Belt_Scale_Availability": 81.0,
+      "Rate": 198.2,
+      "Total": 1001.1,
       "Produced_Item_Code": "ST3510",
-      "Performance": 0.0
+      "Performance": 83.7
     },
     "C5": {
-      "Availability": 5.7,
-      "Runtime": 31.2,
+      "Availability": 71.6,
+      "Runtime": 3.6,
       "Produced_Item_Description": "#57",
-      "Belt_Scale_Availability": 100.0,
-      "Total": 0.0,
+      "Belt_Scale_Availability": 81.1,
+      "Rate": 241.4,
+      "Total": 1219.5,
       "Produced_Item_Code": "ST3510",
-      "Performance": 0.0
+      "Performance": 102.2
     },
     "Workcenter": {
-      "Availability": 5.3,
+      "Availability": 100.0,
       "Production_Mode": "2",
-      "Start_Time": "06:30:00",
-      "Scheduled_Hours": "0",
-      "Total": null,
-      "Actual_Runtime_Hours": 9.2,
+      "Runtime": 5.1,
+      "Start_Time": "12:42:00",
+      "Ideal_Rate": 1000.0,
+      "Rate": 646.0,
+      "Total": 3263.0,
       "Scheduled_Status": "Scheduled",
-      "Performance": null
+      "Performance": 64.6,
+      "Scheduled_Runtime": 5.0
     },
     "C6": {
       "Availability": 0.0,
       "Runtime": 0.0,
       "Produced_Item_Description": "_",
       "Belt_Scale_Availability": 0.0,
+      "Rate": 0.0,
       "Total": 0.0,
       "Produced_Item_Code": "_",
       "Performance": null
     },
     "C7": {
-      "Availability": 0.0,
-      "Runtime": 0.0,
+      "Availability": 67.1,
+      "Runtime": 3.4,
       "Produced_Item_Description": "_",
-      "Belt_Scale_Availability": 0.0,
-      "Total": 0.0,
+      "Belt_Scale_Availability": 78.7,
+      "Rate": 104.5,
+      "Total": 527.7,
       "Produced_Item_Code": "_",
-      "Performance": null
+      "Performance": 61.8
     },
     "C8": {
       "Availability": 0.0,
       "Runtime": 0.0,
       "Produced_Item_Description": "1 1/2IN CRUSHER RUN",
       "Belt_Scale_Availability": 0.0,
+      "Rate": 0.0,
       "Total": 0.0,
       "Produced_Item_Code": "ST5450",
       "Performance": null
@@ -75,30 +83,35 @@
       "A": {
         "Line": {
           "A": {
-            "Runtime": 32.4,
-            "Total": null
+            "Runtime": 3.6,
+            "Description": "57-1",
+            "Total": 1080.4
           },
           "B": {
-            "Runtime": 31.2,
-            "Total": null
+            "Runtime": 3.6,
+            "Description": "57-2",
+            "Total": 1219.5
           }
         },
-        "Runtime": 63.5,
-        "Total": null
+        "Runtime": 7.2,
+        "Description": "Main Circuit",
+        "Total": 2299.9
       },
       "B": {
         "Runtime": 0.0,
-        "Total": null
+        "Description": "CR Circuit",
+        "Total": 0.0
       }
     },
     "C1": {
-      "Availability": 5.7,
-      "Runtime": 31.3,
+      "Availability": 72.3,
+      "Runtime": 3.7,
       "Produced_Item_Description": "_",
-      "Belt_Scale_Availability": 100.0,
-      "Total": 0.0,
+      "Belt_Scale_Availability": 80.1,
+      "Rate": 750.5,
+      "Total": 3790.8,
       "Produced_Item_Code": "_",
-      "Performance": 0.0
+      "Performance": 108.6
     }
   }
 }

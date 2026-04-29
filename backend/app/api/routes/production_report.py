@@ -290,7 +290,7 @@ def _to_rollup_entry(r: MonthlyRollup) -> MonthlyRollupEntry:
         department_name=r.department_name,  # Phase 12; non-null per Phase 13 contract.
         month=r.month,
         total_tons=r.total_tons,
-        total_runtime_minutes=r.total_runtime_minutes,
+        total_runtime_hours=r.total_runtime_hours,
         tph=r.tph,
         report_count=r.report_count,
     )
@@ -303,9 +303,9 @@ def _to_rollup_entry(r: MonthlyRollup) -> MonthlyRollupEntry:
     description=(
         "Computes one row per (department_id, year-month) within "
         "[from_month, to_month]. Aggregates: total_tons (sum of "
-        "belt-scaled CX conveyor totals), total_runtime_minutes "
-        "(Workcenter.Runtime, with Actual_Runtime_Hours*60 fallback), "
-        "tph (tons-per-hour, null when runtime is 0), and "
+        "belt-scaled CX conveyor totals), total_runtime_hours "
+        "(sum of Workcenter.Runtime in decimal hours), tph "
+        "(tons-per-hour, null when runtime is 0), and "
         "report_count. Used by the dashboard's Trends tab. "
         "Future versions may swap the underlying data path to "
         "Flow-sourced monthly interval metrics; the wire shape is "

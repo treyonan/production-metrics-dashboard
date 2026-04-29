@@ -52,13 +52,19 @@ these exact names:
 | `Performance` | number (percent) or null | Nullable — rendering shows a dash |
 | `Total` | number (tons) or null | Nullable — rendering shows a dash |
 | `Scheduled_Status` | string | One of `Scheduled`, `Unscheduled`, or site-specific |
-| `Actual_Runtime_Hours` | number (hours) or null | Used when `Runtime` (minutes) isn't supplied |
-| `Runtime` | number (minutes) or null | Preferred over `Actual_Runtime_Hours`; either satisfies the KPI |
+| `Runtime` | number (decimal hours) | Required. Workcenter runtime so far this shift/day. |
+| `Scheduled_Runtime` | number (decimal hours) | Required. Scheduled runtime for this shift/day. |
 
 **Why:** these four KPIs (Availability, Performance, Runtime, Total)
 are the fixed card set on every workcenter panel. Different field
 names at different sites would require per-site rendering logic —
 defeating the point of a shared dashboard.
+
+**Unit note (2026-04-28):** all `Runtime` values across the payload —
+workcenter, asset, circuit, line — are decimal hours. The legacy
+`Actual_Runtime_Hours` / `Scheduled_Hours` field names and the
+asset-runtime-in-minutes quirk are gone. Code should never multiply
+or divide a `Runtime` by 60.
 
 **If violated:** the KPI card for the missing field renders `—`
 (em dash). The panel still draws. No crash. But operators looking
@@ -155,13 +161,13 @@ alphabetical is a defensible default.
 |---|---|---|
 | Asset | (the key name) | Display label is the raw payload key |
 | Availability % | `Availability` | |
-| Runtime (min) | `Runtime` | |
+| Runtime (hours) | `Runtime` | Decimal hours |
 | Performance % | `Performance` | |
-| Total (tons) | `Total` | |
+| Total (tons) | `Workcenter.Total` | Workcenter-level total (tons fed), repeated per asset row -- not the per-conveyor total. Per-conveyor outputs are surfaced via the conveyor-totals bar chart below the asset table (Phase 5). |
 | Product | `Produced_Item_Code` + `Produced_Item_Description` | Combined display |
 | Belt Scale % | `Belt_Scale_Availability` | |
 
-Fields present on an asset that are NOT in this list (e.g. a
+Fields present on an asset that are not in this list (e.g. a
 crusher's `Closed_Side_Setting` or a screen's `Deck_Angle`) are
 silently dropped in v1.
 

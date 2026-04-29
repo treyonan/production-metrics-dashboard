@@ -413,15 +413,19 @@
   }
 
   // --- single-report panel (KPI cards + asset table) ---
-  function assetRow(label, m) {
+  function assetRow(label, m, wc) {
     const item = placeholderize(m.Produced_Item_Code);
     const itemDesc = placeholderize(m.Produced_Item_Description);
+    // Total (tons) per row is the WORKCENTER-level Total (tons fed),
+    // not the per-asset Total -- so every asset row in the same
+    // workcenter shows the same number. The per-conveyor outputs are
+    // surfaced separately in the conveyor-totals bar chart below.
     return el("tr", {}, [
       el("td", {}, label),
       el("td", {}, fmt1(m.Availability)),
       el("td", {}, fmt1(m.Runtime)),
       el("td", {}, m.Performance === null ? "\u2014" : fmt1(m.Performance)),
-      el("td", {}, fmtInt(m.Total)),
+      el("td", {}, wc && (wc.Total !== null && wc.Total !== undefined) ? fmtInt(wc.Total) : "\u2014"),
       el("td", {}, item === "\u2014" ? "\u2014" : `${item} (${itemDesc})`),
       el("td", {}, m.Belt_Scale_Availability === undefined ? "\u2014" : fmt1(m.Belt_Scale_Availability)),
     ]);
@@ -438,8 +442,8 @@
         el("div", { class: "kv" }, wc.Performance === null ? "\u2014" : fmt1(wc.Performance) + "%"),
       ]),
       el("div", { class: "kc sk" }, [
-        el("div", { class: "kl" }, "Runtime (min)"),
-        el("div", { class: "kv" }, fmt1(wc.Runtime ?? wc.Actual_Runtime_Hours * 60)),
+        el("div", { class: "kl" }, "Runtime (hours)"),
+        el("div", { class: "kv" }, fmt1(wc.Runtime)),
         el("div", { class: "km" }, wc.Scheduled_Runtime ? `Scheduled: ${fmt1(wc.Scheduled_Runtime)}` : ""),
       ]),
       el("div", { class: "kc sk" }, [
@@ -465,12 +469,12 @@
     const assetKeys = Object.keys(metrics)
       .filter((k) => /^C\d+$/.test(k))
       .sort((a, b) => parseInt(a.slice(1)) - parseInt(b.slice(1)));
-    const rows = assetKeys.map((k) => assetRow(k, metrics[k]));
+    const rows = assetKeys.map((k) => assetRow(k, metrics[k], wc));
     const table = el("table", { class: "mx" }, [
       el("thead", {}, el("tr", {}, [
         el("th", {}, "Asset"),
         el("th", {}, "Availability %"),
-        el("th", {}, "Runtime (min)"),
+        el("th", {}, "Runtime (hours)"),
         el("th", {}, "Performance %"),
         el("th", {}, "Total (tons)"),
         el("th", {}, "Product"),
@@ -540,7 +544,7 @@
       el("td", {}, weatherSummary(entry)),
       el("td", {}, fmt1(wc.Availability)),
       el("td", {}, wc.Performance === null ? "\u2014" : fmt1(wc.Performance)),
-      el("td", {}, fmt1(wc.Runtime ?? (wc.Actual_Runtime_Hours != null ? wc.Actual_Runtime_Hours * 60 : null))),
+      el("td", {}, fmt1(wc.Runtime)),
       el("td", {}, wc.Total === null || wc.Total === undefined ? "\u2014" : fmtInt(wc.Total)),
       el("td", {}, detailsButton(entry)),
     ]);
@@ -564,7 +568,7 @@
         el("th", {}, "Weather"),
         el("th", {}, "Availability %"),
         el("th", {}, "Performance %"),
-        el("th", {}, "Runtime (min)"),
+        el("th", {}, "Runtime (hours)"),
         el("th", {}, "Total (tons)"),
         el("th", {}, "Details"),
       ])),
@@ -824,6 +828,7 @@
     for (const deptId of sortedDepts) {
       for (const entry of grouped.get(deptId)) {
         const metrics = entry.payload && entry.payload.Metrics ? entry.payload.Metrics : {};
+        const wc = (metrics.Workcenter && typeof metrics.Workcenter === "object") ? metrics.Workcenter : {};
         const siteObj = (metrics.Site && typeof metrics.Site === "object") ? metrics.Site : {};
         const assetKeys = Object.keys(metrics)
           .filter((k) => /^C\d+$/.test(k))
@@ -842,9 +847,12 @@
             "Production ID": entry.prod_id || "",
             "Asset": k,
             "Availability %": numOrEmpty(m.Availability),
-            "Runtime (min)": numOrEmpty(m.Runtime),
+            "Runtime (hours)": numOrEmpty(m.Runtime),
             "Performance %": numOrEmpty(m.Performance),
-            "Total (tons)": numOrEmpty(m.Total),
+            // Total (tons) is the WORKCENTER-level total (tons fed),
+            // repeated across every asset row of the same report --
+            // matches the dashboard table behavior.
+            "Total (tons)": numOrEmpty(wc.Total),
             "Product Code": strOrEmpty(m.Produced_Item_Code),
             "Product Description": strOrEmpty(m.Produced_Item_Description),
             "Belt Scale %": numOrEmpty(m.Belt_Scale_Availability),
@@ -913,7 +921,7 @@
 
       const columnFormats = {
         "Availability %": '0.0"%"',
-        "Runtime (min)": "0.0",
+        "Runtime (hours)": "0.0",
         "Performance %": '0.0"%"',
         "Total (tons)": "#,##0",
         "Belt Scale %": '0.0"%"',

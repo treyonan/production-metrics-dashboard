@@ -18,6 +18,10 @@ Everything sits under a single top-level `Metrics` key.
 
 ## Raw example
 
+See `payload-example.json` alongside this file for the canonical
+single-row sample (always kept current). Abridged version below for
+quick reference -- runtimes in **decimal hours** throughout.
+
 ```json
 {
   "Metrics": {
@@ -29,23 +33,26 @@ Everything sits under a single top-level `Metrics` key.
       "Shot_Number_Two": "None"
     },
     "Workcenter": {
-      "Availability": 5.3,
+      "Availability": 100.0,
       "Production_Mode": "2",
-      "Start_Time": "06:30:00",
-      "Scheduled_Hours": "0",
-      "Total": null,
-      "Actual_Runtime_Hours": 9.2,
+      "Start_Time": "12:42:00",
+      "Scheduled_Runtime": 5.0,
+      "Runtime": 5.1,
+      "Total": 3263.0,
+      "Rate": 646.0,
+      "Ideal_Rate": 1000.0,
       "Scheduled_Status": "Scheduled",
-      "Performance": null
+      "Performance": 64.6
     },
     "C1": {
-      "Availability": 5.7,
-      "Runtime": 31.3,
-      "Produced_Item_Description": "_",
-      "Belt_Scale_Availability": 100.0,
-      "Total": 0.0,
+      "Availability": 72.3,
+      "Runtime": 3.7,
+      "Rate": 750.5,
+      "Total": 3790.8,
+      "Belt_Scale_Availability": 80.1,
       "Produced_Item_Code": "_",
-      "Performance": 0.0
+      "Produced_Item_Description": "_",
+      "Performance": 108.6
     },
     "C3": { "...": "same shape as C1" },
     "C4": { "...": "same shape as C1" },
@@ -55,16 +62,18 @@ Everything sits under a single top-level `Metrics` key.
     "C8": { "...": "same shape as C1" },
     "Circuit": {
       "A": {
+        "Description": "Main Circuit",
         "Line": {
-          "A": { "Runtime": 32.4, "Total": null },
-          "B": { "Runtime": 31.2, "Total": null }
+          "A": { "Description": "57-1", "Runtime": 3.6, "Total": 1080.4 },
+          "B": { "Description": "57-2", "Runtime": 3.6, "Total": 1219.5 }
         },
-        "Runtime": 63.5,
-        "Total": null
+        "Runtime": 7.2,
+        "Total": 2299.9
       },
       "B": {
+        "Description": "CR Circuit",
         "Runtime": 0.0,
-        "Total": null
+        "Total": 0.0
       }
     }
   }
@@ -79,7 +88,7 @@ Everything sits under a single top-level `Metrics` key.
 | `Metrics.Site` | object | Operators, shot numbers, manual entries. Mostly strings. |
 | `Metrics.Workcenter` | object | Overall rollup for the workcenter. |
 | `Metrics.C1`, `C3`–`C8` | object | One per physical asset/conveyor. Uniform shape. |
-| `Metrics.Circuit` | object | Circuit hierarchy: circuits → lines. Runtime only. |
+| `Metrics.Circuit` | object | Circuit hierarchy: circuits → lines. Each level carries `Runtime`, `Total`, and a human-readable `Description`. |
 
 Note: `C2` is not present in this topology. Asset keys represent physical
 assets that exist at the site; assume keys may be absent, not null.
@@ -110,24 +119,26 @@ Rollup-level KPIs and schedule context.
 
 | Field | Type | Nullable | Notes |
 |---|---|---|---|
-| `Availability` | number | no | Percentage (0–100). See "Availability semantics" below. |
+| `Availability` | number | no | Percentage (0–100). Workcenter runtime ÷ scheduled runtime × 100, capped at 100. |
 | `Performance` | number \| null | **yes** | `null` when not calculable (e.g. no production). |
-| `Total` | number \| null | **yes** | Workcenter-level total (tons). Often null at rollup. |
-| `Actual_Runtime_Hours` | number | no | Runtime so far this shift/day, in **hours**. |
-| `Scheduled_Hours` | string | no | Scheduled hours as a **string**. `"0"` is common. |
+| `Total` | number \| null | **yes** | Workcenter-level total (tons fed). |
+| `Runtime` | number | no | Workcenter runtime so far this shift/day, in **decimal hours**. |
+| `Scheduled_Runtime` | number | no | Scheduled runtime for this shift/day, in **decimal hours**. |
+| `Rate` | number \| null | **yes** | Workcenter throughput rate (tons/hour). |
+| `Ideal_Rate` | number \| null | **yes** | Reference rate the workcenter is benchmarked against (tons/hour). |
 | `Start_Time` | string | no | `HH:MM:SS` 24-hour format |
 | `Production_Mode` | string | no | Placeholder for future use. Currently `"2"` for all runs. Reserved for when the workcenter operates in additional modes; human-readable mode descriptions will be defined later. |
 | `Scheduled_Status` | string | no | Enum-like. Observed: `"Scheduled"`. |
 
 **Quirks**:
-- `Scheduled_Hours` is a string (`"0"`), not a number. Mixed typing is
-  inherited from the upstream system and is not a bug.
 - `Production_Mode` looks numeric but is a string. Currently a placeholder
   (`"2"` everywhere); additional modes with human-readable descriptions
   will be added later. Treat as an opaque string for now — don't hard-code
   behavior based on its value.
-- `Performance` and `Total` commonly null when production has not started or
-  no material has moved through the scale.
+- Pre-2026-04-28 payloads had `Actual_Runtime_Hours` and `Scheduled_Hours`
+  (the latter as a string `"0"`) instead of `Runtime` and
+  `Scheduled_Runtime`. Those names are gone. Do not introduce backward-
+  compatibility fallbacks for them.
 
 ## Section: Asset metrics (`C1`, `C3`–`C8`)
 
@@ -136,7 +147,8 @@ Uniform shape per asset. Asset key is the conveyor identifier.
 | Field | Type | Nullable | Notes |
 |---|---|---|---|
 | `Availability` | number | no | Percentage (0–100). Asset runtime ÷ workcenter runtime × 100. |
-| `Runtime` | number | no | Asset runtime in **minutes**. See "Unit mismatch" below. |
+| `Runtime` | number | no | Asset runtime in **decimal hours**. |
+| `Rate` | number \| null | **yes** | Asset throughput rate (tons/hour) over the runtime. |
 | `Performance` | number \| null | **yes** | `null` when not calculable; `0.0` when calculated and zero. |
 | `Total` | number | no | Tons through the asset's belt scale for the period. `0.0` when no flow. |
 | `Belt_Scale_Availability` | number | no | Percent (0–100). Percentage of the production run during which the PLC reported the belt scale as connected. Measures PLC/scale connectivity, not material flow. |
@@ -161,36 +173,42 @@ have nested `Line` objects, others do not.
 
 | Field | Type | Nullable | Notes |
 |---|---|---|---|
-| `Circuit.<id>.Runtime` | number | no | Circuit runtime in minutes |
-| `Circuit.<id>.Total` | number \| null | **yes** | Tons through circuit; commonly null |
-| `Circuit.<id>.Line.<id>.Runtime` | number | no | Line runtime in minutes (when Line is present) |
+| `Circuit.<id>.Runtime` | number | no | Circuit runtime in **decimal hours** |
+| `Circuit.<id>.Total` | number \| null | **yes** | Tons through circuit |
+| `Circuit.<id>.Description` | string | no | Human-readable circuit name (e.g. `"Main Circuit"`, `"CR Circuit"`) |
+| `Circuit.<id>.Line.<id>.Runtime` | number | no | Line runtime in **decimal hours** (when Line is present) |
 | `Circuit.<id>.Line.<id>.Total` | number \| null | **yes** | Line tons |
+| `Circuit.<id>.Line.<id>.Description` | string | no | Human-readable line name (e.g. `"57-1"`, `"57-2"`) |
 
-Observed circuits: `A` (with `Line.A` and `Line.B`), `B` (no lines).
-Structure may differ by topology — don't assume every circuit has lines.
+Observed circuits: `A` ("Main Circuit", with `Line.A` "57-1" and
+`Line.B` "57-2"), `B` ("CR Circuit", no lines). Structure may differ
+by topology — don't assume every circuit has lines.
 
 Relates to plant topology documented in `context/domain.md`:
 Circuit A ≈ Main A / Main B lines; Circuit B ≈ CR (crusher return).
 
 ## Cross-cutting conventions
 
+### Units (2026-04-28)
+**Every `Runtime` value in the payload is decimal hours.** Workcenter,
+asset, circuit, line — all hours. The legacy minutes/hours unit-mismatch
+quirk (assets in minutes, workcenter in hours) is gone. If you find code
+that multiplies a `Runtime` by 60 or divides by 60, it predates this
+change and is a bug.
+
 ### Availability semantics
 `Availability` on an asset is expressed as a percent of workcenter runtime:
 
 ```
-asset.Availability ≈ (asset.Runtime_minutes / (Workcenter.Actual_Runtime_Hours * 60)) * 100
+asset.Availability ≈ (asset.Runtime / Workcenter.Runtime) * 100
 ```
 
-Example from the sample: C4 runtime 31.2 min ÷ (9.2 h × 60 min) ≈ 5.65% →
-reported as `5.7`. Minor rounding drift is expected.
+`Availability` on a workcenter is expressed as a percent of scheduled runtime
+(capped at 100):
 
-*Confirm this derivation against a known-good period before treating it as
-authoritative.*
-
-### Unit mismatch
-- Asset and circuit `Runtime` values are in **minutes**.
-- Workcenter `Actual_Runtime_Hours` is in **hours**.
-- The key names carry the unit; respect them. Don't assume a shared unit.
+```
+Workcenter.Availability ≈ min(100, (Workcenter.Runtime / Workcenter.Scheduled_Runtime) * 100)
+```
 
 ### Null vs. zero vs. placeholder
 Three distinct "empty" representations in this payload, each with meaning:
@@ -207,7 +225,7 @@ zero, and something sensible (or `—`) for placeholders.
 
 ### Mixed string/number typing
 Some numeric-looking fields are strings in this payload:
-- `Site.Loads_15_Ton`, `Workcenter.Scheduled_Hours`, `Workcenter.Production_Mode`
+- `Site.Loads_15_Ton`, `Workcenter.Production_Mode`
 
 This is upstream behavior; don't try to "fix" it in SQL. Parse defensively
 in Python.
@@ -233,7 +251,8 @@ from pydantic import BaseModel, Field
 
 class AssetMetrics(BaseModel):
     availability: float = Field(alias="Availability")
-    runtime: float = Field(alias="Runtime")  # minutes
+    runtime: float = Field(alias="Runtime")  # decimal hours
+    rate: Optional[float] = Field(alias="Rate", default=None)
     performance: Optional[float] = Field(alias="Performance", default=None)
     total: float = Field(alias="Total")
     belt_scale_availability: float = Field(alias="Belt_Scale_Availability")
@@ -244,8 +263,10 @@ class Workcenter(BaseModel):
     availability: float = Field(alias="Availability")
     performance: Optional[float] = Field(alias="Performance", default=None)
     total: Optional[float] = Field(alias="Total", default=None)
-    actual_runtime_hours: float = Field(alias="Actual_Runtime_Hours")
-    scheduled_hours: str = Field(alias="Scheduled_Hours")  # string upstream
+    runtime: float = Field(alias="Runtime")                      # decimal hours
+    scheduled_runtime: float = Field(alias="Scheduled_Runtime")  # decimal hours
+    rate: Optional[float] = Field(alias="Rate", default=None)
+    ideal_rate: Optional[float] = Field(alias="Ideal_Rate", default=None)
     start_time: str = Field(alias="Start_Time")
     production_mode: str = Field(alias="Production_Mode")
     scheduled_status: str = Field(alias="Scheduled_Status")
@@ -264,8 +285,9 @@ Document answers in `tasks/decisions/` or inline in this file as they're resolve
 1. **Scheduled_Status values.** Full enum? (`"Scheduled"`, `"Unscheduled"`, others?)
 2. **C2 absence.** Confirm C2 doesn't exist at this site, and that missing
    keys are expected (not a data error).
-3. **Availability formula.** Confirm the `runtime_min / (runtime_hr × 60) × 100`
-   derivation above is how upstream computes it.
+3. **Availability formula.** Confirmed 2026-04-28: asset Availability =
+   asset.Runtime / Workcenter.Runtime × 100 (both in hours);
+   Workcenter Availability = min(100, Runtime / Scheduled_Runtime × 100).
 4. **Performance formula.** OEE = A × P × Q — where does Q (quality) come
    from? Not apparent in this payload.
 5. **Circuit/Line topology.** Confirm circuit-to-physical-asset mapping

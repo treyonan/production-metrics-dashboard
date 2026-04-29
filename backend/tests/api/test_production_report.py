@@ -342,7 +342,7 @@ def test_monthly_rollup_rollup_entry_fields_present(client) -> None:
     sample = body["rollups"][0]
     expected = {
         "department_id", "month", "total_tons",
-        "total_runtime_minutes", "tph", "report_count",
+        "total_runtime_hours", "tph", "report_count",
     }
     assert expected.issubset(sample.keys())
     # Month always YYYY-MM.
@@ -433,7 +433,7 @@ def test_monthly_rollup_tph_null_when_runtime_zero(client) -> None:
     # At least one rollup with runtime > 0 should have a numeric tph;
     # any rollup with runtime == 0 should have tph == None.
     for r in body["rollups"]:
-        if r["total_runtime_minutes"] == 0:
+        if r["total_runtime_hours"] == 0:
             assert r["tph"] is None
         else:
             assert isinstance(r["tph"], (int, float))

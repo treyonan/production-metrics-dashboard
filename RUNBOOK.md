@@ -371,14 +371,19 @@ uses the data already cached from the last poll, no API round trip.
 
 - One flat sheet per export, named after the selection slug
   (`2026-04-23` for a day, `2026-04` for a month). One row per
-  (workcenter, report, asset). Columns (Phase 8 added the last six):
-  Site / Site ID / Dept ID / Prod. Date / Production ID / Asset /
-  Availability % / Runtime (min) / Performance % / Total (tons) /
-  Product Code / Product Description / Belt Scale % / Shift /
-  Weather Conditions / Avg Temp / Avg Humidity / Max Wind / Notes.
-  19 columns total. Weather + notes repeat across the assets of a
-  given report (same shift = same weather), which Excel pivots
-  collapse transparently.
+  (workcenter, report, asset). Columns:
+  Site / Site ID / Department ID / Department / Prod. Date /
+  Production ID / Asset / Availability % / Runtime (hours) /
+  Performance % / Total (tons) / Product Code / Product Description /
+  Belt Scale % / Shift / Weather Conditions / Avg Temp /
+  Avg Humidity / Max Wind / Notes / (dynamic Site:* fields).
+  `Total (tons)` is the workcenter-level total (`Workcenter.Total`,
+  tons fed) repeated across every asset row in the same report --
+  matches the dashboard table behavior. Per-conveyor output tonnage
+  is surfaced separately by the conveyor-totals bar chart on the
+  dashboard. Weather + notes repeat across the assets of a given
+  report (same shift = same weather), which Excel pivots collapse
+  transparently.
 - Null values export as truly-blank cells (not em-dash, not empty
   strings) -- Excel `AVERAGE` and `SUM` skip them, `COUNTA` returns
   0 on them.

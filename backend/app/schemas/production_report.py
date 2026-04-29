@@ -244,20 +244,21 @@ class MonthlyRollupEntry(BaseModel):
             "selection as Phase 5's bar-chart aggregation."
         )
     )
-    total_runtime_minutes: float = Field(
+    total_runtime_hours: float = Field(
         description=(
-            "Sum of Workcenter.Runtime across every report in this "
-            "month. Falls back to Actual_Runtime_Hours * 60 when "
-            "Runtime is null. Zero is a valid value (workcenter not "
-            "scheduled or fully down)."
+            "Sum of Workcenter.Runtime (decimal hours) across every "
+            "report in this month. Zero is a valid value (workcenter "
+            "not scheduled or fully down). All payload runtime values "
+            "are decimal hours as of 2026-04-28; the legacy "
+            "minutes/hours unit-mismatch quirk is gone."
         )
     )
     tph: float | None = Field(
         default=None,
         description=(
-            "Tons-per-hour: total_tons / (total_runtime_minutes / 60). "
-            "Null when total_runtime_minutes is 0 (would be a divide-"
-            "by-zero). Consumers render null as em-dash or skip the "
+            "Tons-per-hour: total_tons / total_runtime_hours. Null "
+            "when total_runtime_hours is 0 (would be a divide-by-"
+            "zero). Consumers render null as em-dash or skip the "
             "data point."
         ),
     )

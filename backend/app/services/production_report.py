@@ -307,19 +307,18 @@ class MonthlyRollup:
     department_name: str
     month: str  # YYYY-MM
     total_tons: float
-    total_runtime_minutes: float
+    total_runtime_hours: float
     tph: float | None
     report_count: int
 
 
-def _runtime_minutes_from_workcenter(wc: Any) -> float:
-    """Extract a workcenter's runtime in minutes, with the same fallback
-    rule used by the dashboard:
+def _runtime_hours_from_workcenter(wc: Any) -> float:
+    """Extract a workcenter's runtime in decimal hours.
 
-      - Use ``Workcenter.Runtime`` (already in minutes) if present + finite.
-      - Otherwise fall back to ``Workcenter.Actual_Runtime_Hours * 60``
-        when present + finite.
-      - Else 0.0.
+    All payload runtime values are decimal hours as of 2026-04-28 (the
+    legacy minutes/hours unit-mismatch quirk is gone). Read
+    ``Workcenter.Runtime`` directly; defensive 0.0 fallback covers a
+    malformed payload without crashing the rollup.
     """
     if not isinstance(wc, dict):
         return 0.0
@@ -327,14 +326,6 @@ def _runtime_minutes_from_workcenter(wc: Any) -> float:
     if raw is not None:
         try:
             v = float(raw)
-            if math.isfinite(v):
-                return v
-        except (TypeError, ValueError):
-            pass
-    raw_hours = wc.get("Actual_Runtime_Hours")
-    if raw_hours is not None:
-        try:
-            v = float(raw_hours) * 60.0
             if math.isfinite(v):
                 return v
         except (TypeError, ValueError):
@@ -361,8 +352,8 @@ async def get_monthly_rollup(
         (strict /^C\d+$/) across every report in the
         (department, month) bucket. Reuses Phase 5's
         ``compute_conveyor_totals``.
-      - ``total_runtime_minutes`` sums ``Workcenter.Runtime`` per
-        report (falling back to ``Actual_Runtime_Hours * 60``).
+      - ``total_runtime_hours`` sums ``Workcenter.Runtime`` (decimal
+        hours) across every report in the bucket.
       - ``tph`` divides total_tons by total_runtime_hours; returns
         None when runtime is zero (avoids /0).
       - ``report_count`` is the number of production reports that
@@ -409,16 +400,16 @@ async def get_monthly_rollup(
         agg = next(iter(totals.values()), None)
         total_tons = agg.grand_total if agg is not None else 0.0
 
-        total_runtime_min = sum(
-            _runtime_minutes_from_workcenter(
+        total_runtime_hours = sum(
+            _runtime_hours_from_workcenter(
                 (r.payload or {}).get("Metrics", {}).get("Workcenter")
             )
             for r in group
         )
 
         tph: float | None
-        if total_runtime_min > 0:
-            tph = total_tons / (total_runtime_min / 60.0)
+        if total_runtime_hours > 0:
+            tph = total_tons / total_runtime_hours
         else:
             tph = None
 
@@ -433,7 +424,7 @@ async def get_monthly_rollup(
                 department_name=group[0].department_name,
                 month=ym,
                 total_tons=total_tons,
-                total_runtime_minutes=total_runtime_min,
+                total_runtime_hours=total_runtime_hours,
                 tph=tph,
                 report_count=len(group),
             )
