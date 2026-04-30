@@ -2033,7 +2033,7 @@ Circuit" / etc.
 
 ### Phase 14a -- Workcenter monthly bar charts (IMPLEMENTED 2026-04-28, browser QA pending)
 
-Two new chart panels per workcenter, added to the Trends grid in
+Three chart panels per workcenter, added to the Trends grid in
 per-workcenter sections (one section per dept):
 - **Total TPH Fed** -- monthly mean of `Workcenter.Rate` (with
   fallback to `Total / Runtime` per D7). Bar chart, single series,
@@ -2041,6 +2041,12 @@ per-workcenter sections (one section per dept):
 - **Runtime %** -- monthly mean of `Workcenter.Availability`
   (with fallback to `Runtime / Scheduled_Runtime * 100` per D7).
   Same shape.
+- **Performance %** -- monthly mean of `Workcenter.Performance`,
+  which equals `Rate / Ideal_Rate * 100` (OEE Performance
+  Efficiency / throughput utilization vs. nameplate). No fallback
+  chain -- if upstream Performance is null we drop that report
+  from the mean. Bundled into 14a alongside TPH Fed and Runtime %
+  so the workcenter section gives an A x P (-Q) view in one place.
 
 #### Files to modify
 
@@ -2619,4 +2625,4 @@ Next candidates (ordered by load-bearing first):
 3. Charts — Chart.js already loaded but unused; `/history` returns
    time-series-shaped data ready to render.
 4. Windows Integrated Auth / deployment hardening — needed before
-   wider access beyond the firewalled intranet.
+   wider access 

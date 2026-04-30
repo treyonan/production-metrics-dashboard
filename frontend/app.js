@@ -1681,6 +1681,16 @@
         yFormat: (v) => `${fmt1(v)}%`,
         chartType: "bar",
       }));
+
+      grid.appendChild(_renderTrendPanel({
+        title: "Performance %",
+        subtitle: "Average of Workcenter.Performance (Rate / Ideal_Rate * 100) per month.",
+        labels: months,
+        datasets: [buildBarDataset(dept, (r) => r.avg_performance_pct, idx)],
+        yLabel: "%",
+        yFormat: (v) => `${fmt1(v)}%`,
+        chartType: "bar",
+      }));
     });
   }
 

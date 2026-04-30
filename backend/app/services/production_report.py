@@ -317,6 +317,7 @@ class MonthlyRollup:
     # _avg_runtime_pct_for_report).
     avg_tph_fed: float | None
     avg_runtime_pct: float | None
+    avg_performance_pct: float | None
 
 
 def _runtime_hours_from_workcenter(wc: Any) -> float:
@@ -395,6 +396,22 @@ def _avg_runtime_pct_for_report(wc: Any) -> float | None:
     return None
 
 
+def _avg_performance_for_report(wc: Any) -> float | None:
+    """Phase 14a: per-report Performance %.
+
+    Reads ``Workcenter.Performance`` directly. In the current
+    payload schema this equals ``Rate / Ideal_Rate * 100`` (the
+    OEE Performance Efficiency component / throughput utilization
+    against nameplate capacity). Returns None when Performance
+    is null (upstream couldn't compute -- e.g., Ideal_Rate not
+    configured, or Rate was null). Monthly aggregation drops
+    None reports the same way ``avg_tph_fed`` does.
+    """
+    if not isinstance(wc, dict):
+        return None
+    return _coerce_finite_float(wc.get("Performance"))
+
+
 def _mean_or_none(values: list[float | None]) -> float | None:
     """Simple arithmetic mean over non-None values. None when empty."""
     usable = [v for v in values if v is not None]
@@ -426,6 +443,18 @@ async def get_monthly_rollup(
         hours) across every report in the bucket.
       - ``tph`` divides total_tons by total_runtime_hours; returns
         None when runtime is zero (avoids /0).
+      - ``avg_tph_fed`` (Phase 14a) is the simple mean of per-report
+        ``Workcenter.Rate`` (with fallback to Total / Runtime when
+        Rate is null but the denominators are present). None if
+        every report in the bucket lacks a usable Rate.
+      - ``avg_runtime_pct`` (Phase 14a) is the simple mean of
+        per-report ``Workcenter.Availability`` (with fallback to
+        Runtime / Scheduled_Runtime * 100). None if every report
+        lacks a usable value.
+      - ``avg_performance_pct`` (Phase 14a) is the simple mean of
+        per-report ``Workcenter.Performance`` (which equals
+        Rate / Ideal_Rate * 100 in the current payload schema).
+        None if every report has a null Performance.
       - ``report_count`` is the number of production reports that
         contributed.
 
@@ -490,6 +519,7 @@ async def get_monthly_rollup(
         # in the bucket is None.
         avg_tph_fed = _mean_or_none([_avg_tph_fed_for_report(wc) for wc in wcs])
         avg_runtime_pct = _mean_or_none([_avg_runtime_pct_for_report(wc) for wc in wcs])
+        avg_performance_pct = _mean_or_none([_avg_performance_for_report(wc) for wc in wcs])
 
         # Phase 12: lift department_name off any row in the group. All
         # rows in a (dept_id, month) bucket share the same dept_id and
@@ -507,6 +537,7 @@ async def get_monthly_rollup(
                 report_count=len(group),
                 avg_tph_fed=avg_tph_fed,
                 avg_runtime_pct=avg_runtime_pct,
+                avg_performance_pct=avg_performance_pct,
             )
         )
 

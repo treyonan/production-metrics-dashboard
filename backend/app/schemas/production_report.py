@@ -293,6 +293,18 @@ class MonthlyRollupEntry(BaseModel):
             "Null when no report in the bucket has a usable value."
         ),
     )
+    avg_performance_pct: float | None = Field(
+        default=None,
+        description=(
+            "Phase 14a. Simple arithmetic mean of per-report "
+            "Workcenter.Performance, which in the current payload "
+            "schema equals Rate / Ideal_Rate * 100 (the OEE "
+            "Performance Efficiency component / throughput "
+            "utilization against nameplate capacity). Drives the "
+            "'Performance %' bar chart. Null when no report in "
+            "the bucket has a non-null Performance value."
+        ),
+    )
 
 
 class MonthlyRollupResponse(BaseModel):

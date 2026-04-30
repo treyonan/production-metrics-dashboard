@@ -237,3 +237,62 @@ async def test_avg_runtime_pct_none_when_all_unusable() -> None:
         to_month=date(2026, 4, 30),
     )
     assert rollups[0].avg_runtime_pct is None
+
+
+@pytest.mark.asyncio
+async def test_avg_performance_pct_uses_workcenter_performance() -> None:
+    """Phase 14a Performance %: simple mean of per-report
+    Workcenter.Performance (no fallback chain -- if Performance is null
+    upstream, the report drops out of the mean)."""
+    rows = [
+        _row(
+            row_id=i,
+            prod_date=datetime(2026, 4, day),
+            workcenter={"Performance": p},
+        )
+        for i, (day, p) in enumerate([(1, 60.0), (2, 80.0), (3, 100.0)], start=1)
+    ]
+    rollups = await get_monthly_rollup(
+        _FakeSource(rows),
+        site_id="101",
+        from_month=date(2026, 4, 1),
+        to_month=date(2026, 4, 30),
+    )
+    assert rollups[0].avg_performance_pct == pytest.approx(80.0)
+
+
+@pytest.mark.asyncio
+async def test_avg_performance_pct_skips_null_reports() -> None:
+    """Reports with Performance=null are dropped from the mean rather
+    than treated as zero. Three reports, two usable values, one null
+    -> mean of just the two."""
+    rows = [
+        _row(row_id=1, prod_date=datetime(2026, 4, 1), workcenter={"Performance": 70.0}),
+        _row(row_id=2, prod_date=datetime(2026, 4, 2), workcenter={"Performance": None}),
+        _row(row_id=3, prod_date=datetime(2026, 4, 3), workcenter={"Performance": 90.0}),
+    ]
+    rollups = await get_monthly_rollup(
+        _FakeSource(rows),
+        site_id="101",
+        from_month=date(2026, 4, 1),
+        to_month=date(2026, 4, 30),
+    )
+    assert rollups[0].avg_performance_pct == pytest.approx(80.0)
+    assert rollups[0].report_count == 3  # all three counted as reports
+
+
+@pytest.mark.asyncio
+async def test_avg_performance_pct_none_when_all_reports_null() -> None:
+    """Bucket where every report has Performance=null collapses to None.
+    Chart consumers render None as a gap."""
+    rows = [
+        _row(row_id=1, prod_date=datetime(2026, 4, 1), workcenter={"Performance": None}),
+        _row(row_id=2, prod_date=datetime(2026, 4, 2), workcenter={}),
+    ]
+    rollups = await get_monthly_rollup(
+        _FakeSource(rows),
+        site_id="101",
+        from_month=date(2026, 4, 1),
+        to_month=date(2026, 4, 30),
+    )
+    assert rollups[0].avg_performance_pct is None
