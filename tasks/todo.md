@@ -1422,7 +1422,7 @@ Follow-up flagged but not blocking:
   `WEATHER_SEVERITY` rather than adding a new data path. The
   console.warn surfaces unknown phrasings for triage.
 
-## Phase 9 — Interval metrics: Flow REST integration (IMPLEMENTED 2026-04-27, browser QA pending)
+## Phase 9 — Interval metrics: Flow REST integration (VERIFIED 2026-04-30 via Phase 15)
 
 **Trigger:** Implement the interval-metrics retrieval path agreed in
 the Phase 8/data-flows discussion. Backend pulls per-tag history URLs
@@ -2603,6 +2603,206 @@ TestClient + sample-CSV fixture; no real SQL required for tests.
 - Future migration to Flow-sourced monthly metrics, per the design
   conversation -- the wire contract stays stable; only the
   service's internal data path swaps.
+
+## Phase 15 -- Multi-subject-type metrics endpoints + live Flow verification (VERIFIED 2026-04-30)
+
+**Trigger:** Trey loaded the first interval-metric tag rows on
+2026-04-30: site_id=101, asset='Secondary', subject_type='workcenter',
+interval='shiftly', metrics=['Total','Rate'], department_id=127.
+Phase 9 shipped the pipeline on 2026-04-27 with no live verification
+because the tag table was empty. Two things now: generalize the
+routes (Phase 9 hardcodes subject_type='conveyor') and verify the
+pipeline against real Flow API data.
+
+### Decisions
+
+- **D1 -- Route shape: parametric path (Option B).** One pair of
+  route handlers serves all subject_types via
+  `/api/metrics/{subject_type}/{interval}` and
+  `/api/metrics/{subject_type}/subjects`. subject_type validated by
+  `Literal["conveyor", "workcenter", "circuit", "line", "equipment", "site"]`.
+  Service + source already accept subject_type as a parameter;
+  only the route hardcodes "conveyor". Trades the Phase 9
+  "peer route per subject_type" plan for less duplication.
+- **D2 -- Old `/api/metrics/conveyor/...` URLs are dropped, not
+  aliased.** Phase 9 was browser-QA-pending so nothing live consumes
+  them. Single canonical path; saves a redirect aliasing layer.
+- **D3 -- subject_type Literal is enforced at the path layer.** A
+  typo or unsupported value (e.g. /api/metrics/foo/shiftly) returns
+  422 from FastAPI's path validator before any DB or HTTP work.
+- **D4 -- Bump BUILD_TAG to "2026-04-30-phase15-metrics-multitype"**
+  so /api/__ping shows the new build is live.
+
+### Files to modify
+
+- `backend/app/api/routes/metrics.py`
+  - Replace `/conveyor/{interval}` with `/{subject_type}/{interval}`
+    and `/conveyor/subjects` with `/{subject_type}/subjects`.
+  - Add `subject_type: Annotated[Literal[...], Path(...)]` to both
+    handlers.
+  - Pass `subject_type=subject_type` (parameter) instead of
+    `subject_type="conveyor"` (literal) to the service / list call.
+  - Reflect the path value in the response envelope (already wired
+    via `IntervalMetricsResponse.subject_type` and
+    `IntervalMetricSubjectsResponse.subject_type`).
+  - Update the module docstring + summaries / descriptions to read
+    subject-type-agnostic.
+
+- `backend/tests/api/test_metrics.py`
+  - Update existing 6 tests to use the new path shape (they keep
+    using `conveyor` since that's still a valid Literal).
+  - Add 2 new tests: workcenter happy path against
+    `/api/metrics/workcenter/shiftly`, and subject_type validation
+    via `/api/metrics/foo/shiftly` returning 422.
+
+- `backend/app/main.py`
+  - Bump `BUILD_TAG` per D4.
+
+### Files NOT modified
+
+- `backend/app/services/metrics.py` -- already subject-type-agnostic.
+- `backend/app/integrations/metrics/sql_source.py` -- already
+  accepts subject_type.
+- `backend/app/integrations/metrics/queries/select_tags.sql` and
+  `select_subjects.sql` -- already parameterize on subject_type.
+- `backend/app/schemas/metrics.py` -- response models already carry
+  subject_type as a free-form string.
+
+### Verification
+
+Programmatic:
+- [x] `py_compile` clean on the two modified Python files.
+- [~] `pytest backend/tests/api/test_metrics.py` -- AST-level
+      structural verification PASSED in the Linux sandbox (3.10
+      can't parse `core/snapshot.py`'s PEP 695 generic; Trey runs
+      live pytest on his 3.12 Windows venv).
+- [ ] `pytest backend/tests` -- full suite green. (Trey, Windows.)
+
+On the Windows host (after deploy):
+- [ ] `/api/__ping` shows
+      `BUILD_TAG=2026-04-30-phase15-metrics-multitype`.
+- [x] `GET /api/metrics/workcenter/subjects?site_id=101` returns
+      Secondary with metric_names=['Total','Rate'],
+      intervals=['shiftly'], department_id=127.
+      **Verified via Swagger 2026-04-30.**
+- [x] `GET /api/metrics/workcenter/shiftly?site_id=101&subject_id=Secondary&metric=Total&from_date=2026-04-01&to_date=2026-04-30`
+      returns a populated envelope with `truncated: false`.
+      **Verified via Swagger 2026-04-30.**
+- [ ] Same call with `metric=Rate` returns Rate values.
+- [ ] Cache observation: re-fire identical request inside 15 min.
+      Container logs show no second outbound HTTP to Flow.
+- [ ] If the container can't reach `dbp-bcq:4501`: add `extra_hosts:`
+      to docker-compose.yml. Diagnose with
+      `docker compose exec api curl -v http://dbp-bcq:4501/`.
+
+### Out of scope (deferred)
+
+- Frontend integration of the workcenter shiftly metrics. Worth a
+  Phase 16 conversation -- compare Flow-sourced shiftly Total
+  against the production-report's shiftly aggregation as a cross-check.
+- Migrating production-report monthly rollups to Flow-sourced data
+  (Trey's long-term pivot). Defer until the live pipeline is proven.
+- Adding `unit` to the tag table + Ignition trigger (Phase 9
+  carryover; small follow-up).
+
+### Implementation sequence
+
+1. Rewrite `backend/app/api/routes/metrics.py` via bash + Python
+   (atomic rewrite per lessons.md).
+2. Update `backend/tests/api/test_metrics.py` likewise.
+3. Bump BUILD_TAG in `backend/app/main.py`.
+4. py_compile + pytest.
+5. Hand back to Trey for live container deploy + verification matrix.
+
+## Phase 16 -- Flow Interval Metrics page (PRODUCTION 2026-04-30)
+
+**Trigger:** After Phase 15 verified the live Flow API pipeline,
+the POC at `frontend/flow-metrics-poc.html` proved end-to-end that
+the dashboard could pull aggregated metrics from Flow directly.
+Trey promoted the page to a production-ready secondary data source
+and renamed accordingly.
+
+### Goal
+
+Provide a standalone polished page for browsing
+`/api/metrics/{subject_type}/{interval}` and `/subjects` data as a
+secondary view alongside the main dashboard's production-report
+aggregations. Useful as a verification cross-check, an Ignition
+operator tool, and the foundation for a future migration off
+in-service aggregation.
+
+### Decisions
+
+- **D1 -- Standalone page, not a tab inside the main dashboard.**
+  Path: `frontend/flow-interval-metrics.html`. Separate URL
+  (`/flow-interval-metrics.html`) keeps the main dashboard layout
+  unchanged and keeps the page deletable without touching shared
+  files. Linked back to the main dashboard via a "Dashboard" button
+  in the topbar.
+- **D2 -- Visual parity with the main dashboard.** Inline CSS uses
+  the same variable system as `frontend/app.css`
+  (--bg-shell / --bg-canvas / --bg-card / --text / --accent / etc.),
+  Segoe UI font, the same Microsoft Fluent panel + button styles.
+  Self-contained so the file remains portable, but designed to feel
+  native.
+- **D3 -- Theme parity.** Reads/writes the same `pmd-theme`
+  localStorage key as the main dashboard, so toggling theme on one
+  page persists to the other. FOUC prevention is inline (no
+  separate <head> script needed; the theme is applied before the
+  first render in the body).
+- **D4 -- Form reorganized into three logical groups.**
+  Context (site_id / subject_type / interval), Filters (optional --
+  subject_id / department_id / metric), Date range
+  (from_date / to_date side by side per Trey's request).
+- **D5 -- Subjects discovery passes department_id when set.**
+  Same filter applies to both `/subjects` and `/{interval}`.
+- **D6 -- No backend changes.** Phase 15's parametric route already
+  serves all six subject_types with the same shape.
+- **D7 -- Two-way navigation.** Dashboard topbar gains a
+  "Flow Metrics" link (between the flex spacer and the Excel
+  button); the Flow Interval Metrics page topbar already has a
+  "Dashboard" back-link. Both styled to match the existing
+  dark-shell topbar widgets via a new `.nav-link` rule in app.css.
+
+### Files
+
+- `frontend/flow-interval-metrics.html` -- single self-contained
+  file, ~13 KB. Topbar with theme toggle + Dashboard back-link;
+  three-row form panel; entries table with summary banner; status
+  pill for fetch state, errors, and truncation warnings; subjects
+  panel renders pretty-printed JSON.
+- `frontend/flow-metrics-poc.html` -- DELETED (renamed to the
+  above).
+- `frontend/index.html` -- topbar gains a `<a class="nav-link">`
+  pointing to `/flow-interval-metrics.html`, between the flex
+  spacer and the Excel button.
+- `frontend/app.css` -- new `.nav-link` rule (~20 lines) styled
+  to match `.theme-toggle` but pill-shaped for a text label.
+
+### Verification
+
+Programmatic:
+- [x] HTML brace balance + `node --check` on the embedded JS.
+
+On the Windows host (no rebuild needed for static-only changes if
+the volume is mounted; rebuild via `docker compose up --build` if
+the container bakes the frontend in):
+- [x] `http://<host>:<port>/flow-interval-metrics.html` loads.
+      Verified live by Trey on the dev box.
+- [ ] Theme toggle persists across reload and across the main
+      dashboard.
+- [ ] Filters: site_id=101 + subject_type=workcenter +
+      department_id=127 + last 14 days returns Secondary's Total +
+      Rate. Same combo with department_id=999 returns 0 entries.
+- [ ] List subjects with subject_type=workcenter returns the
+      Secondary inventory JSON.
+
+### Production deployment notes
+
+- `backend/Dockerfile` already does `COPY frontend /app/frontend`
+  on every build, so the new file is baked into the image after
+  `docker compose up --build`.
+- No env, no compose, no route registration changes required.
 
 ## Lessons captured
 

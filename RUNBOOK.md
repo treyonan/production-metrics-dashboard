@@ -114,6 +114,7 @@ Docker path. Everything else is identical.
 | What | URL |
 |---|---|
 | Dashboard | <http://127.0.0.1:8000/> |
+| Flow Interval Metrics (secondary data source) | <http://127.0.0.1:8000/flow-interval-metrics.html> |
 | Swagger UI (interactive API docs) | <http://127.0.0.1:8000/docs> |
 | ReDoc (read-only API docs) | <http://127.0.0.1:8000/redoc> |
 | OpenAPI JSON schema | <http://127.0.0.1:8000/openapi.json> |
@@ -129,6 +130,8 @@ Docker path. Everything else is identical.
 | Range — April 2026 for site 101 | <http://127.0.0.1:8000/api/production-report/range?site_id=101&from_date=2026-04-01&to_date=2026-04-30> |
 | Latest date for site 101 | <http://127.0.0.1:8000/api/production-report/latest-date?site_id=101> |
 | Build fingerprint (debug) | <http://127.0.0.1:8000/api/__ping> |
+| Interval-metric subjects (workcenter) | <http://127.0.0.1:8000/api/metrics/workcenter/subjects?site_id=101> |
+| Interval-metric history (workcenter / shiftly) | <http://127.0.0.1:8000/api/metrics/workcenter/shiftly?site_id=101&from_date=2026-04-01&to_date=2026-04-30> |
 
 Valid `/range` window width: 1-400 days (inclusive). Dates outside ISO-8601 format, `from_date > to_date`, or windows over 400 days return 422 from Pydantic / the handler.
 values return HTTP 422 from FastAPI's query validation.

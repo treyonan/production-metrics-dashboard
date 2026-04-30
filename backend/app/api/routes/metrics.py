@@ -1,13 +1,16 @@
 """/api/metrics/* routes -- interval metrics from Flow.
 
-URL namespace mirrors the spec:
-  GET /api/metrics/conveyor/{interval}
-  GET /api/metrics/conveyor/subjects
+URL namespace (parametric subject_type per Phase 15 -- 2026-04-30):
 
-Today only ``conveyor`` exists as a subject type. When equipment /
-alarm / etc. metrics land they get peer routes
-``/api/metrics/equipment/{interval}`` etc., each with their own
-DI-resolved source.
+  GET /api/metrics/{subject_type}/{interval}
+  GET /api/metrics/{subject_type}/subjects
+
+subject_type is validated by a Literal: 'conveyor', 'workcenter',
+'circuit', 'line', 'equipment', 'site'. The service layer + SQL
+source are subject-type-agnostic; only the route knows the path
+shape and the validation set. A typo or unsupported value (e.g.
+/api/metrics/foo/shiftly) returns 422 from FastAPI's path validator
+before any DB or HTTP work.
 """
 
 from __future__ import annotations
@@ -41,6 +44,10 @@ log = structlog.get_logger("api.routes.metrics")
 
 IntervalMetricSourceDep = Annotated[
     IntervalMetricSource, Depends(get_interval_metric_source)
+]
+
+SubjectTypeLiteral = Literal[
+    "conveyor", "workcenter", "circuit", "line", "equipment", "site"
 ]
 
 
@@ -81,10 +88,14 @@ def _snapshot_store(request: Request) -> SnapshotStore:
     return store
 
 
+# Note: register the more-specific `/subjects` route BEFORE the
+# parametric `/{interval}` route. Starlette / FastAPI match in
+# declaration order, and `subjects` would otherwise be tried as
+# an `interval` value and rejected by the Literal validator.
 @router.get(
-    "/conveyor/subjects",
+    "/{subject_type}/subjects",
     response_model=IntervalMetricSubjectsResponse,
-    summary="List conveyor tags available for a site",
+    summary="List interval-metric tags available for a site + subject type",
     description=(
         "Cheap discovery -- a single SELECT against "
         "[FLOW].[INTERVAL_METRIC_TAGS] with no upstream HTTP fan-out. "
@@ -93,8 +104,17 @@ def _snapshot_store(request: Request) -> SnapshotStore:
         "published)."
     ),
 )
-async def conveyor_subjects(
+async def metrics_subjects(
     source: IntervalMetricSourceDep,
+    subject_type: Annotated[
+        SubjectTypeLiteral,
+        Path(
+            description=(
+                "Subject type. One of: 'conveyor', 'workcenter', "
+                "'circuit', 'line', 'equipment', 'site'."
+            )
+        ),
+    ],
     site_id: Annotated[str, Query(description="Site to enumerate (required).")],
     department_id: Annotated[
         str | None,
@@ -104,12 +124,12 @@ async def conveyor_subjects(
     subjects = await list_metric_subjects(
         source=source,
         site_id=site_id,
-        subject_type="conveyor",
+        subject_type=subject_type,
         department_id=department_id,
     )
     return IntervalMetricSubjectsResponse(
         count=len(subjects),
-        subject_type="conveyor",
+        subject_type=subject_type,
         site_id=site_id,
         department_id=department_id,
         generated_at=datetime.now(UTC),
@@ -118,9 +138,9 @@ async def conveyor_subjects(
 
 
 @router.get(
-    "/conveyor/{interval}",
+    "/{subject_type}/{interval}",
     response_model=IntervalMetricsResponse,
-    summary="Fetch interval-metric history for conveyors",
+    summary="Fetch interval-metric history",
     description=(
         "Look up matching tags in [FLOW].[INTERVAL_METRIC_TAGS], fan "
         "out per-tag history fetches to Flow's REST API, return one "
@@ -130,9 +150,18 @@ async def conveyor_subjects(
         "narrow the window or add a tag filter and re-request."
     ),
 )
-async def conveyor_history(
+async def metrics_history(
     request: Request,
     source: IntervalMetricSourceDep,
+    subject_type: Annotated[
+        SubjectTypeLiteral,
+        Path(
+            description=(
+                "Subject type. One of: 'conveyor', 'workcenter', "
+                "'circuit', 'line', 'equipment', 'site'."
+            )
+        ),
+    ],
     interval: Annotated[
         Literal["hourly", "shiftly"],
         Path(description="Bucket regime: 'hourly' or 'shiftly'."),
@@ -170,7 +199,7 @@ async def conveyor_history(
             source=source,
             snapshot_store=store,
             site_id=site_id,
-            subject_type="conveyor",
+            subject_type=subject_type,
             interval=interval,
             from_date=from_date,
             to_date=to_date,
@@ -237,7 +266,7 @@ async def conveyor_history(
 
     return IntervalMetricsResponse(
         count=len(result.points),
-        subject_type="conveyor",
+        subject_type=subject_type,
         interval=interval,
         site_id=site_id,
         department_id=department_id,

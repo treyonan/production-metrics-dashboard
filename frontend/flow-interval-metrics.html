@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<!--
+  Flow Interval Metrics -- secondary data source
+  Reads from /api/metrics/{subject_type}/{interval} and /subjects.
+  Standalone page; not linked from the main dashboard but uses the
+  same CSS variables, fonts, and theme toggle (localStorage key:
+  "pmd-theme") so it feels native to the project.
+  Phase 16 -- promoted from POC to production 2026-04-30.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flow Interval Metrics</title>
+<style>
+  :root,
+  :root[data-theme="light"] {
+    --bg-shell: #201f1e;
+    --bg-canvas: #f3f2f1;
+    --bg-card: #ffffff;
+    --bg-subtle: #faf9f8;
+    --border: #e1dfdd;
+    --border-strong: #c8c6c4;
+    --text: #201f1e;
+    --text-muted: #605e5c;
+    --text-faint: #a19f9d;
+    --accent: #0078d4;
+    --accent-tint: #e6f2fb;
+    --primary-bg: #107c10;
+    --primary-bg-hover: #0e6b0e;
+    --primary-border: #094709;
+    --error-bg: #fde7e9;
+    --error-fg: #a4262c;
+    --error-border: #f3b3b8;
+    --warn-bg: #fff4ce;
+    --warn-fg: #8a6300;
+    --warn-border: #f3d793;
+    --shell-text: #f3f2f1;
+    --shell-text-muted: #c8c6c4;
+    --shell-button-bg: #3b3a39;
+    --shell-hover-bg: #484644;
+    --row-hover: #faf9f8;
+  }
+  :root[data-theme="dark"] {
+    --bg-shell: #1b1a19;
+    --bg-canvas: #252423;
+    --bg-card: #323130;
+    --bg-subtle: #2d2c2b;
+    --border: #484644;
+    --border-strong: #605e5c;
+    --text: #f3f2f1;
+    --text-muted: #c8c6c4;
+    --text-faint: #a19f9d;
+    --accent: #2b88d8;
+    --accent-tint: #1e3a5c;
+    --primary-bg: #107c10;
+    --primary-bg-hover: #0e6b0e;
+    --primary-border: #094709;
+    --error-bg: #442726;
+    --error-fg: #f1707b;
+    --error-border: #6f3a3d;
+    --warn-bg: #443c1e;
+    --warn-fg: #ffce46;
+    --warn-border: #7a6a30;
+    --shell-text: #f3f2f1;
+    --shell-text-muted: #c8c6c4;
+    --shell-button-bg: #3b3a39;
+    --shell-hover-bg: #484644;
+    --row-hover: #3b3a39;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg-canvas);
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    line-height: 1.4;
+    min-height: 100vh;
+  }
+  header.topbar {
+    background: var(--bg-shell);
+    color: var(--shell-text);
+    padding: 10px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border-strong);
+  }
+  .brand { display: flex; flex-direction: column; gap: 2px; }
+  .brand b {
+    font-weight: 600;
+    font-size: 14px;
+    letter-spacing: 0.3px;
+    color: var(--shell-text);
+  }
+  .brand small {
+    font-weight: 400;
+    color: var(--shell-text-muted);
+    font-size: 11px;
+  }
+  .topbar-actions { display: flex; gap: 8px; align-items: center; }
+  .theme-toggle, .home-link {
+    background: var(--shell-button-bg);
+    border: none;
+    border-radius: 2px;
+    color: var(--shell-text);
+    padding: 6px 14px;
+    cursor: pointer;
+    font: inherit;
+    font-size: 13px;
+    text-decoration: none;
+    display: inline-block;
+  }
+  .theme-toggle:hover, .home-link:hover { background: var(--shell-hover-bg); }
+  main {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 16px 24px;
+  }
+  .panel {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 16px 20px;
+    margin-bottom: 16px;
+  }
+  .panel h2 {
+    margin: 0 0 12px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .form-group { margin-bottom: 14px; }
+  .form-group:last-of-type { margin-bottom: 0; }
+  .form-group-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
+  label.field {
+    display: flex;
+    flex-direction: column;
+    font-size: 12px;
+    gap: 4px;
+    color: var(--text-muted);
+    flex: 0 0 auto;
+  }
+  label.field input, label.field select {
+    font-family: inherit;
+    font-size: 13px;
+    padding: 6px 10px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+    color: var(--text);
+    min-width: 160px;
+  }
+  label.field input:focus, label.field select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+  }
+  :root[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+  }
+  button.action {
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 7px 18px;
+    border-radius: 2px;
+    border: 1px solid var(--primary-border);
+    background: var(--primary-bg);
+    color: white;
+    cursor: pointer;
+  }
+  button.action:hover { background: var(--primary-bg-hover); }
+  button.action.secondary {
+    background: var(--bg-card);
+    color: var(--text);
+    border-color: var(--border-strong);
+  }
+  button.action.secondary:hover {
+    background: var(--bg-subtle);
+    border-color: var(--text-muted);
+  }
+  .actions-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+  .status {
+    font-size: 12px;
+    color: var(--text-muted);
+    padding: 8px 12px;
+    border-radius: 2px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    margin-bottom: 12px;
+    display: none;
+  }
+  .status.show { display: block; }
+  .status.error {
+    background: var(--error-bg);
+    color: var(--error-fg);
+    border-color: var(--error-border);
+  }
+  .status.warn {
+    background: var(--warn-bg);
+    color: var(--warn-fg);
+    border-color: var(--warn-border);
+  }
+  .summary-row {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    padding: 10px 14px;
+    background: var(--accent-tint);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    margin-bottom: 12px;
+    font-size: 12px;
+    color: var(--text);
+  }
+  .summary-row .label { color: var(--text-muted); margin-right: 4px; }
+  .summary-row .val { font-weight: 600; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  thead th {
+    background: var(--bg-subtle);
+    font-weight: 600;
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 2px solid var(--border-strong);
+    color: var(--text);
+  }
+  tbody td {
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+  }
+  tbody tr:hover td { background: var(--row-hover); }
+  th.num, td.num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  th.ts, td.ts {
+    font-variant-numeric: tabular-nums;
+    font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
+    white-space: nowrap;
+    font-size: 12px;
+  }
+  td.num { font-family: "Cascadia Mono", "Consolas", "Courier New", monospace; }
+  pre {
+    background: var(--bg-subtle);
+    border: 1px solid var(--border);
+    padding: 12px;
+    border-radius: 2px;
+    overflow-x: auto;
+    font-size: 12px;
+    margin: 0;
+    color: var(--text);
+    max-height: 400px;
+    overflow-y: auto;
+  }
+  .empty {
+    padding: 32px 16px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 13px;
+    font-style: italic;
+  }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <b>Flow Interval Metrics</b>
+    <small>Secondary data source &mdash; aggregated metrics from Flow REST API</small>
+  </div>
+  <div class="topbar-actions">
+    <a class="home-link" href="/">Dashboard</a>
+    <button class="theme-toggle" id="theme_toggle" aria-label="Toggle light/dark theme">Theme</button>
+  </div>
+</header>
+
+<main>
+  <div class="panel">
+    <div class="form-group">
+      <div class="form-group-label">Context</div>
+      <div class="row">
+        <label class="field">site_id
+          <input type="number" id="site_id" value="101">
+        </label>
+        <label class="field">subject_type
+          <select id="subject_type">
+            <option>workcenter</option>
+            <option>conveyor</option>
+            <option>circuit</option>
+            <option>line</option>
+            <option>equipment</option>
+            <option>site</option>
+          </select>
+        </label>
+        <label class="field">interval
+          <select id="interval">
+            <option>shiftly</option>
+            <option>hourly</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <div class="form-group-label">Filters (optional)</div>
+      <div class="row">
+        <label class="field">subject_id
+          <input type="text" id="subject_id" placeholder="e.g. Secondary">
+        </label>
+        <label class="field">department_id
+          <input type="text" id="department_id" placeholder="e.g. 127">
+        </label>
+        <label class="field">metric
+          <input type="text" id="metric" placeholder="e.g. Total or Rate">
+        </label>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <div class="form-group-label">Date range</div>
+      <div class="row">
+        <label class="field">from_date
+          <input type="date" id="from_date">
+        </label>
+        <label class="field">to_date
+          <input type="date" id="to_date">
+        </label>
+      </div>
+    </div>
+
+    <div class="actions-row">
+      <button class="action" id="fetch_btn">Fetch metrics</button>
+      <button class="action secondary" id="subjects_btn">List subjects</button>
+    </div>
+  </div>
+
+  <div id="status" class="status"></div>
+
+  <div id="results" class="panel" style="display:none;">
+    <h2>Entries</h2>
+    <div id="summary" class="summary-row" style="display:none;"></div>
+    <table id="results_table">
+      <thead><tr>
+        <th class="ts">Bucket Start (UTC)</th>
+        <th class="ts">Bucket End (UTC)</th>
+        <th>Subject</th>
+        <th>Metric</th>
+        <th class="num">Value</th>
+        <th>Unit</th>
+        <th class="num">Quality</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div id="subjects_panel" class="panel" style="display:none;">
+    <h2>Subjects</h2>
+    <pre id="subjects_pre"></pre>
+  </div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+// Theme: shares the localStorage key with the main dashboard so a
+// preference set in one place carries to the other.
+function applyTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  localStorage.setItem("pmd-theme", theme);
+}
+function initTheme() {
+  const stored = localStorage.getItem("pmd-theme");
+  const prefersDark =
+    window.matchMedia &&
+    window.matchMedia("(prefers-color-scheme: dark)").matches;
+  applyTheme(stored || (prefersDark ? "dark" : "light"));
+}
+initTheme();
+$("theme_toggle").addEventListener("click", () => {
+  const cur = document.documentElement.getAttribute("data-theme");
+  applyTheme(cur === "dark" ? "light" : "dark");
+});
+
+function setDefaultDates() {
+  const today = new Date();
+  const past = new Date();
+  past.setDate(today.getDate() - 14);
+  const iso = (d) => d.toISOString().slice(0, 10);
+  $("from_date").value = iso(past);
+  $("to_date").value = iso(today);
+}
+setDefaultDates();
+
+function setStatus(msg, kind) {
+  const el = $("status");
+  el.className = "status show" + (kind ? " " + kind : "");
+  el.textContent = msg;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[<>&"']/g, (c) => ({
+    "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+
+function formatValue(v) {
+  if (v == null || v === "") return "";
+  if (typeof v === "number") {
+    return v.toLocaleString(undefined, { maximumFractionDigits: 4 });
+  }
+  return String(v);
+}
+
+async function fetchMetrics() {
+  const params = new URLSearchParams();
+  params.set("site_id", $("site_id").value);
+  if ($("subject_id").value.trim()) params.set("subject_id", $("subject_id").value.trim());
+  if ($("department_id").value.trim()) params.set("department_id", $("department_id").value.trim());
+  if ($("metric").value.trim()) params.set("metric", $("metric").value.trim());
+  params.set("from_date", $("from_date").value);
+  params.set("to_date", $("to_date").value);
+
+  const url = `/api/metrics/${$("subject_type").value}/${$("interval").value}?${params}`;
+  setStatus(`Fetching ${url} ...`);
+  $("results").style.display = "none";
+
+  try {
+    const resp = await fetch(url);
+    const body = await resp.json();
+    if (!resp.ok) {
+      const detail = body.detail || body;
+      const msg = typeof detail === "string" ? detail : JSON.stringify(detail);
+      setStatus(`HTTP ${resp.status}: ${msg}`, "error");
+      return;
+    }
+    renderEntries(body);
+  } catch (e) {
+    setStatus(`Network error: ${e.message}`, "error");
+  }
+}
+
+function renderEntries(body) {
+  const tbody = $("results_table").querySelector("tbody");
+  tbody.innerHTML = "";
+
+  if (!body.entries || body.entries.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty">No entries returned for this filter combination.</td></tr>';
+    $("summary").style.display = "none";
+  } else {
+    for (const e of body.entries) {
+      const tr = document.createElement("tr");
+      const cells = [
+        { v: e.bucket_start, cls: "ts" },
+        { v: e.bucket_end, cls: "ts" },
+        { v: e.subject_id, cls: "" },
+        { v: e.metric, cls: "" },
+        { v: formatValue(e.value), cls: "num" },
+        { v: e.unit, cls: "" },
+        { v: e.quality_code, cls: "num" },
+      ];
+      tr.innerHTML = cells.map(({v, cls}) =>
+        `<td${cls ? ' class="' + cls + '"' : ""}>${escapeHtml(v ?? "")}</td>`
+      ).join("");
+      tbody.appendChild(tr);
+    }
+    $("summary").style.display = "flex";
+    $("summary").innerHTML =
+      `<div><span class="label">Count:</span><span class="val">${body.count}</span></div>` +
+      `<div><span class="label">Subject type:</span><span class="val">${escapeHtml(body.subject_type)}</span></div>` +
+      `<div><span class="label">Interval:</span><span class="val">${escapeHtml(body.interval)}</span></div>` +
+      `<div><span class="label">Range:</span><span class="val">${escapeHtml(body.from_date)} &rarr; ${escapeHtml(body.to_date)}</span></div>` +
+      `<div><span class="label">Truncated:</span><span class="val">${body.truncated ? "yes" : "no"}</span></div>`;
+  }
+
+  $("results").style.display = "block";
+  if (body.truncated) {
+    setStatus(
+      `Fetched ${body.count} entries. Result was truncated by Flow's per-tag cap. Narrow the window or add a filter.`,
+      "warn"
+    );
+  } else {
+    setStatus(`Fetched ${body.count} entries from ${body.from_date} to ${body.to_date}.`);
+  }
+}
+
+async function listSubjects() {
+  const params = new URLSearchParams();
+  params.set("site_id", $("site_id").value);
+  if ($("department_id").value.trim()) params.set("department_id", $("department_id").value.trim());
+  const url = `/api/metrics/${$("subject_type").value}/subjects?${params}`;
+  setStatus(`Fetching ${url} ...`);
+  $("subjects_panel").style.display = "none";
+  try {
+    const resp = await fetch(url);
+    const body = await resp.json();
+    if (!resp.ok) {
+      const detail = body.detail || body;
+      const msg = typeof detail === "string" ? detail : JSON.stringify(detail);
+      setStatus(`HTTP ${resp.status}: ${msg}`, "error");
+      return;
+    }
+    $("subjects_pre").textContent = JSON.stringify(body, null, 2);
+    $("subjects_panel").style.display = "block";
+    setStatus(`Found ${body.count} subjects.`);
+  } catch (e) {
+    setStatus(`Network error: ${e.message}`, "error");
+  }
+}
+
+$("fetch_btn").addEventListener("click", fetchMetrics);
+$("subjects_btn").addEventListener("click", listSubjects);
+</script>
+</body>
+</html>

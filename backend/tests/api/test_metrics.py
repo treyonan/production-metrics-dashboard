@@ -205,3 +205,57 @@ def test_history_truncation_flag_forwarded(metrics_client) -> None:
     )
     assert resp.status_code == 200
     assert resp.json()["truncated"] is True
+
+# ---- Phase 15 additions: parametric subject_type ----
+
+
+def test_workcenter_history_happy_path(metrics_client) -> None:
+    """Phase 15: the parametric route serves non-conveyor subject_types."""
+    src = _FakeMetricsSource(
+        points=[
+            IntervalMetricPoint(
+                subject_type="workcenter",
+                subject_id="Secondary",
+                metric="Total",
+                interval="shiftly",
+                bucket_start=datetime(2026, 4, 24, 22, 15, tzinfo=UTC),
+                bucket_end=datetime(2026, 4, 25, 7, 59, tzinfo=UTC),
+                value=136.625,
+                quality_code=192,
+            )
+        ]
+    )
+    _attach_source(metrics_client, src)
+    resp = metrics_client.get(
+        "/api/metrics/workcenter/shiftly",
+        params={
+            "site_id": "101",
+            "subject_id": "Secondary",
+            "metric": "Total",
+            "from_date": "2026-04-01",
+            "to_date": "2026-04-30",
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["subject_type"] == "workcenter"
+    assert body["interval"] == "shiftly"
+    assert body["count"] == 1
+    assert body["entries"][0]["subject_id"] == "Secondary"
+    assert body["entries"][0]["value"] == 136.625
+
+
+def test_history_rejects_unknown_subject_type(metrics_client) -> None:
+    """Phase 15: subject_type Literal rejects unrecognised values at
+    the path layer with 422 before any DB / HTTP work."""
+    _attach_source(metrics_client, _FakeMetricsSource())
+    resp = metrics_client.get(
+        "/api/metrics/foo/shiftly",
+        params={
+            "site_id": "101",
+            "from_date": "2026-04-01",
+            "to_date": "2026-04-02",
+        },
+    )
+    assert resp.status_code == 422
+

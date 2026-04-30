@@ -306,7 +306,7 @@ Container can't reach the SQL host. Check, in order:
 4. **DSN is correct.** `docker compose exec api sh -c 'echo $DB_CONN_STRING'`
    and eyeball it. Single-brace driver name; `tcp:` prefix on server.
 
-### `/api/metrics/conveyor/*` returns 504 ConnectError
+### `/api/metrics/<subject_type>/*` returns 504 ConnectError
 
 Flow API host unreachable. Same triage as SQL: check `extra_hosts`
 for the Flow hostname, ping the IP, confirm the container can
