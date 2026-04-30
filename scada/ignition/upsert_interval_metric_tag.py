@@ -161,6 +161,7 @@ def upsert_interval_metric_tag(
     payload,
     site_id,
     department_id,
+    asset=None,
     subject_type='conveyor',
     database='IA_ENTERPRISE',
 ):
@@ -183,8 +184,7 @@ def upsert_interval_metric_tag(
             interval string written to the table is derived from
             the payload's structural shape; see _determine_interval
             and the module docstring for the rule. Required fields:
-            measure.name, measure.measureDataApiEndpoint,
-            modelAttributes.Conveyor_Number, and one of
+            measure.name, measure.measureDataApiEndpoint, and one of
             payload['eventPeriod'] or payload['timePeriod'] (with
             values[0].duration).
             See samples at
@@ -200,8 +200,20 @@ def upsert_interval_metric_tag(
             produces two distinct rows. Pass None for site-level
             tags that don't roll up to one specific workcenter
             (only one such row per site/asset/metric/interval).
+        asset (str, optional): The asset identifier this metric
+            belongs to -- e.g. 'C4' for a conveyor, 'Secondary'
+            for a workcenter-level rollup, '57-1' for a sub-circuit
+            line. Part of the natural key. If not supplied,
+            falls back to modelAttributes.Conveyor_Number for
+            backward compat with conveyor-only tag handlers; pass
+            it explicitly for any non-conveyor subject type since
+            those payloads don't carry Conveyor_Number.
         subject_type (str): One of 'conveyor', 'equipment',
-            'workcenter', 'site'. Default 'conveyor'.
+            'workcenter', 'circuit', 'line', 'site'. Default
+            'conveyor'. Used as a coarse classification on the
+            tag row; the natural key does NOT include subject_type
+            so changing it on a republish updates the existing
+            row rather than creating a duplicate.
         database (str): Ignition database connection name. Default
             'IA_ENTERPRISE' to match the production-report database.
 
@@ -219,13 +231,30 @@ def upsert_interval_metric_tag(
     measure = payload.get('measure') or {}
     model_attrs = payload.get('modelAttributes') or {}
 
-    asset = model_attrs.get('Conveyor_Number')
+    # ASSET RESOLUTION:
+    # Caller-supplied `asset` wins. If omitted, fall back to
+    # modelAttributes.Conveyor_Number for backward compatibility
+    # with the original per-conveyor tag handlers. Non-conveyor
+    # subject types (workcenter, circuit, line, equipment) DO NOT
+    # carry a Conveyor_Number in modelAttributes, so the caller
+    # must pass `asset` explicitly for those -- typically derived
+    # from a different field of the payload (e.g. Area for
+    # workcenter-level metrics, or a Description from
+    # eventAttributes for circuit/line). The function is
+    # deliberately payload-shape-agnostic at this layer; the
+    # caller knows what its tag represents.
+    if not asset:
+        asset = model_attrs.get('Conveyor_Number')
+
     metric_name = measure.get('name')
     history_url = measure.get('measureDataApiEndpoint')
 
     missing = []
     if not asset:
-        missing.append('modelAttributes.Conveyor_Number')
+        missing.append(
+            "asset (caller-supplied or fallback "
+            "modelAttributes.Conveyor_Number)"
+        )
     if not metric_name:
         missing.append('measure.name')
     if not history_url:
@@ -348,5 +377,28 @@ def upsert_interval_metric_tag(
 #         payload=payload,
 #         site_id=site_id,
 #         department_id=department_id,
+#         asset=payload['modelAttributes'].get('Conveyor_Number'),
 #         subject_type='conveyor',
+#     )
+#
+# For non-conveyor subjects, derive `asset` from the payload field
+# that uniquely identifies what the metric is FOR. Examples:
+#
+#     # Workcenter-level rollup -- use the Area as the asset name.
+#     IntervalMetrics.upsert_interval_metric_tag(
+#         payload=payload,
+#         site_id=site_id,
+#         department_id=department_id,
+#         asset=payload['modelAttributes'].get('Area'),
+#         subject_type='workcenter',
+#     )
+#
+#     # Sub-circuit (line) -- use the Description from eventAttributes.
+#     evt = (payload['values'] or [{}])[0].get('eventAttributes') or {}
+#     IntervalMetrics.upsert_interval_metric_tag(
+#         payload=payload,
+#         site_id=site_id,
+#         department_id=department_id,
+#         asset=evt.get('Circuit_A_Line_A_Description'),
+#         subject_type='line',
 #     )
