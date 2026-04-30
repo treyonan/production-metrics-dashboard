@@ -57,6 +57,30 @@ write-to-disk.
 via `tail -3 <path>` through bash afterward. The file-state notices
 at the top of tool responses reflect tool-cache state, not disk
 state — they cannot be trusted as disk-write confirmation.
+### Retry-after-fail must cover ALL the original script's edits — 2026-04-28
+**Mistake**: A multi-edit Python script for the Trends restructure
+asserted on its second anchor and aborted. I retried, but the retry
+script only fixed the anchor that failed -- it didn't re-include
+the FIRST edit (which was a `let _activeTrendsTab = "overview";`
+declaration). The first script never wrote anything to disk because
+all my scripts accumulate in memory and write at the end on full
+success. So that declaration silently disappeared, the dashboard
+threw a `ReferenceError: _activeTrendsTab is not defined` at
+runtime, and I had to debug it after Trey reported the broken UI.
+**Why it happened**: When a Python script fails partway through
+multi-file edits, my in-memory-accumulate pattern means NONE of
+that script's edits land. But I treated the retry as "fix the one
+thing that failed" rather than "re-run the entire intended set of
+changes." The retry script was scoped to whatever I noticed needed
+fixing, not to everything the original script meant to do.
+**Rule**: When a Python rewrite script fails on an `assert`, before
+writing the retry: enumerate every edit the original script
+intended to make. Verify each one against the file post-failure --
+is it already in the file? Did it land? Anything missing goes into
+the retry. The mental model: failed scripts are atomic-rollback by
+design (good), but my retries are NOT automatic re-runs of the
+original intent (bad). Carry the intent across the retry boundary.
+
 ### Run `node --check` after rewriting frontend JS — 2026-04-28
 **Mistake**: A Python-script regex rewrite of `renderTrends` in
 `frontend/app.js` replaced the function body but my replacement

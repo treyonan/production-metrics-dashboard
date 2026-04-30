@@ -424,18 +424,20 @@
 
   // --- single-report panel (KPI cards + asset table) ---
   function assetRow(label, m, wc) {
+    // wc is accepted for signature parity but no longer read here --
+    // the single-report panel's asset table omits the workcenter-level
+    // Total (tons) column because the same number already appears in
+    // the KPI card at the top of the panel and the per-conveyor outputs
+    // live in the bar chart below. Repeating it on every asset row
+    // was misleading (read as per-conveyor).
+    void wc;
     const item = placeholderize(m.Produced_Item_Code);
     const itemDesc = placeholderize(m.Produced_Item_Description);
-    // Total (tons) per row is the WORKCENTER-level Total (tons fed),
-    // not the per-asset Total -- so every asset row in the same
-    // workcenter shows the same number. The per-conveyor outputs are
-    // surfaced separately in the conveyor-totals bar chart below.
     return el("tr", {}, [
       el("td", {}, label),
       el("td", {}, fmt1(m.Availability)),
       el("td", {}, fmt1(m.Runtime)),
       el("td", {}, m.Performance === null ? "\u2014" : fmt1(m.Performance)),
-      el("td", {}, wc && (wc.Total !== null && wc.Total !== undefined) ? fmtInt(wc.Total) : "\u2014"),
       el("td", {}, item === "\u2014" ? "\u2014" : `${item} (${itemDesc})`),
       el("td", {}, m.Belt_Scale_Availability === undefined ? "\u2014" : fmt1(m.Belt_Scale_Availability)),
     ]);
@@ -486,11 +488,10 @@
         el("th", {}, "Availability %"),
         el("th", {}, "Runtime (hours)"),
         el("th", {}, "Performance %"),
-        el("th", {}, "Total (tons)"),
         el("th", {}, "Product"),
         el("th", {}, "Belt Scale %"),
       ])),
-      el("tbody", {}, rows.length ? rows : [el("tr", {}, el("td", { colspan: "7", class: "muted" }, "No asset metrics in this payload."))]),
+      el("tbody", {}, rows.length ? rows : [el("tr", {}, el("td", { colspan: "6", class: "muted" }, "No asset metrics in this payload."))]),
     ]);
 
     // Phase 8: Shift joins the metadata row; weather goes as a chip
