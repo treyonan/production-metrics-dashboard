@@ -1,4 +1,3 @@
-# coding: utf-8
 """
 Upsert one row into [FLOW].[INTERVAL_METRIC_TAGS] from a Flow Software
 'Measure Event Period Value Data' MQTT payload.
@@ -380,6 +379,14 @@ def upsert_interval_metric_tag(
 #         asset=payload['modelAttributes'].get('Conveyor_Number'),
 #         subject_type='conveyor',
 #     )
+#     IntervalMetrics.upsert_interval_metric_tag(
+#         payload=payload,
+#         site_id=site_id,
+#         department_id=department_id,
+#         asset=payload['modelAttributes'].get('Area'),
+#         subject_type='workcenter',
+#     )
+#    
 #
 # For non-conveyor subjects, derive `asset` from the payload field
 # that uniquely identifies what the metric is FOR. Examples:
