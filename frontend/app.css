@@ -836,13 +836,72 @@ body {
   font-style: italic;
 }
 
-.trends-grid {
+/* Phase 14b restructure: vertical-tab sidebar + content pane.
+   The grid layout that used to live on .trends-grid now lives on the
+   active section so each tab's content gets the same auto-fit pairing. */
+.trends-layout {
   display: grid;
-  /* Auto-fit responsive 2-column layout. Panels at >= 420px wide
-     get paired side-by-side; narrower viewports collapse to one
-     column. Section headers span all columns via grid-column 1/-1. */
+  grid-template-columns: 200px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+.trends-tablist {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-right: 8px;
+  border-right: 1px solid var(--border);
+  position: sticky;
+  top: 12px;
+}
+.trends-tab {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px 8px 14px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-left: 3px solid transparent;
+  border-radius: 0 2px 2px 0;
+  cursor: pointer;
+  transition: background-color 80ms linear, color 80ms linear, border-color 80ms linear;
+}
+.trends-tab:hover {
+  background: var(--bg-card);
+  color: var(--text-strong);
+}
+.trends-tab.active {
+  background: var(--bg-card);
+  color: var(--text-strong);
+  border-left-color: var(--accent);
+}
+.trends-tab.nested {
+  padding-left: 26px;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+.trends-content {
+  min-width: 0; /* allow grid items inside to shrink */
+}
+.trend-section {
+  display: none;
+}
+.trend-section.active {
+  display: grid;
   grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
   gap: 12px;
+}
+/* Backwards-compat: anything that still targets .trends-grid for
+   layout finds it as a plain block. The grid layout now lives on the
+   active .trend-section, not on this outer wrapper. */
+.trends-grid {
+  display: block;
 }
 
 .trend-panel {
@@ -878,19 +937,15 @@ body {
   height: 100% !important;
 }
 
-/* Phase 14a: per-workcenter section headers in the Trends grid.
-   Spans all grid columns so the divider line runs full width. */
-.trend-section-header {
-  grid-column: 1 / -1;
-  margin: 18px 0 2px;
-  padding: 0 0 6px 0;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text-strong);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  border-bottom: 2px solid var(--border);
+/* Phase 14b: section headers superseded by the vertical tab list.
+   Hidden so any stale render or older cached state doesn't leak
+   visible duplicate labels next to the tab. */
+.trend-section-header,
+.trend-subsection-header {
+  display: none;
 }
-.trend-section-header:first-child {
-  margin-top: 4px;
-}
+
+/* Phase 14b: per-circuit subsection headers nested inside each
+   workcenter section. Smaller than the workcenter header so the
+   visual hierarchy reads workcenter -> circuits. Inset slightly to
+   reinforce the nesting. */

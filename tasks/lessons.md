@@ -57,6 +57,49 @@ write-to-disk.
 via `tail -3 <path>` through bash afterward. The file-state notices
 at the top of tool responses reflect tool-cache state, not disk
 state — they cannot be trusted as disk-write confirmation.
+### Run `node --check` after rewriting frontend JS — 2026-04-28
+**Mistake**: A Python-script regex rewrite of `renderTrends` in
+`frontend/app.js` replaced the function body but my replacement
+string was missing one closing brace -- the close of the new
+`_setActiveTrendsTab` helper that came right after. Brace balance
+was off by one, the IIFE wrapper at the end of the file failed to
+parse, and the entire script never executed. Dashboard rendered
+with an empty topbar (site selector stuck, health pill stuck on
+"checking...", no panels) until I diagnosed the parse error.
+**Why it happened**: I treated the rewrite as a string replacement
+and didn't syntax-check the JS afterward. The Python `py_compile`
+I run on backend rewrites doesn't catch JS errors. Browser-side
+parse errors silently break everything that depends on the script
+including JS that loaded before the error -- there's no graceful
+degradation.
+**Rule**: After ANY change to `frontend/app.js` (or any JS file in
+the project) made via bash + Python rewrite, run `node --check
+<file>` as part of the same step. The Linux sandbox has node
+installed at /usr/bin/node and the check is fast (< 1 second).
+Brace balance via `python3 -c "src=open(...).read(); print(src.count('{{'), src.count('}}'))"` is a useful sanity
+fallback when node isn't available, but `node --check` catches
+more (mismatched parens, unterminated strings, etc.).
+
+### Theme toggle / re-render needs all payload state, not just one — 2026-04-28
+**Mistake**: Phase 14b extended `renderTrends(payload, circuitPayload)`
+to take a second argument and added `_lastTrendsCircuitPayload` was
+NOT cached on the module level. The theme toggle handler at the top
+of `app.js` re-rendered using only `_lastTrendsPayload`, so circuit
+subsections silently disappeared when the user flipped light/dark on
+the Trends tab -- no JS error, panels just gone until the next data
+refresh restored them.
+**Why it happened**: I added a new payload to `refreshTrends` but
+didn't audit every code path that calls `renderTrends`. The theme
+toggle is a code path that triggers a re-render WITHOUT a network
+fetch -- it depends on cached state, and any cached state has to
+cover everything the render needs.
+**Rule**: When extending a render function's signature with a new
+payload, grep for ALL call sites of that function and verify each
+one passes the new argument. If a call site uses cached module
+state, the cache must hold the new payload too. Theme toggle, view
+tab switching, and any other "re-render without fetch" handler are
+the failure modes to watch for.
+
 ### Edit tool truncation, revisited again — 2026-04-28
 **Mistake**: Same failure mode bit me twice in one Phase 14a session.
 First time: chained Edits to `frontend/app.js` over the Total-column
@@ -106,26 +149,4 @@ succeeded.
 ### "Latest value" vs "most representative value" -- 2026-04-23
 **Mistake**: When Trey asked for a per-conveyor Produced_Item_Description
 label on the bar chart, I implemented "latest value in window" because
-the feature sounded straightforward and that was the first semantic I
-reached for. Trey came back with: use the mode instead (most-frequent,
-placeholders excluded, tie-break to newest). We shipped twice.
-**Why it happened**: I took "the last product" at face value without
-asking which question the label was actually answering. "What's
-running right now?" (latest) and "What does this conveyor typically
-run?" (mode) are genuinely different analytic questions -- they only
-coincide on a 1-report Today view. For any multi-report window, mode
-is more informative about the conveyor, while latest is more
-informative about the current state. I should have surfaced that
-distinction up front.
-**Rule**: When a feature involves summarizing a series of values into
-one display, explicitly name the summarization strategy (latest,
-mode, mean, median, max, ...) and ask which one fits. Especially
-important for labels where the user will read ONE value -- they'll
-assume it represents the whole window unless told otherwise. Three
-specific things to check: (1) Which subset of values participates?
-Placeholders, nulls, and "idle" sentinels often need to be excluded
-from statistical summaries. (2) What happens on ties / empty input?
-Tie-breaking rule should be stated, and empty-input fallback
-(typically null / em-dash) should be explicit. (3) Does the strategy
-coincide across all views (Today/Week/Month, or equivalent scope
-differences)? If so, the label's semantic is stable; if not, flag it.
+the feature sounded straightforward and

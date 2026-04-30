@@ -68,6 +68,16 @@
   const _trendChartInstances = new Set();
   // Cached most-recent trends payload, mirrors _lastPayload's role.
   let _lastTrendsPayload = null;
+  // Phase 14b: cache the circuit-rollup payload alongside the
+  // workcenter rollup so theme-triggered re-renders pass both into
+  // renderTrends -- otherwise the circuit subsections silently
+  // disappear when the user flips light/dark while on the Trends tab.
+  let _lastTrendsCircuitPayload = null;
+  // Phase 14b restructure: which tab is currently shown on the
+  // Trends view. Persists across refresh / theme-toggle re-renders
+  // when the same section still exists in the new render; falls
+  // back to "overview" otherwise.
+  let _activeTrendsTab = "overview";
 
   // --- generic helpers ---
   const $ = (id) => document.getElementById(id);
@@ -159,7 +169,7 @@
     applyTheme(getTheme() === "dark" ? "light" : "dark");
     if (_lastPayload) renderData(_lastPayload);
     if (currentView === "trends" && _lastTrendsPayload) {
-      renderTrends(_lastTrendsPayload);
+      renderTrends(_lastTrendsPayload, _lastTrendsCircuitPayload);
     }
   }
 
@@ -1526,15 +1536,23 @@
     const status = $("trends-status");
     if (status) status.textContent = "Loading...";
 
-    const url = `/api/production-report/monthly-rollup`
-      + `?site_id=${encodeURIComponent(currentSiteId)}`
+    const baseQs =
+        `?site_id=${encodeURIComponent(currentSiteId)}`
       + `&from_month=${encodeURIComponent(from)}`
       + `&to_month=${encodeURIComponent(to)}`;
+    const rollupUrl  = `/api/production-report/monthly-rollup${baseQs}`;
+    const circuitUrl = `/api/production-report/circuit-monthly-rollup${baseQs}`;
 
     try {
-      const payload = await fetchJSON(url);
+      // Phase 14b: both rollups in parallel. The dashboard pairs
+      // workcenter and circuit views per department in a single render.
+      const [payload, circuitPayload] = await Promise.all([
+        fetchJSON(rollupUrl),
+        fetchJSON(circuitUrl),
+      ]);
       _lastTrendsPayload = payload;
-      renderTrends(payload);
+      _lastTrendsCircuitPayload = circuitPayload;
+      renderTrends(payload, circuitPayload);
       _clearTrendsError();
       if (status) {
         status.textContent =
@@ -1558,13 +1576,15 @@
     if (bar) bar.style.display = "none";
   }
 
-  function renderTrends(payload) {
+  function renderTrends(payload, circuitPayload) {
     const grid = $("trends-grid");
+    const tablist = $("trends-tablist");
     const empty = $("trends-empty-state");
     if (!grid) return;
 
     _destroyTrendCharts();
     grid.innerHTML = "";
+    if (tablist) tablist.innerHTML = "";
 
     const rollups = payload.rollups || [];
     if (rollups.length === 0) {
@@ -1587,19 +1607,12 @@
     }
     const deptIds = [...byDept.keys()].sort();
 
-    // Phase 12: dept_id -> human-readable name lookup. All rollup
-    // entries for a given dept share the same department_name (Phase 12
-    // backend guarantees), so we just take the first one we see. Falls
-    // back to "Dept <id>" via deptName() defensively, though Phase 13's
-    // server-side contract guarantees department_name is always
-    // populated. Used as the chart-legend label.
     const deptLabel = (dept) => {
       const firstRollup = byDept.get(dept).values().next().value;
       const name = firstRollup ? firstRollup.department_name : null;
       return deptName(name, dept);
     };
 
-    // Helper to build datasets for a particular metric extractor.
     const buildDatasets = (extractor) => deptIds.map((dept, idx) => {
       const data = months.map((m) => {
         const r = byDept.get(dept).get(m);
@@ -1618,28 +1631,6 @@
       };
     });
 
-    grid.appendChild(_renderTrendPanel({
-      title: "Total Tons by Workcenter",
-      subtitle: "Sum of belt-scaled conveyor totals per month, per workcenter.",
-      labels: months,
-      datasets: buildDatasets((r) => r.total_tons),
-      yLabel: "Tons",
-      yFormat: (v) => `${fmtInt(v)} t`,
-    }));
-
-    grid.appendChild(_renderTrendPanel({
-      title: "TPH by Workcenter",
-      subtitle: "Tons per hour. Months with zero runtime are gapped.",
-      labels: months,
-      datasets: buildDatasets((r) => r.tph),
-      yLabel: "Tons/hr",
-      yFormat: (v) => `${fmt1(v)} tph`,
-    }));
-
-    // Phase 14a: per-workcenter bar chart sections. One section
-    // header + two bar panels (Total TPH Fed, Runtime %) per dept.
-    // Section ordering follows the same alphabetical deptIds sort
-    // used by the multi-workcenter line charts above.
     const buildBarDataset = (dept, extractor, idx) => {
       const color = TREND_COLORS[idx % TREND_COLORS.length];
       const data = months.map((m) => {
@@ -1657,51 +1648,290 @@
       };
     };
 
-    deptIds.forEach((dept, idx) => {
-      grid.appendChild(
-        el("h3", { class: "trend-section-header" }, deptLabel(dept))
-      );
+    // Phase 14b restructure: every renderable section becomes a tab.
+    // `sections` is built up as (id, label, indent, build) records;
+    // each `build` closure populates a section container with chart
+    // panels. The tablist is rendered in parallel so order matches.
+    const sections = [];
 
+    sections.push({
+      id: "overview",
+      label: "Overview",
+      indent: 0,
+      build: (s) => {
+        s.appendChild(_renderTrendPanel({
+          title: "Total Tons by Workcenter",
+          subtitle: "Sum of belt-scaled conveyor totals per month, per workcenter.",
+          labels: months,
+          datasets: buildDatasets((r) => r.total_tons),
+          yLabel: "Tons",
+          yFormat: (v) => `${fmtInt(v)} t`,
+        }));
+        s.appendChild(_renderTrendPanel({
+          title: "TPH by Workcenter",
+          subtitle: "Tons per hour. Months with zero runtime are gapped.",
+          labels: months,
+          datasets: buildDatasets((r) => r.tph),
+          yLabel: "Tons/hr",
+          yFormat: (v) => `${fmt1(v)} tph`,
+        }));
+      },
+    });
+
+    const circuitDepts = (circuitPayload && circuitPayload.departments) || [];
+    const circuitsByDeptId = new Map();
+    for (const d of circuitDepts) circuitsByDeptId.set(d.department_id, d.circuits || []);
+
+    deptIds.forEach((dept, idx) => {
+      sections.push({
+        id: `wc-${dept}`,
+        label: deptLabel(dept),
+        indent: 0,
+        build: (s) => {
+          s.appendChild(_renderTrendPanel({
+            title: "Total TPH Fed",
+            subtitle: "Average of Workcenter.Rate per month.",
+            labels: months,
+            datasets: [buildBarDataset(dept, (r) => r.avg_tph_fed, idx)],
+            yLabel: "Tons/hr",
+            yFormat: (v) => `${fmtInt(v)} tph`,
+            chartType: "bar",
+          }));
+          s.appendChild(_renderTrendPanel({
+            title: "Runtime %",
+            subtitle: "Average of Workcenter.Availability per month.",
+            labels: months,
+            datasets: [buildBarDataset(dept, (r) => r.avg_runtime_pct, idx)],
+            yLabel: "%",
+            yFormat: (v) => `${fmt1(v)}%`,
+            chartType: "bar",
+          }));
+          s.appendChild(_renderTrendPanel({
+            title: "Performance %",
+            subtitle: "Average of Workcenter.Performance (Rate / Ideal_Rate * 100) per month.",
+            labels: months,
+            datasets: [buildBarDataset(dept, (r) => r.avg_performance_pct, idx)],
+            yLabel: "%",
+            yFormat: (v) => `${fmt1(v)}%`,
+            chartType: "bar",
+          }));
+        },
+      });
+
+      const deptCircuits = circuitsByDeptId.get(dept) || [];
+      deptCircuits.forEach((circuit, cidx) => {
+        sections.push({
+          id: `circuit-${dept}-${circuit.circuit_id}`,
+          label: circuit.description || circuit.circuit_id,
+          indent: 1,
+          build: (s) => _renderCircuitSection(s, circuit, months, idx, cidx),
+        });
+      });
+    });
+
+    sections.forEach((sec) => {
+      const sectionEl = el(
+        "div",
+        { class: "trend-section", "data-section-id": sec.id },
+      );
+      sec.build(sectionEl);
+      grid.appendChild(sectionEl);
+
+      if (tablist) {
+        const tabBtn = el(
+          "button",
+          {
+            type: "button",
+            class: "trends-tab" + (sec.indent ? " nested" : ""),
+            "data-section-id": sec.id,
+            role: "tab",
+            onclick: () => _setActiveTrendsTab(sec.id),
+          },
+          sec.label,
+        );
+        tablist.appendChild(tabBtn);
+      }
+    });
+
+    const sectionIds = sections.map((s) => s.id);
+    const targetTab = sectionIds.includes(_activeTrendsTab) ? _activeTrendsTab : "overview";
+    _setActiveTrendsTab(targetTab);
+  }
+
+  function _setActiveTrendsTab(id) {
+    _activeTrendsTab = id;
+    const tablist = $("trends-tablist");
+    const grid = $("trends-grid");
+    if (tablist) {
+      for (const btn of tablist.querySelectorAll(".trends-tab")) {
+        btn.classList.toggle("active", btn.dataset.sectionId === id);
+      }
+    }
+    if (grid) {
+      for (const sec of grid.querySelectorAll(".trend-section")) {
+        sec.classList.toggle("active", sec.dataset.sectionId === id);
+      }
+    }
+  }
+
+  // Phase 14b: render one circuit subsection. For circuits with sub-lines
+  // we emit 6 chart panels (per-line + total for each of TPH, Yield, Tons);
+  // for line-less circuits (e.g. CR Circuit) we emit 3 single-series panels.
+  // All labels come from the circuit/line `description` fields -- the
+  // dashboard never hard-codes "57-1" or "Main Circuit".
+  function _renderCircuitSection(grid, circuit, months, deptIdx, circuitIdx) {
+    // Phase 14b restructure: section header is now provided by the
+    // tab list on the left; we append only chart panels here.
+
+    // Per-month lookup for the circuit-level series.
+    const cMap = new Map();
+    for (const m of (circuit.monthly || [])) cMap.set(m.month, m);
+
+    const buildCircuitDataset = (extractor, color) => {
+      const data = months.map((m) => {
+        const e = cMap.get(m);
+        if (!e) return null;
+        const v = extractor(e);
+        return (v === null || v === undefined) ? null : v;
+      });
+      return {
+        label: circuit.description || circuit.circuit_id,
+        data,
+        backgroundColor: color,
+        borderColor: color,
+        borderWidth: 1,
+      };
+    };
+
+    const hasLines = (circuit.lines || []).length > 0;
+    // Pick a base color slot deterministically from (deptIdx, circuitIdx)
+    // so adjacent circuits visually distinguish from each other but each
+    // workcenter's circuit family stays in its own color band.
+    const baseColor = TREND_COLORS[(deptIdx * 2 + circuitIdx) % TREND_COLORS.length];
+
+    if (hasLines) {
+      // Build per-line datasets once -- reused across the three
+      // paired-bar panels (TPH/Yield/Tons by Line).
+      const lineMaps = circuit.lines.map((l, i) => {
+        const m = new Map();
+        for (const e of (l.monthly || [])) m.set(e.month, e);
+        return { line: l, map: m, color: TREND_COLORS[(deptIdx * 2 + circuitIdx + i + 1) % TREND_COLORS.length] };
+      });
+      const buildPerLineDatasets = (extractor) => lineMaps.map(({ line, map, color }) => {
+        const data = months.map((m) => {
+          const e = map.get(m);
+          if (!e) return null;
+          const v = extractor(e);
+          return (v === null || v === undefined) ? null : v;
+        });
+        return {
+          label: line.description || line.line_id,
+          data,
+          backgroundColor: color,
+          borderColor: color,
+          borderWidth: 1,
+        };
+      });
+
+      // 6 panels: paired-line + circuit-total for each of TPH / Yield / Tons.
       grid.appendChild(_renderTrendPanel({
-        title: "Total TPH Fed",
-        subtitle: "Average of Workcenter.Rate per month.",
+        title: "TPH per Line",
+        subtitle: "Mean of per-report Total/Runtime per line per month.",
         labels: months,
-        datasets: [buildBarDataset(dept, (r) => r.avg_tph_fed, idx)],
+        datasets: buildPerLineDatasets((e) => e.avg_tph),
+        yLabel: "Tons/hr",
+        yFormat: (v) => `${fmtInt(v)} tph`,
+        chartType: "bar",
+      }));
+      grid.appendChild(_renderTrendPanel({
+        title: "Total TPH",
+        subtitle: "Circuit-level mean of per-report Total/Runtime per month.",
+        labels: months,
+        datasets: [buildCircuitDataset((e) => e.avg_tph, baseColor)],
         yLabel: "Tons/hr",
         yFormat: (v) => `${fmtInt(v)} tph`,
         chartType: "bar",
       }));
 
       grid.appendChild(_renderTrendPanel({
-        title: "Runtime %",
-        subtitle: "Average of Workcenter.Availability per month.",
+        title: "Yield per Line",
+        subtitle: "Mean of per-report Yield (mass-conversion ratio) per line per month.",
         labels: months,
-        datasets: [buildBarDataset(dept, (r) => r.avg_runtime_pct, idx)],
-        yLabel: "%",
-        yFormat: (v) => `${fmt1(v)}%`,
+        datasets: buildPerLineDatasets((e) => e.avg_yield),
+        yLabel: "Yield",
+        yFormat: (v) => fmt1(v),
+        chartType: "bar",
+      }));
+      grid.appendChild(_renderTrendPanel({
+        title: "Total Yield",
+        subtitle: "Circuit-level mean of per-report Yield per month.",
+        labels: months,
+        datasets: [buildCircuitDataset((e) => e.avg_yield, baseColor)],
+        yLabel: "Yield",
+        yFormat: (v) => fmt1(v),
         chartType: "bar",
       }));
 
       grid.appendChild(_renderTrendPanel({
-        title: "Performance %",
-        subtitle: "Average of Workcenter.Performance (Rate / Ideal_Rate * 100) per month.",
+        title: "Tons per Line",
+        subtitle: "Sum of node.Total per line per month.",
         labels: months,
-        datasets: [buildBarDataset(dept, (r) => r.avg_performance_pct, idx)],
-        yLabel: "%",
-        yFormat: (v) => `${fmt1(v)}%`,
+        datasets: buildPerLineDatasets((e) => e.total_tons),
+        yLabel: "Tons",
+        yFormat: (v) => `${fmtInt(v)} t`,
         chartType: "bar",
       }));
-    });
+      grid.appendChild(_renderTrendPanel({
+        title: "Total Tons",
+        subtitle: "Circuit-level sum of node.Total per month.",
+        labels: months,
+        datasets: [buildCircuitDataset((e) => e.total_tons, baseColor)],
+        yLabel: "Tons",
+        yFormat: (v) => `${fmtInt(v)} t`,
+        chartType: "bar",
+      }));
+    } else {
+      // Line-less circuit: 3 single-series panels for TPH / Yield / Tons.
+      grid.appendChild(_renderTrendPanel({
+        title: "TPH",
+        subtitle: "Mean of per-report Total/Runtime per month.",
+        labels: months,
+        datasets: [buildCircuitDataset((e) => e.avg_tph, baseColor)],
+        yLabel: "Tons/hr",
+        yFormat: (v) => `${fmtInt(v)} tph`,
+        chartType: "bar",
+      }));
+      grid.appendChild(_renderTrendPanel({
+        title: "Yield",
+        subtitle: "Mean of per-report Yield per month.",
+        labels: months,
+        datasets: [buildCircuitDataset((e) => e.avg_yield, baseColor)],
+        yLabel: "Yield",
+        yFormat: (v) => fmt1(v),
+        chartType: "bar",
+      }));
+      grid.appendChild(_renderTrendPanel({
+        title: "Tons",
+        subtitle: "Sum of node.Total per month.",
+        labels: months,
+        datasets: [buildCircuitDataset((e) => e.total_tons, baseColor)],
+        yLabel: "Tons",
+        yFormat: (v) => `${fmtInt(v)} t`,
+        chartType: "bar",
+      }));
+    }
   }
 
   function _renderTrendPanel({ title, subtitle, labels, datasets, yLabel, yFormat, chartType }) {
     const colors = _themeColors();
-    // Phase 14a: chartType defaults to "line" for backward-compat
-    // with the existing multi-workcenter trend charts. Bar charts
-    // are typically single-series (per-workcenter manager view)
-    // and hide the legend to reduce visual noise.
+    // Phase 14a/b: chartType defaults to "line" for backward compat.
+    // Legend visibility follows dataset count -- multi-series shows,
+    // single-series hides -- regardless of chart type. This handles
+    // both the existing multi-workcenter line charts (legend on,
+    // one line per dept) AND the Phase 14b paired-bar charts (legend
+    // on, one bar series per circuit Line) without per-call config.
     const _type = chartType || "line";
-    const _showLegend = _type === "line";
+    const _showLegend = (datasets || []).length > 1;
     const panel = el("section", { class: "trend-panel" }, [
       el("div", { class: "trend-panel-header" }, [
         el("span", { class: "trend-panel-title" }, title),

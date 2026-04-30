@@ -2081,100 +2081,122 @@ per-workcenter sections (one section per dept):
 - [ ] Compare numbers to the manager's PDF for a known month (e.g.
       April 2026 if the data set has it).
 
-### Phase 14b -- Circuit / Line monthly bar charts
+### Phase 14b -- Circuit / Line monthly bar charts (IMPLEMENTED 2026-04-28, browser QA pending)
 
-Six chart panels powered by one new endpoint. The endpoint walks the
-Circuit hierarchy across reports and emits per-(circuit, line, month)
-aggregates dynamically.
+Six manager charts (TPH per circuit/line, total TPH, yield per
+circuit/line, total yield, tons per circuit/line, total tons), plus
+analogous charts for circuits without lines (CR Circuit). Powered by
+ONE new endpoint that walks the Circuit hierarchy in each report and
+emits a dynamic, hierarchical response. Site-specific topology is
+read from the `description` fields -- no hardcoded "57-1" / "Main
+Circuit" anywhere in the dashboard.
 
-#### New endpoint
+#### New endpoint: `/circuit-monthly-rollup`
 
 `GET /api/production-report/circuit-monthly-rollup?site_id=...&from_month=YYYY-MM&to_month=YYYY-MM&department_id=...`
 
-Response shape (dynamic per site):
+Same parameter validation as `/monthly-rollup` (37-month max span,
+inverted-window check, YYYY-MM format).
+
+Response shape (truncated example):
+
 ```json
 {
   "site_id": "101",
-  "department_id": "127",
   "from_month": "2026-01",
   "to_month": "2026-04",
+  "department_id": null,
   "generated_at": "...",
-  "circuits": [
+  "departments": [
     {
-      "id": "A",
-      "description": "Main Circuit",
-      "monthly": [
-        { "month": "2026-04", "total_tons": ..., "runtime_hours": ...,
-          "avg_tph": ..., "avg_yield": ..., "report_count": 30 }
-      ],
-      "lines": [
-        { "id": "A", "description": "57-1", "monthly": [...] },
-        { "id": "B", "description": "57-2", "monthly": [...] }
+      "department_id": "127",
+      "department_name": "Plant 1",
+      "circuits": [
+        {
+          "circuit_id": "A",
+          "description": "Main Circuit",
+          "monthly": [
+            {"month": "2026-04", "total_tons": 490.8, "runtime_hours": 1.5,
+             "avg_tph": 327.2, "avg_yield": 0.6, "report_count": 1}
+          ],
+          "lines": [
+            {"line_id": "A", "description": "57-2", "monthly": [...]},
+            {"line_id": "B", "description": "57-1", "monthly": [...]}
+          ]
+        },
+        {
+          "circuit_id": "B",
+          "description": "CR Circuit",
+          "monthly": [...],
+          "lines": []
+        }
       ]
-    },
-    { "id": "B", "description": "CR Circuit", "monthly": [...], "lines": [] }
+    }
   ]
 }
 ```
 
-Aggregation rules per (circuit, month) and per (circuit, line, month):
-- `total_tons` = sum of `node.Total` across reports in window
-- `runtime_hours` = sum of `node.Runtime` across reports
-- `avg_tph` = mean of per-report `node.Total / node.Runtime` where
-  `node.Runtime > 0`. None when no reports qualify.
-- `avg_yield` = mean of per-report `node.Total / Workcenter.Total`
-  where `Workcenter.Total > 0`. None otherwise.
-- `report_count` = number of reports contributing to this bucket.
-
-#### Six chart panels driven by the endpoint
-
-| Chart | Data path |
-|---|---|
-| 57's TPH per Circuit | Circuit A's lines, paired bars by line.description, value = `line.monthly[m].avg_tph` |
-| Total 57's TPH | Circuit A circuit-level, single bar, value = `circuit.monthly[m].avg_tph` (or sum of lines' avg_tph -- mathematically equivalent for the sum-of-means formulation) |
-| 57's Yield | Same shape as 57's TPH per Circuit, value = `line.monthly[m].avg_yield` |
-| Total 57's Yield | Same shape as Total 57's TPH, value = `circuit.monthly[m].avg_yield` |
-| Total 57's Produced | Circuit A circuit-level, single bar per month, value = `circuit.monthly[m].total_tons` |
-| 57's tons per circuit | Same shape as 57's TPH per Circuit, value = `line.monthly[m].total_tons` |
-
-Frontend renders these by iterating the response's circuits and
-their lines. Labels come from `description`. A site whose
-`Circuit.X.Description` is "Stone Crusher" renders that label
-instead of "Main Circuit" with no code change.
+Per-(circuit, month) and per-(line, month) aggregates:
+- `total_tons` -- sum of `node.Total` across reports in the bucket
+- `runtime_hours` -- sum of `node.Runtime`
+- `avg_tph` -- simple mean of per-report `node.Total / node.Runtime`
+  where `Runtime > 0`. None when no report qualifies.
+- `avg_yield` -- simple mean of per-report `node.Yield` (the
+  pre-computed mass-conversion ratio in the payload). None when no
+  report has a usable value.
+- `report_count` -- number of reports contributing.
 
 #### Files to add / modify
 
-- [ ] `backend/app/services/production_report.py` -- new
-      dataclasses `LineMonthly`, `CircuitMonthly`,
-      `CircuitMonthlyRollup` (the response wrapper). New service
-      function `get_circuit_monthly_rollup(source, *, site_id,
-      from_month, to_month, department_id)` that walks each
-      report's `Metrics.Circuit` tree and emits the rollup.
+- [ ] `backend/app/services/production_report.py` -- add internal
+      dataclasses (`CircuitMonthlyEntry`, `LineRollup`,
+      `CircuitRollup`, `DepartmentCircuitRollup`); new service
+      function `get_circuit_monthly_rollup(...)` that walks
+      `payload.Metrics.Circuit` in each report and emits the
+      hierarchical aggregates; helper for per-node monthly bucket
+      aggregation.
 - [ ] `backend/app/schemas/production_report.py` -- Pydantic
-      mirrors of the above with descriptions.
+      mirrors for the response shape with field descriptions.
 - [ ] `backend/app/api/routes/production_report.py` -- new route
-      `/circuit-monthly-rollup`. Same parameter validation as
+      `/circuit-monthly-rollup`. Same param validation as
       `/monthly-rollup`.
-- [ ] `backend/tests/api/test_production_report.py` -- 4-6 new
-      tests: shape, dynamic descriptions, missing circuits, lines
-      vs. no-lines circuits, yield-zero handling.
-- [ ] `frontend/app.js` -- `refreshTrends` now fetches BOTH
-      `monthly-rollup` and `circuit-monthly-rollup`. Renders the
-      six new chart panels alongside the existing four (workcenter
-      lines + 14a workcenter bars).
+- [ ] `backend/tests/services/test_circuit_monthly_rollup.py` --
+      new file. ~6 tests: shape, dynamic descriptions, missing
+      circuits, lines vs no-lines circuits, yield-zero handling,
+      runtime-zero handling.
+- [ ] `frontend/app.css` -- add `.trend-subsection-header` style for
+      circuit dividers (smaller than the workcenter section header).
+- [ ] `frontend/app.js` -- `refreshTrends` now fetches both rollups
+      in parallel via `Promise.all`. `renderTrends` extended to
+      append circuit subsections under each workcenter section. New
+      `_renderCircuitSection(grid, circuit, months, colorIdx)`
+      helper renders the 3 or 6 panels per circuit depending on
+      whether `lines.length > 0`.
+
+#### Decisions (locking from earlier discussion)
+
+- Chart titles use generic metric names ("TPH per Line", "Total
+  TPH", etc.). Circuit `description` is the subsection header.
+  Line `description` is the legend label on paired-line charts.
+  Universal across sites.
+- Six chart panels for circuits-with-lines, three for line-less
+  circuits.
+- Use `node.Yield` directly from the payload (pre-computed
+  upstream). No `Line.Total / Workcenter.Total` math in the API.
+- Same simple-average aggregation as Phase 14a (per Trey's D1).
 
 #### Verification
 
-- [ ] `pytest` passes.
-- [ ] Hit the new endpoint with January 2026 data; confirm avg_tph
-      and avg_yield numbers match the manager's PDF for Big Canyon
-      Jan-Apr 2026.
-- [ ] Site 102 (synthetic): confirm the dynamic rendering doesn't
-      break -- if site 102's payloads have a different `Circuit`
-      shape or no `Description` fields, the dashboard either
-      degrades gracefully (skip that panel for the site) or renders
-      the bars labeled by the raw `Circuit` keys (`A`, `B`).
-- [ ] Theme toggle light/dark works for all new panels.
+- [ ] `pytest` passes (110 + ~6 new = ~116 tests).
+- [ ] Hit `/circuit-monthly-rollup` against fresh data, eyeball
+      `avg_tph` and `avg_yield` for January-April 2026 against the
+      manager's PDF.
+- [ ] Trends tab renders Main Circuit's six bar panels under Plant 1
+      and CR Circuit's three panels below them.
+- [ ] Site 102 (synthetic, may have no Circuit block in payload):
+      confirm graceful fallback -- the `circuits: []` empty array
+      makes the frontend skip rendering circuit subsections.
+- [ ] Theme toggle light/dark.
 
 ### Phase 14c -- Conveyor product-grouped comparison (DEFERRED)
 

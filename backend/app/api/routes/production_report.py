@@ -23,8 +23,13 @@ from app.integrations.production_report.base import (
     ProductionReportSource,
 )
 from app.schemas.production_report import (
+    CircuitMonthlyEntry as PydCircuitMonthlyEntry,
+    CircuitMonthlyRollupResponse,
+    CircuitRollup as PydCircuitRollup,
     ConveyorTotals,
+    DepartmentCircuitRollup as PydDepartmentCircuitRollup,
     LatestDateResponse,
+    LineRollup as PydLineRollup,
     MonthlyRollupEntry,
     MonthlyRollupResponse,
     ProductionReportEntry,
@@ -32,9 +37,14 @@ from app.schemas.production_report import (
     ProductionReportRangeResponse,
 )
 from app.services.production_report import (
+    CircuitMonthlyEntry as SvcCircuitMonthlyEntry,
+    CircuitRollup as SvcCircuitRollup,
     ConveyorAggregate,
+    DepartmentCircuitRollup as SvcDepartmentCircuitRollup,
+    LineRollup as SvcLineRollup,
     MonthlyRollup,
     compute_conveyor_totals,
+    get_circuit_monthly_rollup,
     get_latest_date,
     get_latest_per_workcenter,
     get_monthly_rollup,
@@ -380,3 +390,112 @@ async def monthly_rollup(
         generated_at=datetime.now(UTC),
         rollups=[_to_rollup_entry(r) for r in rollups],
     )
+
+
+# --- /circuit-monthly-rollup (Phase 14b) ----------------------------------
+
+
+def _to_pyd_circuit_entry(e: SvcCircuitMonthlyEntry) -> PydCircuitMonthlyEntry:
+    return PydCircuitMonthlyEntry(
+        month=e.month,
+        total_tons=e.total_tons,
+        runtime_hours=e.runtime_hours,
+        avg_tph=e.avg_tph,
+        avg_yield=e.avg_yield,
+        report_count=e.report_count,
+    )
+
+
+def _to_pyd_line(line: SvcLineRollup) -> PydLineRollup:
+    return PydLineRollup(
+        line_id=line.line_id,
+        description=line.description,
+        monthly=[_to_pyd_circuit_entry(m) for m in line.monthly],
+    )
+
+
+def _to_pyd_circuit(c: SvcCircuitRollup) -> PydCircuitRollup:
+    return PydCircuitRollup(
+        circuit_id=c.circuit_id,
+        description=c.description,
+        monthly=[_to_pyd_circuit_entry(m) for m in c.monthly],
+        lines=[_to_pyd_line(l) for l in c.lines],
+    )
+
+
+def _to_pyd_department(d: SvcDepartmentCircuitRollup) -> PydDepartmentCircuitRollup:
+    return PydDepartmentCircuitRollup(
+        department_id=d.department_id,
+        department_name=d.department_name,
+        circuits=[_to_pyd_circuit(c) for c in d.circuits],
+    )
+
+
+@router.get(
+    "/circuit-monthly-rollup",
+    response_model=CircuitMonthlyRollupResponse,
+    summary="Per-circuit and per-line monthly rollups",
+    description=(
+        "Walks payload.Metrics.Circuit on every production-report row "
+        "in [from_month, to_month] and returns a hierarchical "
+        "(department -> circuits -> [optional] lines -> monthly) view "
+        "of TPH, total tons, and yield per node. Site-specific topology "
+        "is encoded in node `description` fields; consumers render "
+        "them as labels with no hard-coded knowledge of '57-1' / "
+        "'Main Circuit'. Aggregations are simple averages across "
+        "reports in each (node, month) bucket. Maximum window: 37 months."
+    ),
+)
+async def circuit_monthly_rollup(
+    production_report: ProductionReportSourceDep,
+    site_id: Annotated[str, Query(description="Site to roll up (required).")],
+    from_month: Annotated[
+        str,
+        Query(description="Earliest month to include, YYYY-MM (inclusive)."),
+    ],
+    to_month: Annotated[
+        str,
+        Query(description="Latest month to include, YYYY-MM (inclusive)."),
+    ],
+    department_id: Annotated[
+        str | None,
+        Query(description="Optional filter: roll up only this department_id."),
+    ] = None,
+) -> CircuitMonthlyRollupResponse:
+    from_first = _parse_month_string(from_month, field_name="from_month")
+    to_first = _parse_month_string(to_month, field_name="to_month")
+    if from_first > to_first:
+        raise HTTPException(
+            status_code=422,
+            detail=f"from_month ({from_month}) must be <= to_month ({to_month}).",
+        )
+    span = _months_between(from_first, to_first)
+    if span > _MAX_ROLLUP_MONTHS:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Window too large: {span} months exceeds the "
+                f"{_MAX_ROLLUP_MONTHS}-month cap. Narrow the window."
+            ),
+        )
+    to_last = _last_day_of_month(to_first)
+    try:
+        depts = await get_circuit_monthly_rollup(
+            production_report,
+            site_id=site_id,
+            from_month=from_first,
+            to_month=to_last,
+            department_id=department_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    return CircuitMonthlyRollupResponse(
+        site_id=site_id,
+        from_month=from_month,
+        to_month=to_month,
+        department_id=department_id,
+        generated_at=datetime.now(UTC),
+        departments=[_to_pyd_department(d) for d in depts],
+    )
+

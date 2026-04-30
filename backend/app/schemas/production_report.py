@@ -325,3 +325,80 @@ class MonthlyRollupResponse(BaseModel):
             "production-report rows exist in the window for the site."
         )
     )
+
+
+# --- Phase 14b: per-circuit / per-line monthly rollup wire shape ----------
+
+
+class CircuitMonthlyEntry(BaseModel):
+    """One per-(circuit-or-line, month) aggregate on the wire."""
+
+    month: str = Field(description="YYYY-MM identifier.")
+    total_tons: float = Field(description="Sum of node.Total across reports in this month bucket.")
+    runtime_hours: float = Field(description="Sum of node.Runtime (decimal hours) across reports.")
+    avg_tph: float | None = Field(
+        default=None,
+        description=(
+            "Simple mean of per-report (Total/Runtime) where Runtime > 0. "
+            "Null when no report in the bucket has positive Runtime."
+        ),
+    )
+    avg_yield: float | None = Field(
+        default=None,
+        description=(
+            "Simple mean of per-report Yield (the mass-conversion ratio "
+            "pre-computed upstream as Line.Total / Workcenter.Total or the "
+            "circuit-level equivalent). Null when no report has a usable "
+            "Yield value."
+        ),
+    )
+    report_count: int = Field(description="Number of reports contributing to this bucket.")
+
+
+class LineRollup(BaseModel):
+    """A sub-circuit ('line') under a top-level circuit. Empty for
+    circuits without a Line sub-structure (e.g., a CR-only circuit)."""
+
+    line_id: str = Field(description="Payload slot key (e.g. 'A', 'B'). Positional.")
+    description: str = Field(description="Operator-facing label from payload (e.g. '57-1').")
+    monthly: list[CircuitMonthlyEntry] = Field(description="Per-month aggregates for this line.")
+
+
+class CircuitRollup(BaseModel):
+    """One top-level circuit, with optional nested lines."""
+
+    circuit_id: str = Field(description="Payload slot key (e.g. 'A', 'B'). Positional.")
+    description: str = Field(description="Operator-facing label from payload (e.g. 'Main Circuit').")
+    monthly: list[CircuitMonthlyEntry] = Field(description="Per-month aggregates for this circuit.")
+    lines: list[LineRollup] = Field(
+        default_factory=list,
+        description="Sub-lines under this circuit. Empty when the circuit has no Line sub-structure.",
+    )
+
+
+class DepartmentCircuitRollup(BaseModel):
+    """All circuits / lines for one department in the response."""
+
+    department_id: str = Field(description="Workcenter / department identifier.")
+    department_name: str = Field(description="Human-readable department name.")
+    circuits: list[CircuitRollup] = Field(
+        default_factory=list,
+        description="Top-level circuits discovered in this department's reports. Empty when no Circuit block was present.",
+    )
+
+
+class CircuitMonthlyRollupResponse(BaseModel):
+    """Envelope for /api/production-report/circuit-monthly-rollup."""
+
+    site_id: str = Field(description="Echo of the site_id filter.")
+    from_month: str = Field(description="Echo of from_month (YYYY-MM).")
+    to_month: str = Field(description="Echo of to_month (YYYY-MM).")
+    department_id: str | None = Field(
+        default=None,
+        description="Echo of optional department_id filter.",
+    )
+    generated_at: datetime = Field(description="UTC timestamp the response was assembled.")
+    departments: list[DepartmentCircuitRollup] = Field(
+        description="Per-department rollup. Empty when no rows match the filter."
+    )
+

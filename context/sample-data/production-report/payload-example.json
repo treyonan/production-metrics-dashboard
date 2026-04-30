@@ -12,45 +12,45 @@
       "Runtime": 0.0,
       "Description": "57-2",
       "Produced_Item_Description": "_",
-      "Belt_Scale_Availability": 96.2,
-      "Rate": 0.2,
-      "Total": 2.2,
+      "Belt_Scale_Availability": 99.6,
+      "Rate": 2.4,
+      "Total": 25.1,
       "Produced_Item_Code": "_",
       "Performance": null
     },
     "C4": {
-      "Availability": 6.5,
-      "Runtime": 0.8,
+      "Availability": 86.6,
+      "Runtime": 9.1,
       "Description": "57-2",
       "Produced_Item_Description": "#57",
-      "Belt_Scale_Availability": 96.3,
-      "Rate": 19.4,
-      "Total": 222.7,
+      "Belt_Scale_Availability": 100.0,
+      "Rate": 333.8,
+      "Total": 3508.2,
       "Produced_Item_Code": "ST3510",
-      "Performance": 89.7
+      "Performance": 116.8
     },
     "C5": {
-      "Availability": 6.5,
-      "Runtime": 0.8,
+      "Availability": 85.8,
+      "Runtime": 9.0,
       "Description": "57-1",
       "Produced_Item_Description": "#57",
-      "Belt_Scale_Availability": 96.3,
-      "Rate": 23.1,
-      "Total": 265.9,
+      "Belt_Scale_Availability": 100.0,
+      "Rate": 277.8,
+      "Total": 2919.4,
       "Produced_Item_Code": "ST3510",
-      "Performance": 107.0
+      "Performance": 98.1
     },
     "Workcenter": {
-      "Availability": 100.0,
+      "Availability": 100.1,
       "Production_Mode": "2",
-      "Runtime": 11.5,
-      "Start_Time": "06:15:00",
+      "Runtime": 10.5,
+      "Start_Time": "06:30:00",
       "Ideal_Rate": 1000.0,
-      "Rate": 70.3,
-      "Total": 807.9,
+      "Rate": 759.6,
+      "Total": 7983.7,
       "Scheduled_Status": "Scheduled",
-      "Performance": 7.0,
-      "Scheduled_Runtime": 11.5
+      "Performance": 76.0,
+      "Scheduled_Runtime": 10.5
     },
     "C6": {
       "Availability": 0.0,
@@ -64,15 +64,15 @@
       "Performance": null
     },
     "C7": {
-      "Availability": 5.7,
-      "Runtime": 0.7,
+      "Availability": 69.0,
+      "Runtime": 7.3,
       "Description": "Rejects",
       "Produced_Item_Description": "_",
-      "Belt_Scale_Availability": 96.3,
-      "Rate": 10.0,
-      "Total": 115.4,
+      "Belt_Scale_Availability": 85.6,
+      "Rate": 154.2,
+      "Total": 1621.1,
       "Produced_Item_Code": "_",
-      "Performance": 69.3
+      "Performance": 88.7
     },
     "C8": {
       "Availability": 0.0,
@@ -89,40 +89,44 @@
       "A": {
         "Line": {
           "A": {
-            "Runtime": 0.8,
-            "Description": "57-1",
-            "Total": 224.9,
-            "Yield": 0.3
+            "Runtime": 9.1,
+            "Description": "57-2",
+            "Rate": 336.2,
+            "Total": 3533.3,
+            "Yield": 0.4
           },
           "B": {
-            "Runtime": 0.8,
-            "Description": "57-2",
-            "Total": 265.9,
-            "Yield": 0.3
+            "Runtime": 9.0,
+            "Description": "57-1",
+            "Rate": 277.8,
+            "Total": 2919.4,
+            "Yield": 0.4
           }
         },
-        "Runtime": 1.5,
+        "Runtime": 18.1,
         "Description": "Main Circuit",
-        "Total": 490.8,
-        "Yield": 0.6
+        "Rate": 613.9,
+        "Total": 6452.7,
+        "Yield": 0.8
       },
       "B": {
         "Runtime": 0.0,
         "Description": "CR Circuit",
+        "Rate": 0.0,
         "Total": 0.0,
         "Yield": 0.0
       }
     },
     "C1": {
-      "Availability": 7.8,
-      "Runtime": 0.9,
+      "Availability": 87.1,
+      "Runtime": 9.2,
       "Description": "Kleeman Feed",
       "Produced_Item_Description": "_",
-      "Belt_Scale_Availability": 95.8,
-      "Rate": 80.3,
-      "Total": 923.3,
+      "Belt_Scale_Availability": 99.3,
+      "Rate": 913.8,
+      "Total": 9604.8,
       "Produced_Item_Code": "_",
-      "Performance": 107.6
+      "Performance": 109.9
     }
   }
 }

@@ -542,3 +542,251 @@ async def get_monthly_rollup(
         )
 
     return out
+
+
+# --- Phase 14b: per-circuit / per-line monthly rollup --------------------
+#
+# Walks payload.Metrics.Circuit on each row and emits a hierarchical
+# response shaped as (department -> circuits -> [optional] lines ->
+# monthly aggregates). The dashboard reads node.description as the
+# label for each level so the rendering is universal across sites.
+# Yield is read directly from the pre-computed `Yield` field on each
+# circuit/line node -- no math here.
+
+
+@dataclass(frozen=True)
+class CircuitMonthlyEntry:
+    """One per-(circuit-or-line, month) aggregate."""
+    month: str  # YYYY-MM
+    total_tons: float
+    runtime_hours: float
+    avg_tph: float | None
+    avg_yield: float | None
+    report_count: int
+
+
+@dataclass(frozen=True)
+class LineRollup:
+    """A line under a circuit. ``description`` is the operator-facing label
+    (e.g. "57-1"); ``line_id`` is the slot key in the payload (e.g. "A")."""
+    line_id: str
+    description: str
+    monthly: list[CircuitMonthlyEntry]
+
+
+@dataclass(frozen=True)
+class CircuitRollup:
+    """A top-level circuit. ``lines`` is empty when the circuit has no
+    sub-line structure in the payload (e.g. "CR Circuit")."""
+    circuit_id: str
+    description: str
+    monthly: list[CircuitMonthlyEntry]
+    lines: list[LineRollup]
+
+
+@dataclass(frozen=True)
+class DepartmentCircuitRollup:
+    """All circuits / lines for one department."""
+    department_id: str
+    department_name: str
+    circuits: list[CircuitRollup]
+
+
+def _per_node_tph(node: dict[str, Any]) -> float | None:
+    """Per-report TPH for a Circuit or Line node.
+
+    Prefers ``node.Rate`` (pre-computed upstream, the authoritative
+    value Flow publishes for that node). Falls back to
+    ``node.Total / node.Runtime`` for payloads written before Rate
+    was added at the circuit / line level (rollout window) and as
+    a defensive guard against malformed nodes that drop the Rate
+    field. Returns None when neither path yields a usable value.
+    Same precedence pattern as ``_avg_tph_fed_for_report`` for
+    Workcenter -- consistency across the codebase.
+    """
+    rate = _coerce_finite_float(node.get("Rate"))
+    if rate is not None:
+        return rate
+    total = _coerce_finite_float(node.get("Total"))
+    runtime = _coerce_finite_float(node.get("Runtime"))
+    if total is not None and runtime is not None and runtime > 0:
+        return total / runtime
+    return None
+
+
+def _circuit_node_aggregate(
+    node_per_report: list[tuple[str, dict[str, Any] | None]],
+) -> list[CircuitMonthlyEntry]:
+    """Roll a list of ``(month, node)`` pairs into per-month aggregates.
+
+    Each ``node`` is either a Circuit or a Line dict from the payload,
+    or ``None`` if that report didn't have the node. ``None`` reports
+    contribute 0 to ``report_count`` (the node didn't exist) and are
+    skipped from the means. The mean helpers drop None values.
+    """
+    by_month: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for month, node in node_per_report:
+        if isinstance(node, dict):
+            by_month[month].append(node)
+
+    out: list[CircuitMonthlyEntry] = []
+    for month in sorted(by_month.keys()):
+        nodes = by_month[month]
+        total_tons = sum(_coerce_finite_float(n.get("Total")) or 0.0 for n in nodes)
+        runtime_hours = sum(_coerce_finite_float(n.get("Runtime")) or 0.0 for n in nodes)
+
+        # avg_tph: simple mean of per-report Rate (preferred) or
+        # Total/Runtime fallback. See _per_node_tph for the rule.
+        avg_tph = _mean_or_none([_per_node_tph(n) for n in nodes])
+
+        # avg_yield: simple mean of per-report Yield (pre-computed).
+        avg_yield = _mean_or_none(
+            [_coerce_finite_float(n.get("Yield")) for n in nodes]
+        )
+
+        out.append(
+            CircuitMonthlyEntry(
+                month=month,
+                total_tons=total_tons,
+                runtime_hours=runtime_hours,
+                avg_tph=avg_tph,
+                avg_yield=avg_yield,
+                report_count=len(nodes),
+            )
+        )
+    return out
+
+
+async def get_circuit_monthly_rollup(
+    source: ProductionReportSource,
+    *,
+    site_id: str,
+    from_month: date,
+    to_month: date,
+    department_id: str | None = None,
+) -> list[DepartmentCircuitRollup]:
+    """Compute hierarchical (department -> circuit -> [lines]) monthly
+    rollups across the window. Each report's payload is walked for its
+    Circuit hierarchy; circuits and lines are discovered dynamically
+    via their slot keys (`A`, `B`, ...) and labeled by their
+    ``Description`` field.
+
+    Aggregations per (circuit, month) and per (line, month):
+      - ``total_tons`` = sum of node.Total
+      - ``runtime_hours`` = sum of node.Runtime
+      - ``avg_tph`` = simple mean of per-report node.Total/node.Runtime
+      - ``avg_yield`` = simple mean of per-report node.Yield
+      - ``report_count`` = reports contributing to the bucket
+
+    A report whose payload lacks the Circuit block, or lacks a
+    particular circuit/line slot, simply doesn't contribute to that
+    bucket. Buckets that end up empty are present with zero/None
+    values so the frontend's per-month axis stays consistent.
+
+    Raises:
+        ValueError -- if from_month > to_month.
+    """
+    if from_month > to_month:
+        raise ValueError(
+            f"from_month ({from_month.strftime('%Y-%m')}) must be <= "
+            f"to_month ({to_month.strftime('%Y-%m')})."
+        )
+
+    rows = await source.fetch_rows()
+    rows = [r for r in rows if r.site_id == site_id]
+    if department_id is not None:
+        rows = [r for r in rows if r.department_id == department_id]
+    rows = [
+        r for r in rows
+        if from_month <= r.prod_date.date() <= to_month
+    ]
+
+    # Group reports by department_id.
+    by_dept: dict[str, list[ProductionReportRow]] = defaultdict(list)
+    for r in rows:
+        by_dept[r.department_id].append(r)
+
+    out: list[DepartmentCircuitRollup] = []
+    for dept_id in sorted(by_dept.keys()):
+        dept_rows = by_dept[dept_id]
+        dept_name = dept_rows[0].department_name
+
+        # Topology discovery: walk every report's Circuit block and
+        # collect the union of (circuit_id, description) and
+        # (circuit_id, line_id, description) tuples. First-seen
+        # ordering wins for slot ordering and description (descriptions
+        # *should* be stable per-slot but we don't enforce it -- the
+        # first one seen wins, which is a deliberate choice over
+        # rejecting on disagreement).
+        circuit_meta: dict[str, str] = {}      # circuit_id -> description
+        line_meta: dict[tuple[str, str], str] = {}  # (cid, lid) -> description
+        for r in dept_rows:
+            circuits = (r.payload or {}).get("Metrics", {}).get("Circuit") or {}
+            if not isinstance(circuits, dict):
+                continue
+            for cid, cnode in circuits.items():
+                if not isinstance(cnode, dict):
+                    continue
+                if cid not in circuit_meta:
+                    circuit_meta[cid] = str(cnode.get("Description") or cid)
+                lines = cnode.get("Line")
+                if isinstance(lines, dict):
+                    for lid, lnode in lines.items():
+                        if not isinstance(lnode, dict):
+                            continue
+                        key = (cid, lid)
+                        if key not in line_meta:
+                            line_meta[key] = str(lnode.get("Description") or lid)
+
+        # For each discovered circuit / line, build (month, node)
+        # tuples per report and run them through the aggregator.
+        circuits_out: list[CircuitRollup] = []
+        for cid in sorted(circuit_meta.keys()):
+            cdesc = circuit_meta[cid]
+
+            circuit_node_per_report: list[tuple[str, dict[str, Any] | None]] = []
+            for r in dept_rows:
+                ym = f"{r.prod_date.year:04d}-{r.prod_date.month:02d}"
+                cnode = (r.payload or {}).get("Metrics", {}).get("Circuit", {}).get(cid)
+                circuit_node_per_report.append((ym, cnode))
+            circuit_monthly = _circuit_node_aggregate(circuit_node_per_report)
+
+            # Lines under this circuit (if any).
+            lines_out: list[LineRollup] = []
+            for (lc, lid), ldesc in line_meta.items():
+                if lc != cid:
+                    continue
+                line_node_per_report: list[tuple[str, dict[str, Any] | None]] = []
+                for r in dept_rows:
+                    ym = f"{r.prod_date.year:04d}-{r.prod_date.month:02d}"
+                    cnode = (r.payload or {}).get("Metrics", {}).get("Circuit", {}).get(cid) or {}
+                    lnode = cnode.get("Line", {}).get(lid) if isinstance(cnode, dict) else None
+                    line_node_per_report.append((ym, lnode))
+                lines_out.append(
+                    LineRollup(
+                        line_id=lid,
+                        description=ldesc,
+                        monthly=_circuit_node_aggregate(line_node_per_report),
+                    )
+                )
+            lines_out.sort(key=lambda l: l.line_id)
+
+            circuits_out.append(
+                CircuitRollup(
+                    circuit_id=cid,
+                    description=cdesc,
+                    monthly=circuit_monthly,
+                    lines=lines_out,
+                )
+            )
+
+        out.append(
+            DepartmentCircuitRollup(
+                department_id=dept_id,
+                department_name=dept_name,
+                circuits=circuits_out,
+            )
+        )
+
+    return out
+

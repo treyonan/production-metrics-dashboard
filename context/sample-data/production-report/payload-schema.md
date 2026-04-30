@@ -175,9 +175,13 @@ have nested `Line` objects, others do not.
 |---|---|---|---|
 | `Circuit.<id>.Runtime` | number | no | Circuit runtime in **decimal hours** |
 | `Circuit.<id>.Total` | number \| null | **yes** | Tons through circuit |
+| `Circuit.<id>.Rate` | number \| null | **yes** | Circuit-level TPH (tons-per-hour). Pre-computed upstream; the API consumes this directly with a `Total / Runtime` fallback for older payloads. |
+| `Circuit.<id>.Yield` | number \| null | **yes** | Circuit-level mass-conversion ratio (Total / Workcenter.Total). Pre-computed upstream. |
 | `Circuit.<id>.Description` | string | no | Human-readable circuit name (e.g. `"Main Circuit"`, `"CR Circuit"`) |
 | `Circuit.<id>.Line.<id>.Runtime` | number | no | Line runtime in **decimal hours** (when Line is present) |
 | `Circuit.<id>.Line.<id>.Total` | number \| null | **yes** | Line tons |
+| `Circuit.<id>.Line.<id>.Rate` | number \| null | **yes** | Line-level TPH. Same semantics as the circuit-level Rate. |
+| `Circuit.<id>.Line.<id>.Yield` | number \| null | **yes** | Line-level mass-conversion ratio. Pre-computed upstream. |
 | `Circuit.<id>.Line.<id>.Description` | string | no | Human-readable line name (e.g. `"57-1"`, `"57-2"`) |
 
 Observed circuits: `A` ("Main Circuit", with `Line.A` "57-1" and
