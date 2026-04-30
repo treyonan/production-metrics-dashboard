@@ -1,132 +1,254 @@
 {
-  "Metrics": {
-    "Site": {
-      "Loader_Operator_One": "Brandon Stephens",
-      "Shot_Number_One": "None",
-      "Loader_Operator_Two": "Connor Dakour",
-      "Loads_15_Ton": "0",
-      "Shot_Number_Two": "None"
-    },
-    "C3": {
-      "Availability": 0.0,
-      "Runtime": 0.0,
-      "Description": "57-2",
-      "Produced_Item_Description": "_",
-      "Belt_Scale_Availability": 99.6,
-      "Rate": 2.4,
-      "Total": 25.1,
-      "Produced_Item_Code": "_",
-      "Performance": null
-    },
-    "C4": {
-      "Availability": 86.6,
-      "Runtime": 9.1,
-      "Description": "57-2",
-      "Produced_Item_Description": "#57",
-      "Belt_Scale_Availability": 100.0,
-      "Rate": 333.8,
-      "Total": 3508.2,
-      "Produced_Item_Code": "ST3510",
-      "Performance": 116.8
-    },
-    "C5": {
-      "Availability": 85.8,
-      "Runtime": 9.0,
-      "Description": "57-1",
-      "Produced_Item_Description": "#57",
-      "Belt_Scale_Availability": 100.0,
-      "Rate": 277.8,
-      "Total": 2919.4,
-      "Produced_Item_Code": "ST3510",
-      "Performance": 98.1
-    },
-    "Workcenter": {
-      "Availability": 100.1,
-      "Production_Mode": "2",
-      "Runtime": 10.5,
-      "Start_Time": "06:30:00",
-      "Ideal_Rate": 1000.0,
-      "Rate": 759.6,
-      "Total": 7983.7,
-      "Scheduled_Status": "Scheduled",
-      "Performance": 76.0,
-      "Scheduled_Runtime": 10.5
-    },
-    "C6": {
-      "Availability": 0.0,
-      "Runtime": 0.0,
-      "Description": "57-1",
-      "Produced_Item_Description": "_",
-      "Belt_Scale_Availability": 0.0,
-      "Rate": 0.0,
-      "Total": 0.0,
-      "Produced_Item_Code": "_",
-      "Performance": null
-    },
-    "C7": {
-      "Availability": 69.0,
-      "Runtime": 7.3,
-      "Description": "Rejects",
-      "Produced_Item_Description": "_",
-      "Belt_Scale_Availability": 85.6,
-      "Rate": 154.2,
-      "Total": 1621.1,
-      "Produced_Item_Code": "_",
-      "Performance": 88.7
-    },
-    "C8": {
-      "Availability": 0.0,
-      "Runtime": 0.0,
-      "Description": "Crusher Run",
-      "Produced_Item_Description": "1 1/2IN CRUSHER RUN",
-      "Belt_Scale_Availability": 0.0,
-      "Rate": 0.0,
-      "Total": 0.0,
-      "Produced_Item_Code": "ST5450",
-      "Performance": null
-    },
-    "Circuit": {
-      "A": {
-        "Line": {
-          "A": {
-            "Runtime": 9.1,
-            "Description": "57-2",
-            "Rate": 336.2,
-            "Total": 3533.3,
-            "Yield": 0.4
+  "count": 2,
+  "generated_at": "2026-04-30T19:20:27.781745Z",
+  "entries": [
+    {
+      "id": 2224,
+      "prod_date": "2026-04-29T00:00:00",
+      "prod_id": "PR101_06_20260429_1_001",
+      "site_id": "101",
+      "department_id": "130",
+      "department_name": "Wash Plant",
+      "payload": {
+        "Metrics": {
+          "Site": {},
+          "C4": {
+            "Availability": 6.4,
+            "Runtime": 0.7,
+            "Description": "Wash Intake",
+            "Produced_Item_Description": "_",
+            "Belt_Scale_Availability": 98.7,
+            "Rate": 19.2,
+            "Total": 219.8,
+            "Produced_Item_Code": "_",
+            "Performance": 91.6
           },
-          "B": {
-            "Runtime": 9.0,
-            "Description": "57-1",
-            "Rate": 277.8,
-            "Total": 2919.4,
-            "Yield": 0.4
+          "Workcenter": {
+            "Availability": 100,
+            "Production_Mode": "1",
+            "Runtime": 11.4,
+            "Start_Time": "06:47:00",
+            "Ideal_Rate": 330,
+            "Rate": 0.2,
+            "Total": 2,
+            "Scheduled_Status": "Unscheduled",
+            "Performance": 0.1,
+            "Scheduled_Runtime": 11.4
+          },
+          "C9": {
+            "Availability": 31.2,
+            "Runtime": 3.6,
+            "Description": "Wash Return",
+            "Produced_Item_Description": "_",
+            "Belt_Scale_Availability": 98.8,
+            "Rate": 0.2,
+            "Total": 2,
+            "Produced_Item_Code": "_",
+            "Performance": 0.2
           }
-        },
-        "Runtime": 18.1,
-        "Description": "Main Circuit",
-        "Rate": 613.9,
-        "Total": 6452.7,
-        "Yield": 0.8
+        }
       },
-      "B": {
-        "Runtime": 0.0,
-        "Description": "CR Circuit",
-        "Rate": 0.0,
-        "Total": 0.0,
-        "Yield": 0.0
-      }
+      "dtm": "2026-04-30T13:57:04",
+      "shift": "1",
+      "weather_conditions": "light rain, overcast clouds",
+      "avg_temp": 60.373333,
+      "avg_humidity": 73.333333,
+      "max_wind_speed": 19.06,
+      "notes": null
     },
-    "C1": {
-      "Availability": 87.1,
-      "Runtime": 9.2,
-      "Description": "Kleeman Feed",
-      "Produced_Item_Description": "_",
-      "Belt_Scale_Availability": 99.3,
-      "Rate": 913.8,
-      "Total": 9604.8,
-      "Produced_Item_Code": "_",
-      "Performance": 109.9
+    {
+      "id": 2235,
+      "prod_date": "2026-04-29T00:00:00",
+      "prod_id": "PR101_03_20260429_1_001",
+      "site_id": "101",
+      "department_id": "127",
+      "department_name": "Secondary",
+      "payload": {
+        "Metrics": {
+          "Site": {
+            "Loader_Operator_One": "Brandon Stephens",
+            "Shot_Number_One": "None",
+            "Loader_Operator_Two": "Connor Dakour",
+            "Loads_15_Ton": "0",
+            "Shot_Number_Two": "None"
+          },
+          "C3": {
+            "Availability": 0,
+            "Runtime": 0,
+            "Description": "57-2",
+            "Produced_Item_Description": "_",
+            "Belt_Scale_Availability": 96.2,
+            "Rate": 0.2,
+            "Total": 2.2,
+            "Produced_Item_Code": "_",
+            "Performance": null
+          },
+          "C4": {
+            "Availability": 6.5,
+            "Runtime": 0.8,
+            "Description": "57-2",
+            "Produced_Item_Description": "#57",
+            "Belt_Scale_Availability": 96.3,
+            "Rate": 19.4,
+            "Total": 222.7,
+            "Produced_Item_Code": "ST3510",
+            "Performance": 89.7
+          },
+          "C5": {
+            "Availability": 6.5,
+            "Runtime": 0.8,
+            "Description": "57-1",
+            "Produced_Item_Description": "#57",
+            "Belt_Scale_Availability": 96.3,
+            "Rate": 23.1,
+            "Total": 265.9,
+            "Produced_Item_Code": "ST3510",
+            "Performance": 107
+          },
+          "Workcenter": {
+            "Availability": 100,
+            "Production_Mode": "2",
+            "Runtime": 11.5,
+            "Calcs": {
+              "Total": "C1+C8-C7"
+            },
+            "Start_Time": "06:15:00",
+            "Ideal_Rate": 1000,
+            "Rate": 70.3,
+            "Total": 807.9,
+            "Scheduled_Status": "Scheduled",
+            "Performance": 7,
+            "Scheduled_Runtime": 11.5
+          },
+          "C6": {
+            "Availability": 0,
+            "Runtime": 0,
+            "Description": "57-1",
+            "Produced_Item_Description": "_",
+            "Belt_Scale_Availability": 0,
+            "Rate": 0,
+            "Total": 0,
+            "Produced_Item_Code": "_",
+            "Performance": null
+          },
+          "C7": {
+            "Availability": 5.7,
+            "Runtime": 0.7,
+            "Description": "Rejects",
+            "Produced_Item_Description": "_",
+            "Belt_Scale_Availability": 96.3,
+            "Rate": 10,
+            "Total": 115.4,
+            "Produced_Item_Code": "_",
+            "Performance": 69.3
+          },
+          "C8": {
+            "Availability": 0,
+            "Runtime": 0,
+            "Description": "Crusher Run",
+            "Produced_Item_Description": "1 1/2IN CRUSHER RUN",
+            "Belt_Scale_Availability": 0,
+            "Rate": 0,
+            "Total": 0,
+            "Produced_Item_Code": "ST5450",
+            "Performance": null
+          },
+          "Circuit": {
+            "A": {
+              "Line": {
+                "A": {
+                  "Runtime": 0.8,
+                  "Description": "57-2",
+                  "Calcs": {
+                    "Total": "C3+C4"
+                  },
+                  "Rate": 19.6,
+                  "Total": 224.9,
+                  "Yield": 0.3
+                },
+                "B": {
+                  "Runtime": 0.8,
+                  "Description": "57-1",
+                  "Calcs": {
+                    "Total": "C5+C6"
+                  },
+                  "Rate": 23.1,
+                  "Total": 265.9,
+                  "Yield": 0.3
+                }
+              },
+              "Runtime": 1.5,
+              "Description": "Main Circuit",
+              "Rate": 42.7,
+              "Total": 490.8,
+              "Yield": 0.6
+            },
+            "B": {
+              "Runtime": 0,
+              "Description": "CR Circuit",
+              "Rate": 0,
+              "Total": 0,
+              "Yield": 0
+            }
+          },
+          "C1": {
+            "Availability": 7.8,
+            "Runtime": 0.9,
+            "Description": "Kleeman Feed",
+            "Produced_Item_Description": "_",
+            "Belt_Scale_Availability": 95.8,
+            "Rate": 80.3,
+            "Total": 923.3,
+            "Produced_Item_Code": "_",
+            "Performance": 107.6
+          }
+        }
+      },
+      "dtm": "2026-04-30T13:56:55",
+      "shift": "1",
+      "weather_conditions": "light rain, overcast clouds",
+      "avg_temp": 59.594,
+      "avg_humidity": 74.4,
+      "max_wind_speed": 19.06,
+      "notes": null
+    }
+  ],
+  "conveyor_totals": {
+    "101:130": {
+      "per_conveyor": {
+        "C4": 219.8,
+        "C9": 2
+      },
+      "product_mode": {
+        "C4": null,
+        "C9": null
+      },
+      "grand_total": 221.8,
+      "conveyors_counted": 2,
+      "reports_counted": 1
+    },
+    "101:127": {
+      "per_conveyor": {
+        "C1": 923.3,
+        "C3": 2.2,
+        "C4": 222.7,
+        "C5": 265.9,
+        "C6": 0,
+        "C7": 115.4,
+        "C8": 0
+      },
+      "product_mode": {
+        "C1": null,
+        "C3": null,
+        "C4": "#57",
+        "C5": "#57",
+        "C6": null,
+        "C7": null,
+        "C8": "1 1/2IN CRUSHER RUN"
+      },
+      "grand_total": 1529.5,
+      "conveyors_counted": 7,
+      "reports_counted": 1
     }
   }
 }
