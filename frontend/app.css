@@ -46,7 +46,7 @@
   --chip-r-bg: #fde7e9;
   --chip-r-fg: #a4262c;
 
-  --pill-ok-bg: #0e5c0e;
+  --pill-ok-bg: #107c10;
   --pill-ok-fg: #ffffff;
   --pill-warn-bg: #7a4800;
   --pill-warn-fg: #ffffff;
@@ -96,8 +96,8 @@
   --chip-r-bg: #3d1518;
   --chip-r-fg: #f85d6a;
 
-  --pill-ok-bg: #1e6b1e;
-  --pill-ok-fg: #dff6dd;
+  --pill-ok-bg: #107c10;
+  --pill-ok-fg: #ffffff;
   --pill-warn-bg: #6b4a00;
   --pill-warn-fg: #ffd567;
   --pill-crit-bg: #6b1a20;
@@ -187,17 +187,21 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: var(--shell-button-bg, #3b3a39);
-  border: 1px solid var(--divider-dark);
+  /* Green action color -- intentionally distinct from the default
+     dark-shell button so the export action reads as primary. The
+     two greens (base + hover) match the OK status pill's palette
+     so the topbar feels visually coherent. */
+  background: #107c10;
+  border: 1px solid #0b5c0b;
   border-radius: 2px;
-  color: var(--shell-text, #f3f2f1);
+  color: #ffffff;
   font-family: inherit;
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
   transition: background .15s, color .15s, transform .1s, opacity .15s;
 }
-.export-btn:hover:not(:disabled) { background: var(--shell-hover-bg, #484644); }
+.export-btn:hover:not(:disabled) { background: #0e6b0e; border-color: #094709; }
 .export-btn:active:not(:disabled) { transform: translateY(1px); }
 .export-btn:disabled { opacity: .45; cursor: not-allowed; }
 .export-btn svg { display: block; width: 12px; height: 12px; flex-shrink: 0; }

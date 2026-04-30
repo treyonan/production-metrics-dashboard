@@ -959,8 +959,18 @@
   function updateExportButtonState() {
     const btn = $("export-btn");
     if (!btn) return;
-    const canExport = !!(_lastPayload && (_lastPayload.entries || []).length);
+    let canExport;
+    let title;
+    if (currentView === "trends") {
+      canExport = !!(_lastTrendsPayload && (_lastTrendsPayload.rollups || []).length);
+      title = "Download Trends data as Excel (.xlsx)";
+    } else {
+      canExport = !!(_lastPayload && (_lastPayload.entries || []).length);
+      title = "Download current view as Excel (.xlsx)";
+    }
     btn.disabled = !canExport;
+    btn.setAttribute("title", title);
+    btn.setAttribute("aria-label", title);
   }
 
   // --- Phase 8.1: weather icons + severity-ranked picker -----------
@@ -1375,7 +1385,13 @@
     if (themeBtn) themeBtn.addEventListener("click", toggleTheme);
 
     const exportBtn = $("export-btn");
-    if (exportBtn) exportBtn.addEventListener("click", exportCurrentSelection);
+    if (exportBtn) exportBtn.addEventListener("click", () => {
+      // Route to the right export based on which view is active.
+      // Both functions read their own cached payload; if neither
+      // has data the button is already disabled.
+      if (currentView === "trends") exportTrends();
+      else exportCurrentSelection();
+    });
 
     // Phase 8: Details modal's close (X) button. Backdrop click + ESC
     // are wired transiently inside openDetailsModal/closeDetailsModal.
@@ -1489,9 +1505,10 @@
       btn.setAttribute("aria-selected", on ? "true" : "false");
     }
 
-    // Export button only meaningful on dashboard for now.
-    const exportBtn = $("export-btn");
-    if (exportBtn) exportBtn.style.display = next === "dashboard" ? "" : "none";
+    // Export button is visible on both Dashboard and Trends. Its
+    // click handler routes based on currentView, and its enabled
+    // state reflects whichever view's cached payload exists.
+    updateExportButtonState();
 
     // First time we land on trends, fetch + render.
     if (next === "trends" && currentSiteId) {
@@ -1554,11 +1571,13 @@
       _lastTrendsPayload = payload;
       _lastTrendsCircuitPayload = circuitPayload;
       renderTrends(payload, circuitPayload);
+      updateExportButtonState();
       _clearTrendsError();
-      if (status) {
-        status.textContent =
-          `${payload.rollups.length} rollups, generated ${new Date(payload.generated_at).toLocaleTimeString()}`;
-      }
+      // Status text intentionally cleared on success -- the
+      // dashboard's topbar "Refreshed HH:MM" already conveys the
+      // freshness signal; a duplicate rollup-count line in the
+      // trends-controls bar was visual noise.
+      if (status) status.textContent = "";
     } catch (err) {
       console.error("trends fetch failed", err);
       _showTrendsError(`Failed to load trends data: ${err.message}`);
@@ -1994,6 +2013,164 @@
       })(),
     ]);
     return panel;
+  }
+
+  // --- Phase 14e: Trends data export ----------------------------------
+  //
+  // Builds a multi-sheet XLSX from the cached Trends payloads:
+  //   * Overview          -- cross-workcenter monthly rollup
+  //   * <workcenter name> -- per-workcenter monthly metrics
+  //   * <circuit name>    -- per-circuit (with optional per-line) monthly metrics
+  // Frontend-only; no backend round-trip. Reuses the same SheetJS
+  // library and helpers as the Dashboard export.
+
+  function _truncateSheetName(name) {
+    // Excel sheet-name rules: <= 31 chars, no [ ] : * ? / \\.
+    let n = String(name || "Sheet").replace(/[:\\/?*\[\]]/g, "_");
+    return n.length > 31 ? n.slice(0, 31) : n;
+  }
+
+  function _appendSheet(wb, rows, formats, name) {
+    if (!rows || !rows.length) return;
+    const sheet = XLSX.utils.json_to_sheet(rows);
+    applyColumnFormats(sheet, rows, formats || {});
+    XLSX.utils.book_append_sheet(wb, sheet, _truncateSheetName(name));
+  }
+
+  function exportTrends() {
+    if (!_lastTrendsPayload) return;
+    if (typeof XLSX === "undefined") {
+      _showTrendsError("Export unavailable: XLSX library failed to load.");
+      return;
+    }
+    const payload = _lastTrendsPayload;
+    const circuitPayload = _lastTrendsCircuitPayload;
+    const rollups = payload.rollups || [];
+    if (!rollups.length) return;
+
+    try {
+      const siteMeta = sites.find((s) => s.id === currentSiteId)
+        || { id: currentSiteId, name: "" };
+
+      // dept_id -> human-readable name lookup. Same logic the
+      // dashboard renderer uses.
+      const deptNameById = new Map();
+      for (const r of rollups) deptNameById.set(r.department_id, r.department_name);
+      const deptIds = [...deptNameById.keys()].sort();
+      const labelFor = (dept) => deptName(deptNameById.get(dept), dept);
+
+      // Circuit lookup keyed by department_id -- mirrors what
+      // renderTrends does so sheet ordering matches the tab order.
+      const circuitDepts = (circuitPayload && circuitPayload.departments) || [];
+      const circuitsByDeptId = new Map();
+      for (const d of circuitDepts) circuitsByDeptId.set(d.department_id, d.circuits || []);
+
+      const wb = XLSX.utils.book_new();
+
+      // ---- Overview sheet (mirrors the cross-workcenter line charts).
+      const overviewRows = rollups.map((r) => ({
+        "Month":              r.month,
+        "Workcenter":         labelFor(r.department_id),
+        "Total Tons":         numOrEmpty(r.total_tons),
+        "TPH":                numOrEmpty(r.tph),
+        "Avg TPH Fed":        numOrEmpty(r.avg_tph_fed),
+        "Avg Runtime %":      numOrEmpty(r.avg_runtime_pct),
+        "Avg Performance %":  numOrEmpty(r.avg_performance_pct),
+        "Reports":            r.report_count,
+      }));
+      _appendSheet(wb, overviewRows, {
+        "Total Tons": "#,##0",
+        "TPH": "0.0",
+        "Avg TPH Fed": "0.0",
+        "Avg Runtime %": '0.0"%"',
+        "Avg Performance %": '0.0"%"',
+      }, "Overview");
+
+      // ---- Per-workcenter sheets, each followed by its circuit sheets.
+      deptIds.forEach((dept) => {
+        const wcRows = rollups
+          .filter((r) => r.department_id === dept)
+          .map((r) => ({
+            "Month":                r.month,
+            "Total Tons":           numOrEmpty(r.total_tons),
+            "Total Runtime (hours)": numOrEmpty(r.total_runtime_hours),
+            "TPH":                  numOrEmpty(r.tph),
+            "Avg TPH Fed":          numOrEmpty(r.avg_tph_fed),
+            "Avg Runtime %":        numOrEmpty(r.avg_runtime_pct),
+            "Avg Performance %":    numOrEmpty(r.avg_performance_pct),
+            "Reports":              r.report_count,
+          }));
+        _appendSheet(wb, wcRows, {
+          "Total Tons": "#,##0",
+          "Total Runtime (hours)": "0.0",
+          "TPH": "0.0",
+          "Avg TPH Fed": "0.0",
+          "Avg Runtime %": '0.0"%"',
+          "Avg Performance %": '0.0"%"',
+        }, labelFor(dept));
+
+        // Circuit sheets under this workcenter.
+        const deptCircuits = circuitsByDeptId.get(dept) || [];
+        deptCircuits.forEach((circuit) => {
+          const hasLines = (circuit.lines || []).length > 0;
+          let rows;
+          if (hasLines) {
+            // Circuit-with-lines: one long-format table with a Level
+            // column. "Circuit" rows first, then per-line rows.
+            rows = [];
+            for (const m of (circuit.monthly || [])) {
+              rows.push({
+                "Level":            "Circuit",
+                "Month":            m.month,
+                "Total Tons":       numOrEmpty(m.total_tons),
+                "Runtime (hours)":  numOrEmpty(m.runtime_hours),
+                "TPH":              numOrEmpty(m.avg_tph),
+                "Yield":            numOrEmpty(m.avg_yield),
+                "Reports":          m.report_count,
+              });
+            }
+            for (const line of circuit.lines) {
+              for (const m of (line.monthly || [])) {
+                rows.push({
+                  "Level":            line.description || line.line_id,
+                  "Month":            m.month,
+                  "Total Tons":       numOrEmpty(m.total_tons),
+                  "Runtime (hours)":  numOrEmpty(m.runtime_hours),
+                  "TPH":              numOrEmpty(m.avg_tph),
+                  "Yield":            numOrEmpty(m.avg_yield),
+                  "Reports":          m.report_count,
+                });
+              }
+            }
+          } else {
+            rows = (circuit.monthly || []).map((m) => ({
+              "Month":            m.month,
+              "Total Tons":       numOrEmpty(m.total_tons),
+              "Runtime (hours)":  numOrEmpty(m.runtime_hours),
+              "TPH":              numOrEmpty(m.avg_tph),
+              "Yield":            numOrEmpty(m.avg_yield),
+              "Reports":          m.report_count,
+            }));
+          }
+          _appendSheet(wb, rows, {
+            "Total Tons": "#,##0",
+            "Runtime (hours)": "0.0",
+            "TPH": "0.0",
+            "Yield": "0.000",
+          }, circuit.description || circuit.circuit_id);
+        });
+      });
+
+      const fromMonth = (payload.from_month || "").replace(/[^0-9-]/g, "");
+      const toMonth = (payload.to_month || "").replace(/[^0-9-]/g, "");
+      const filename =
+        `production-metrics_${slugifySite(siteMeta.name, siteMeta.id)}` +
+        `_trends_${fromMonth}_${toMonth}_${timestampSlug()}.xlsx`;
+      XLSX.writeFile(wb, filename);
+    } catch (err) {
+      console.error("trends export failed", err);
+      _showTrendsError(`Trends export failed: ${err.message}`);
+    }
   }
 
   document.addEventListener("DOMContentLoaded", bootstrap);

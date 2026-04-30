@@ -403,6 +403,59 @@ The SheetJS build lives at `frontend/vendor/xlsx.full.min.js`
 step, no CDN at runtime -- the library ships with the container
 image / repo clone.
 
+## Exporting Trends data
+
+The Trends tab has its own Export button in the controls bar (next to
+the from/to month pickers). Click it to download a multi-sheet XLSX
+of all the data behind the charts in the current monthly window. No
+chart images, just the data -- consumers can plot in Excel however
+they want.
+
+One sheet per Trends tab, plus an Overview sheet:
+
+- **Overview** -- one row per (month, workcenter). Columns: Month,
+  Workcenter, Total Tons, TPH, Avg TPH Fed, Avg Runtime %,
+  Avg Performance %, Reports. Long format so pivot tables work
+  cleanly across workcenters.
+
+- **<workcenter name>** -- one sheet per workcenter dept that
+  appeared in the rollup. One row per month. Columns: Month,
+  Total Tons, Total Runtime (hours), TPH, Avg TPH Fed,
+  Avg Runtime %, Avg Performance %, Reports.
+
+- **<circuit description>** -- one sheet per circuit. Two layouts:
+  - Circuit-with-lines (e.g. Main Circuit at Big Canyon): long
+    format with a `Level` column. Level values: "Circuit" (rolled-up
+    circuit-level numbers) and the line `description` strings (e.g.
+    "57-1", "57-2"). Other columns: Month, Total Tons,
+    Runtime (hours), TPH, Yield, Reports. Pivot on Level + Month.
+  - Circuit-without-lines (e.g. CR Circuit): one row per month
+    with the same columns minus `Level`.
+
+Sheet names match the section labels visible in the Trends sidebar.
+Excel limits sheet names to 31 chars and forbids `:`, `\`, `/`, `?`,
+`*`, `[`, `]`; characters outside that set are kept verbatim, the
+forbidden ones are replaced with `_`.
+
+`Yield` is the mass-conversion ratio (Line.Total / Workcenter.Total
+or the circuit-level equivalent), in fractional form (0.0 to ~1.0).
+Format `0.000`. Apply Excel's `0.0%` format if the consumer wants a
+percent display -- the underlying value is still a fraction.
+
+Same null-as-blank-cell convention as the Dashboard export: any
+metric that the API returned as null becomes a truly blank cell
+(`=COUNTA` returns 0, `=AVERAGE` skips it).
+
+Filename:
+  `production-metrics_<site-slug>_trends_<from-month>_<to-month>_<YYYY-MM-DD_HHMM>.xlsx`
+
+Examples:
+  `production-metrics_big-canyon-quarry_trends_2025-05_2026-04_2026-04-29_1530.xlsx`
+
+Button is disabled until the first Trends fetch returns at least one
+rollup for the current site + window.
+
+
 ## Adding a new site to /api/metrics
 
 When a new plant comes online and starts publishing interval metrics
@@ -471,9 +524,4 @@ the single source of truth.
 | Project conventions | `CLAUDE.md` |
 | Current plan / progress | `tasks/todo.md` |
 | Prior session lessons | `tasks/lessons.md` |
-| Architecture decisions | `tasks/decisions/` |
-| Backend run instructions (detailed) | `backend/README.md` |
-| Frontend structure | `frontend/README.md` |
-| PAYLOAD JSON shape | `context/sample-data/production-report/payload-schema.md` |
-| Dockerfile | `backend/Dockerfile` |
-| Compose orchestration | `docker-compose.yml` |
+| Architecture decisions | `tasks/decisions/` 
