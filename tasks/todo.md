@@ -2804,6 +2804,67 @@ the container bakes the frontend in):
   `docker compose up --build`.
 - No env, no compose, no route registration changes required.
 
+## Phase 17 -- Comprehensive overview Word document (DELIVERED 2026-05-01)
+
+**Trigger:** Stakeholder-facing narrative document needed -- something
+a manager, a non-Python engineer, or a future contributor can read
+in 20 minutes to understand what the project is, why the architecture
+was chosen, how data flows through it, and where to read more.
+
+### Decisions
+
+- **D1 -- Audience: mixed.** Pages 1-2 land for managers (executive
+  summary + what this is), pages 3-6 land for engineers and operators
+  (architecture rationale, data flows, page tour with screenshots),
+  pages 7+ give developers enough detail (file/line refs, sample
+  request/response, schema highlights) to navigate the codebase.
+- **D2 -- Length target ~12-18 pages with screenshots.** Final: 15
+  pages, US Letter, 5 inline figures.
+- **D3 -- Narrative summary, not a replacement for ARCHITECTURE.md
+  / data-flows.md.** The doc points readers to the deeper references
+  in section 8.
+- **D4 -- Word format with cover page, ToC, footer with page numbers.**
+  Arial body for portability; H1/H2/H3 styled to match Microsoft
+  Office defaults but with a dashboard-blue accent for H1/H2.
+
+### Files
+
+- `docs/comprehensive-overview/production-metrics-dashboard-overview.docx`
+  -- 471 KB, 15 pages, generated via docx-js.
+- `docs/comprehensive-overview/pics/` -- 5 reference screenshots
+  (dashboard single + multiple, report details modal, trends, flow
+  metrics) used as inline figures.
+
+### Verification
+
+Programmatic:
+- [x] `validate.py` passed (142 paragraphs, no XML errors).
+- [x] LibreOffice PDF render succeeded (15 pages, US Letter).
+- [x] Spot-check via `pdftoppm` on pages 1, 3, 5, 6, 8, 9, 13 -- cover,
+      exec summary, architecture rationale, Section 3.5 (Linux Docker
+      on a standalone microservices server), Domain 2 with screenshot,
+      and Section 6 all render cleanly.
+
+Stakeholder review:
+- [x] Trey reviewed 2026-05-01. Corrections applied: third data source
+      is Timebase API (not Ignition tag historian); production runs in
+      Docker on a standalone Linux microservices server (not Windows).
+      Both corrected throughout the doc -- exec summary, Section 2
+      bullet, Section 3.2 Source Protocol example, Section 3.5
+      (renamed and rewritten), Section 4 intro, Section 7 TBD bullet,
+      Section 8 pointers. Project-level memory updated for future
+      sessions; CLAUDE.md "Deployment Notes" and "Open Questions"
+      flagged as stale on these two points but not edited yet.
+
+### When to update
+
+Whenever a phase changes the architecture story (new data source,
+new top-level page, auth lands, multi-worker caching swaps in,
+production-report aggregation migrates to Flow). The doc is
+intentionally narrative, so the maintenance burden is light --
+update sections 4-6 when the picture changes; section 7 when an
+open question is resolved.
+
 ## Lessons captured
 
 See `tasks/lessons.md`:

@@ -30,20 +30,23 @@ commands and URLs live in `RUNBOOK.md`.
 
 A read-only HTTP API plus a static HTML/JS dashboard that together
 surface plant production metrics to engineers, operators, and
-management. The API aggregates data from three heterogeneous sources
-behind one consistent JSON contract; the dashboard polls the API on
-a 1-5 minute cadence and renders cards, tables, and (eventually)
+management. The API collects data from three heterogeneous sources and packages
+it behind one consistent JSON contract. All numerical truth is owned
+by Flow Software (production reports and interval metrics are already
+curated by Flow before the API sees them); the API surfaces that data
+uniformly to consumers without deriving its own numbers. The dashboard
+polls the API on a 1-5 minute cadence and renders cards, tables, and
 charts.
 
 - Backend: Python 3.12, FastAPI, Pydantic v2, uvicorn.
 - Frontend: vanilla HTML + CSS + JS (no bundler, no Node). Light/dark
   theme with CSS variables. Served as static files by FastAPI in dev;
   fronted by IIS / Caddy / nginx in production.
-- Data sources:
-  - SQL Server (via `aioodbc`) — production reports, `Flow_Curated`.
-  - External REST APIs (via `httpx.AsyncClient`).
-  - Ignition tag historian — access pattern TBD.
-- Deployment target: Windows Server, Docker on Windows.
+- Data sources (tiered by level of curation):
+  - SQL Server (via `aioodbc`) — `Flow_Curated` end-of-shift production reports.
+  - Flow REST API (via `httpx.AsyncClient`) — curated interval metrics on demand.
+  - Timebase API — planned future source for raw site-server time-series.
+- Deployment target: standalone Linux microservices server, Docker on Linux. Local dev uses venv on Windows.
 - Intentionally read-only. No mutation endpoints; SQL account has
   read-only grants at the DB level as defense in depth.
 
@@ -66,9 +69,9 @@ charts.
                            v                              v                             v
             +---------------------------+   +----------------------------+  +----------------------------+
             |  app/api/routes/*.py      |   |  app/services/*.py          |  |  app/schemas/*.py           |
-            |  Thin HTTP handlers       |-->|  Business logic             |  |  Pydantic request/response  |
-            |  (validate, call service, |   |  (aggregation, filtering,   |  |  models. Outbound contract. |
-            |   return Pydantic model)  |   |   cross-source join, ...)   |  +----------------------------+
+            |  Thin HTTP handlers       |-->|  Validation, caching,       |  |  Pydantic request/response  |
+            |  (validate, call service, |   |   packaging of Flow's       |  |  models. Outbound contract. |
+            |   return Pydantic model)  |   |   curated data              |  +----------------------------+
             +---------------------------+   +-------------+--------------+
                                                           |
                                                           v
@@ -81,7 +84,7 @@ charts.
                                            v                                  v                 v
                                  +-------------------+             +-------------------+   +-------------------+
                                  | sql_source.py     |             | flow_client.py    |   |  (future)         |
-                                 | (production       |             | (interval metrics)|   |  ignition,        |
+                                 | (production       |             | (interval metrics)|   |  timebase,        |
                                  |  reports)         |             | REST API          |   |  other sources    |
                                  +-------------------+             +-------------------+   +-------------------+
                                            |                                  |
@@ -180,8 +183,8 @@ the route and service code.
 | `backend/app/main.py` | App factory, lifespan, middleware registration, static-file mount. | Wiring only. No business logic. |
 | `backend/app/api/routes/` | Thin HTTP handlers grouped by domain. One file per logical group (`health.py`, `sites.py`, `production_report.py`). | Validate input, call ONE service function, return ONE Pydantic model. No SQL, no HTTP to upstreams, no branching business logic. |
 | `backend/app/api/dependencies.py` | Factory functions for FastAPI DI (`Depends(...)`). | Returns instances of the source Protocols, NOT concrete classes typed in route signatures. |
-| `backend/app/services/` | Business logic, cross-source aggregation, filtering, derived KPIs. | Pure async functions; take a source (or multiple sources) by Protocol, return domain types. No HTTP response shaping here. |
-| `backend/app/integrations/<source>/` | All source-specific code. One subfolder per source family (`production_report/`, later `ignition/`, `external/...`). | Protocol in `base.py`, one file per concrete implementation (`csv_source.py`, `sql_source.py`). |
+| `backend/app/services/` | Validation, caching, packaging of Flow's curated data across one or more sources. The API does not derive curated numbers; Flow is the system of record. | Pure async functions; take a source (or multiple sources) by Protocol, return domain types. No HTTP response shaping here. |
+| `backend/app/integrations/<source>/` | All source-specific code. One subfolder per source family (`production_report/`, `metrics/`, `external/...`, future `timebase/`). | Protocol in `base.py`, one file per concrete implementation (`sql_source.py`, etc.). |
 | `backend/app/schemas/` | Pydantic models for request/response bodies. | Types the API over the wire. These define OpenAPI / Swagger. |
 | `backend/app/core/` | Cross-cutting infrastructure: `config.py` (pydantic-settings), `logging.py` (structlog), `correlation.py` (X-Correlation-ID middleware + ContextVar), `snapshot.py` (SnapshotStore Protocol + in-memory impl). | Nothing domain-specific lives here. |
 
@@ -199,10 +202,11 @@ you'll interact with most when adding functionality.
 
 ### The problem
 
-We have three data sources today (SQL Server, external REST APIs,
-Ignition) and will likely gain more. If route handlers or services
-called each source directly, every new source would require changes
-up and down the stack, and testing would require real infrastructure.
+We have three data sources today (SQL Server, Flow REST, plus a
+planned Timebase API for raw time-series) and will likely gain more.
+If route handlers or services called each source directly, every new
+source would require changes up and down the stack, and testing would
+require real infrastructure.
 
 ### The pattern
 

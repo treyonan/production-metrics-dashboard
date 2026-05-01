@@ -1,0 +1,3 @@
+# Local node deps for build.js. Regenerated via `npm install`.
+node_modules/
+package-lock.json

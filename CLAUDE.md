@@ -12,11 +12,10 @@ management), which may drive multiple views once the frontend is decided.
 ## Tech Stack
 - **Backend**: Python 3.12+, FastAPI, Pydantic v2, uvicorn
 - **DB drivers**: aioodbc (async) + pyodbc (sync fallback) for SQL Server
-- **HTTP client**: httpx.AsyncClient for external REST APIs
-- **Ignition access**: TBD — direct SQL against historian tables vs. Ignition Web API (see Open Questions)
+- **HTTP client**: httpx.AsyncClient for external REST APIs (Flow, Timebase)
 - **Frontend**: TBD — see Open Questions. Interim default: static HTML + vanilla JS polling `fetch()`
 - **Testing**: pytest + pytest-asyncio + httpx test client
-- **Container**: Docker on Windows (Windows-only deployment — see Deployment Notes)
+- **Container**: Docker on Linux for production — standalone microservices server, separate from the Windows hosts running SQL Server and Flow. Local dev: venv on Windows. See Deployment Notes.
 
 > **Note on the stack.** The choices above are the user's recommendation based
 > on prior SCADA work and comfort with the ecosystem. If during implementation
@@ -37,12 +36,12 @@ management), which may drive multiple views once the frontend is decided.
 `tasks/todo.md` for current setup status.)
 
 ## Architecture
-Three data sources, one unified API:
+Three data sources, tiered by level of curation, one unified API:
 
 ```
-SQL Server (Flow_Curated etc.) ─┐
-External REST APIs              ├─> FastAPI ─> Dashboard (polls every 1–5 min)
-Ignition tag historian          ─┘
+SQL Server (Flow_Curated)   — curated production reports        ─┐
+Flow REST API               — curated interval metrics          ├─> FastAPI ─> Dashboard
+Timebase API (planned)      — raw site-server time-series       ─┘   (polls every 1–5 min)
 ```
 
 Each source is isolated behind its own integration module. Routes call
@@ -51,10 +50,11 @@ services; services call integrations; integrations handle the raw source.
 
 ### Folder roles
 - `backend/app/api/routes/` — thin route handlers, grouped by domain
-- `backend/app/services/` — business logic, cross-source aggregation
-- `backend/app/integrations/sql/` — SQL Server connection + query layer
-- `backend/app/integrations/ignition/` — Ignition historian access
-- `backend/app/integrations/external/` — third-party REST clients
+- `backend/app/services/` — request validation, caching, and packaging Flow's curated data across sources
+- `backend/app/integrations/sql/` — shared SQL Server connection + pool
+- `backend/app/integrations/production_report/` — Flow_Curated production-report Source + queries
+- `backend/app/integrations/metrics/` — interval-metric Source (reads tag table, fans out to Flow REST)
+- `backend/app/integrations/external/` — third-party REST clients (Flow, future Timebase)
 - `backend/app/schemas/` — Pydantic models for request/response
 - `backend/app/core/` — config, logging, shared utilities
 
@@ -98,23 +98,26 @@ requirements clarify. When adding them, follow these rules:
 
 ## Security & Secrets
 - `.env` is gitignored. `.env.example` lists required vars with dummy values.
-- SQL credentials, Ignition gateway tokens, external API keys → env vars only.
+- SQL credentials, Flow API key, Timebase credentials (when wired), other external API keys → env vars only.
 - Read-only API — no mutation endpoints. The SQL account used by the API
   should have read-only grants at the DB level as defense in depth.
 - Auth is deferred (see Open Questions). Interim: deploy behind firewall / VPN,
   bind to internal interface only.
 
 ## Deployment Notes
-- **Target: Windows** (Docker on Windows Server or Windows 11 with Docker Desktop).
-  Required because SQL Server access and Ignition integration are Windows-centric
-  in this environment.
-- Install the Microsoft ODBC Driver 18 for SQL Server on the host and in any
-  container image used. Straightforward MSI install on Windows.
-- Reverse proxy: IIS is the native Windows option; Caddy or nginx on Windows
-  also works. Reverse proxy handles TLS; API binds to localhost only.
+- **Target: Linux** (Docker on a standalone microservices server, separate
+  from the Windows hosts running SQL Server and Flow). The API has no
+  privileged co-location with any data source — it talks to all of them
+  over the network.
+- Install the Microsoft ODBC Driver 18 for SQL Server (Linux build) inside
+  the container image. Connection to SQL Server is over network ODBC.
+- Connection to Flow / Timebase is over HTTP via httpx.AsyncClient.
+- Reverse proxy: nginx in front of the container handles TLS; the API
+  binds to localhost inside the container.
 - Single exposed app port (default 8000 inside container).
-- Windows container base images are larger than Linux equivalents — plan
-  image sizes accordingly. Multi-stage builds still help.
+- Linux Docker image is small (a few hundred MB) and rebuilds quickly.
+- Local dev: venv + uvicorn on a Windows workstation. See `RUNBOOK.md`
+  for the dev path; production is Linux only.
 
 ## Domain Context
 SCADA / industrial automation. Before touching data semantics, read:
@@ -125,7 +128,6 @@ SCADA / industrial automation. Before touching data semantics, read:
 Past implementations worth studying (reference only, do not modify):
 - `examples/oee-html-calculator/` — prior standalone OEE calculator; good
   reference for calculation methodology (A × P × Q)
-- `examples/alarm-pipeline/` — Ignition alarm config work
 
 ## Open Questions
 Track resolutions in `tasks/decisions/`:
@@ -135,8 +137,10 @@ Track resolutions in `tasks/decisions/`:
    local. Options: none (network-restricted), basic/bearer token, Windows AD, OIDC.
 3. **Audience split.** Engineers, operators, and management have different needs.
    One dashboard with role-based views, or separate pages per audience?
-4. **Ignition access pattern.** Direct SQL against historian tables, or
-   Ignition's web API? Each has trade-offs for latency and coupling.
+4. **Timebase API integration.** Whether and when to wire it as a third
+   source. Trade-off: granularity vs. additional surface area to maintain.
+   Flow's aggregations cover shiftly/hourly today; Timebase would unlock
+   sub-minute tag-level access when needed.
 5. **Caching backend.** In-memory (simple, single-worker) vs. Redis (multi-worker
    ready). Decide when deployment shape firms up.
 6. **v1 endpoint scope.** What does the dashboard actually need to show first?

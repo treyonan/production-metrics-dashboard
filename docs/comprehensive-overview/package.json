@@ -1,0 +1,13 @@
+{
+  "name": "production-metrics-dashboard-overview-build",
+  "version": "1.0.0",
+  "description": "Build script for the comprehensive overview Word document.",
+  "private": true,
+  "main": "build.js",
+  "scripts": {
+    "build": "node build.js"
+  },
+  "dependencies": {
+    "docx": "^9.6.1"
+  }
+}
