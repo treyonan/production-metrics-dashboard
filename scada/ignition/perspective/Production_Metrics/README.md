@@ -1,4 +1,4 @@
-# Production_Metrics_Test -- Ignition Perspective view
+# Production_Metrics -- Ignition Perspective view
 
 A small demo view that exercises the rich API client at
 `scada/ignition/api.py`. Renders the latest end-of-shift production
@@ -29,16 +29,16 @@ that updates the data live.
 1. Locate your Ignition project folder on the gateway:
        <ignition-install>/data/projects/<your-project>/
 2. Create the directory:
-       com.inductiveautomation.perspective/views/Production_Metrics_Test/
+       com.inductiveautomation.perspective/views/Production_Metrics/
 3. Copy `view.json` and `resource.json` from this folder into it.
 4. In Designer, **Project -> Update Project** (or just close and
    reopen the project). The new view appears under
-   Perspective -> Views -> Production_Metrics_Test.
+   Perspective -> Views -> Production_Metrics.
 
 ## Install -- Designer paste path
 
 1. In Designer, Project Browser -> Perspective -> Views -> right
-   click -> New View. Name it `Production_Metrics_Test`. Pick any
+   click -> New View. Name it `Production_Metrics`. Pick any
    layout; we'll overwrite it.
 2. Open the new view, switch to JSON view (View menu -> JSON, or
    Ctrl-Shift-J in some builds).

@@ -1,8 +1,19 @@
 {
   "custom": {
-    "siteId": 101
+    "siteId": 101,
+    "latestPayload": {}
   },
   "params": {},
+  "propConfig": {
+    "custom.latestPayload": {
+      "binding": {
+        "config": {
+          "expression": "runScript(\"MES.Integrations.Production_Metrics.API.get_production_report_latest\", 30000, {view.custom.siteId})"
+        },
+        "type": "expr"
+      }
+    }
+  },
   "props": {
     "defaultSize": {
       "width": 1280,
@@ -113,9 +124,15 @@
           "props.text": {
             "binding": {
               "config": {
-                "expression": "'Workcenters reporting: ' + toStr(runScript(\"MES.Integrations.Production_Metrics.API.get_production_report_latest\", 30, {view.custom.siteId})['count']) + '   |   Generated at: ' + toStr(runScript(\"MES.Integrations.Production_Metrics.API.get_production_report_latest\", 30, {view.custom.siteId})['generated_at'])"
+                "path": "view.custom.latestPayload"
               },
-              "type": "expr"
+              "transforms": [
+                {
+                  "code": "    if not value:\n        return ''\n    count = value.get('count', 0)\n    ts = value.get('generated_at', '')\n    return 'Workcenters reporting: %s   |   Generated at: %s' % (count, ts)\n",
+                  "type": "script"
+                }
+              ],
+              "type": "property"
             }
           }
         },
@@ -136,9 +153,15 @@
           "props.data": {
             "binding": {
               "config": {
-                "expression": "runScript(\"MES.Integrations.Production_Metrics.API.production_report_latest_dataset\", 30, {view.custom.siteId})"
+                "path": "view.custom.latestPayload"
               },
-              "type": "expr"
+              "transforms": [
+                {
+                  "code": "    if not value:\n        return system.dataset.toDataSet([], [])\n    entries = value.get('entries', [])\n    if not entries:\n        return system.dataset.toDataSet([], [])\n    cols = ['id', 'prod_date', 'prod_id', 'site_id',\n            'department_id', 'department_name',\n            'shift', 'dtm',\n            'weather_conditions', 'avg_temp',\n            'avg_humidity', 'max_wind_speed', 'notes']\n    rows = []\n    for e in entries:\n        rows.append([e.get(c) for c in cols])\n    return system.dataset.toDataSet(cols, rows)\n",
+                  "type": "script"
+                }
+              ],
+              "type": "property"
             }
           }
         },
