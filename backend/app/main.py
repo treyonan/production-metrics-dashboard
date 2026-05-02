@@ -24,7 +24,7 @@ from app.core.snapshot import InMemorySnapshotStore
 from app.integrations.external.flow_client import FlowClient
 from app.integrations.sql.pool import create_pool
 
-BUILD_TAG = "2026-04-30-phase15-metrics-multitype"
+BUILD_TAG = "2026-05-01-phase18-rollup-bucket"
 
 
 @asynccontextmanager

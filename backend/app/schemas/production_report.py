@@ -208,7 +208,7 @@ class LatestDateResponse(BaseModel):
 
 
 
-class MonthlyRollupEntry(BaseModel):
+class RollupEntry(BaseModel):
     """One per-(department, month) production-report aggregate.
 
     Aggregates are computed server-side from per-shift production-
@@ -229,11 +229,11 @@ class MonthlyRollupEntry(BaseModel):
             "JOIN miss (see ProductionReportEntry.department_name)."
         ),
     )
-    month: str = Field(
+    bucket_label: str = Field(
         description=(
-            "Year-month identifier in YYYY-MM form (e.g. '2026-04'). "
-            "Sortable lexicographically; consumers can plot directly "
-            "as a category axis or parse to date(year, month, 1)."
+            "Bucket identifier. YYYY-MM for monthly buckets (e.g. "
+            "'2026-04'); YYYY for yearly buckets (e.g. '2026'). Sortable "
+            "lexicographically; consumers can plot directly as a category axis."
         )
     )
     total_tons: float = Field(
@@ -307,18 +307,19 @@ class MonthlyRollupEntry(BaseModel):
     )
 
 
-class MonthlyRollupResponse(BaseModel):
+class RollupResponse(BaseModel):
     """Envelope for /api/production-report/monthly-rollup."""
 
     site_id: str = Field(description="Echo of the site_id filter.")
-    from_month: str = Field(description="Echo of the from_month query (YYYY-MM).")
-    to_month: str = Field(description="Echo of the to_month query (YYYY-MM).")
+    bucket: str = Field(description="Echo of the bucket path parameter (monthly or yearly).")
+    from_date: date = Field(description="Echo of the inclusive window start (YYYY-MM-DD).")
+    to_date: date = Field(description="Echo of the inclusive window end (YYYY-MM-DD).")
     department_id: str | None = Field(
         default=None,
         description="Echo of the optional department_id filter.",
     )
     generated_at: datetime = Field(description="UTC timestamp the response was assembled.")
-    rollups: list[MonthlyRollupEntry] = Field(
+    rollups: list[RollupEntry] = Field(
         description=(
             "Flat list of (department_id, month) aggregates, sorted "
             "by department_id then month ascending. Empty when no "
@@ -330,10 +331,10 @@ class MonthlyRollupResponse(BaseModel):
 # --- Phase 14b: per-circuit / per-line monthly rollup wire shape ----------
 
 
-class CircuitMonthlyEntry(BaseModel):
+class CircuitBucketEntry(BaseModel):
     """One per-(circuit-or-line, month) aggregate on the wire."""
 
-    month: str = Field(description="YYYY-MM identifier.")
+    bucket_label: str = Field(description="Bucket identifier (YYYY-MM for monthly, YYYY for yearly).")
     total_tons: float = Field(description="Sum of node.Total across reports in this month bucket.")
     runtime_hours: float = Field(description="Sum of node.Runtime (decimal hours) across reports.")
     avg_tph: float | None = Field(
@@ -361,7 +362,7 @@ class LineRollup(BaseModel):
 
     line_id: str = Field(description="Payload slot key (e.g. 'A', 'B'). Positional.")
     description: str = Field(description="Operator-facing label from payload (e.g. '57-1').")
-    monthly: list[CircuitMonthlyEntry] = Field(description="Per-month aggregates for this line.")
+    buckets: list[CircuitBucketEntry] = Field(description="Per-bucket aggregates (monthly or yearly per bucket arg) for this line.")
 
 
 class CircuitRollup(BaseModel):
@@ -369,7 +370,7 @@ class CircuitRollup(BaseModel):
 
     circuit_id: str = Field(description="Payload slot key (e.g. 'A', 'B'). Positional.")
     description: str = Field(description="Operator-facing label from payload (e.g. 'Main Circuit').")
-    monthly: list[CircuitMonthlyEntry] = Field(description="Per-month aggregates for this circuit.")
+    buckets: list[CircuitBucketEntry] = Field(description="Per-bucket aggregates (monthly or yearly per bucket arg) for this circuit.")
     lines: list[LineRollup] = Field(
         default_factory=list,
         description="Sub-lines under this circuit. Empty when the circuit has no Line sub-structure.",
@@ -387,12 +388,13 @@ class DepartmentCircuitRollup(BaseModel):
     )
 
 
-class CircuitMonthlyRollupResponse(BaseModel):
+class CircuitRollupResponse(BaseModel):
     """Envelope for /api/production-report/circuit-monthly-rollup."""
 
     site_id: str = Field(description="Echo of the site_id filter.")
-    from_month: str = Field(description="Echo of from_month (YYYY-MM).")
-    to_month: str = Field(description="Echo of to_month (YYYY-MM).")
+    bucket: str = Field(description="Echo of the bucket path parameter (monthly or yearly).")
+    from_date: date = Field(description="Echo of the inclusive window start (YYYY-MM-DD).")
+    to_date: date = Field(description="Echo of the inclusive window end (YYYY-MM-DD).")
     department_id: str | None = Field(
         default=None,
         description="Echo of optional department_id filter.",

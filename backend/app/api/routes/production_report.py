@@ -13,9 +13,9 @@ from __future__ import annotations
 import re
 
 from datetime import UTC, date, datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 
 from app.api.dependencies import get_production_report_source
 from app.integrations.production_report.base import (
@@ -23,32 +23,32 @@ from app.integrations.production_report.base import (
     ProductionReportSource,
 )
 from app.schemas.production_report import (
-    CircuitMonthlyEntry as PydCircuitMonthlyEntry,
-    CircuitMonthlyRollupResponse,
+    CircuitBucketEntry as PydCircuitBucketEntry,
     CircuitRollup as PydCircuitRollup,
+    CircuitRollupResponse,
     ConveyorTotals,
     DepartmentCircuitRollup as PydDepartmentCircuitRollup,
     LatestDateResponse,
     LineRollup as PydLineRollup,
-    MonthlyRollupEntry,
-    MonthlyRollupResponse,
     ProductionReportEntry,
     ProductionReportLatestResponse,
     ProductionReportRangeResponse,
+    RollupEntry,
+    RollupResponse,
 )
 from app.services.production_report import (
-    CircuitMonthlyEntry as SvcCircuitMonthlyEntry,
+    CircuitBucketEntry as SvcCircuitBucketEntry,
     CircuitRollup as SvcCircuitRollup,
     ConveyorAggregate,
     DepartmentCircuitRollup as SvcDepartmentCircuitRollup,
     LineRollup as SvcLineRollup,
-    MonthlyRollup,
+    Rollup,
     compute_conveyor_totals,
-    get_circuit_monthly_rollup,
+    get_circuit_rollup,
     get_latest_date,
     get_latest_per_workcenter,
-    get_monthly_rollup,
     get_range,
+    get_rollup,
 )
 
 router = APIRouter()
@@ -243,62 +243,13 @@ async def latest_date_endpoint(
 
 
 
-# ---- /monthly-rollup (Phase 10a) ------------------------------------
+# ---- /rollup/{bucket} (Phase 18) ------------------------------------
 
-# Cap on the from->to span. ~37 months gives a comfortable window for
-# rolling 3-year trends; beyond that, consumers should chunk client-side.
-_MAX_ROLLUP_MONTHS = 37
-
-_MONTH_RE = re.compile(r"^(\d{4})-(\d{2})$")
-
-
-def _parse_month_string(s: str, *, field_name: str) -> date:
-    """Parse a YYYY-MM string into the first-day-of-month date."""
-    match = _MONTH_RE.match(s or "")
-    if not match:
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                f"Invalid {field_name} format: {s!r}; expected YYYY-MM "
-                "(e.g. '2026-04')."
-            ),
-        )
-    year = int(match.group(1))
-    month = int(match.group(2))
-    if month < 1 or month > 12:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Invalid {field_name} month: {month}; must be 1-12.",
-        )
-    try:
-        return date(year, month, 1)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Invalid {field_name}: {exc}",
-        ) from exc
-
-
-def _last_day_of_month(d: date) -> date:
-    """Return the last day of d's month."""
-    from datetime import timedelta as _td
-    if d.month == 12:
-        nxt = date(d.year + 1, 1, 1)
-    else:
-        nxt = date(d.year, d.month + 1, 1)
-    return nxt - _td(days=1)
-
-
-def _months_between(a: date, b: date) -> int:
-    """Inclusive month count between two first-of-month dates."""
-    return (b.year - a.year) * 12 + (b.month - a.month) + 1
-
-
-def _to_rollup_entry(r: MonthlyRollup) -> MonthlyRollupEntry:
-    return MonthlyRollupEntry(
+def _to_rollup_entry(r: Rollup) -> RollupEntry:
+    return RollupEntry(
         department_id=r.department_id,
         department_name=r.department_name,  # Phase 12; non-null per Phase 13 contract.
-        month=r.month,
+        bucket_label=r.bucket_label,
         total_tons=r.total_tons,
         total_runtime_hours=r.total_runtime_hours,
         tph=r.tph,
@@ -309,95 +260,113 @@ def _to_rollup_entry(r: MonthlyRollup) -> MonthlyRollupEntry:
     )
 
 
+BucketLiteral = Literal["monthly", "yearly"]
+
+# Per-bucket caps on the number of buckets a single response can contain.
+# Keeps a malformed client from accidentally requesting a 500-year scan.
+_MAX_BUCKETS = {"monthly": 37, "yearly": 50}
+
+
+def _bucket_count(bucket: str, from_d: date, to_d: date) -> int:
+    if bucket == "yearly":
+        return to_d.year - from_d.year + 1
+    return (to_d.year - from_d.year) * 12 + (to_d.month - from_d.month) + 1
+
+
 @router.get(
-    "/monthly-rollup",
-    response_model=MonthlyRollupResponse,
-    summary="Per-month, per-workcenter rollup of production-report data",
+    "/rollup/{bucket}",
+    response_model=RollupResponse,
+    summary="Per-bucket, per-workcenter rollup of production-report data",
     description=(
-        "Computes one row per (department_id, year-month) within "
-        "[from_month, to_month]. Aggregates: total_tons (sum of "
-        "belt-scaled CX conveyor totals), total_runtime_hours "
-        "(sum of Workcenter.Runtime in decimal hours), tph "
-        "(tons-per-hour, null when runtime is 0), and "
-        "report_count. Used by the dashboard's Trends tab. "
-        "Future versions may swap the underlying data path to "
-        "Flow-sourced monthly interval metrics; the wire shape is "
-        "stable across that migration. Maximum window: 37 months."
+        "Computes one row per (department_id, bucket) within "
+        "[from_date, to_date]. ``bucket`` is 'monthly' or 'yearly'; "
+        "the response shape is identical across both -- only the "
+        "bucket_label differs (YYYY-MM vs YYYY). Aggregates: total_tons "
+        "(sum of belt-scaled CX conveyor totals), total_runtime_hours "
+        "(sum of Workcenter.Runtime in decimal hours), tph (null when "
+        "runtime is 0), report_count, and the Phase 14a simple-average "
+        "fields. Used by the dashboard's Trends tab. Future versions "
+        "may swap the underlying data path to Flow-sourced rolled-up "
+        "metrics; the wire shape stays stable. Caps: 37 monthly buckets, "
+        "50 yearly buckets per response."
     ),
 )
-async def monthly_rollup(
+async def rollup(
     production_report: ProductionReportSourceDep,
-    site_id: Annotated[str, Query(description="Site to roll up (required).")],
-    from_month: Annotated[
-        str,
-        Query(
-            description=(
-                "Earliest month to include, YYYY-MM (inclusive). "
-                "Example: '2026-01' includes the entire January 2026."
-            )
-        ),
+    bucket: Annotated[
+        BucketLiteral,
+        Path(description="Bucket regime: 'monthly' or 'yearly'."),
     ],
-    to_month: Annotated[
-        str,
-        Query(
-            description=(
-                "Latest month to include, YYYY-MM (inclusive). Example: "
-                "'2026-04' includes the entire April 2026."
-            )
-        ),
+    site_id: Annotated[str, Query(description="Site to roll up (required).")],
+    from_date: Annotated[
+        date,
+        Query(description=(
+            "Inclusive window start, YYYY-MM-DD. For monthly bucket, "
+            "use the first of the month (YYYY-MM-01). For yearly "
+            "bucket, use Jan 1 (YYYY-01-01)."
+        )),
+    ],
+    to_date: Annotated[
+        date,
+        Query(description=(
+            "Inclusive window end, YYYY-MM-DD. For monthly bucket, "
+            "use the last day of the month. For yearly bucket, use "
+            "Dec 31 (YYYY-12-31)."
+        )),
     ],
     department_id: Annotated[
         str | None,
         Query(description="Optional filter: roll up only this department_id."),
     ] = None,
-) -> MonthlyRollupResponse:
-    from_first = _parse_month_string(from_month, field_name="from_month")
-    to_first = _parse_month_string(to_month, field_name="to_month")
-    if from_first > to_first:
+) -> RollupResponse:
+    if from_date > to_date:
         raise HTTPException(
             status_code=422,
             detail=(
-                f"from_month ({from_month}) must be <= to_month ({to_month})."
+                f"from_date ({from_date.isoformat()}) must be <= "
+                f"to_date ({to_date.isoformat()})."
             ),
         )
-    span = _months_between(from_first, to_first)
-    if span > _MAX_ROLLUP_MONTHS:
+    count = _bucket_count(bucket, from_date, to_date)
+    cap = _MAX_BUCKETS[bucket]
+    if count > cap:
         raise HTTPException(
             status_code=422,
             detail=(
-                f"Window too large: {span} months exceeds the "
-                f"{_MAX_ROLLUP_MONTHS}-month cap. Narrow the window."
+                f"Window too large: {count} {bucket} buckets exceeds "
+                f"the {cap}-bucket cap. Narrow the window."
             ),
         )
 
-    to_last = _last_day_of_month(to_first)
     try:
-        rollups = await get_monthly_rollup(
+        rollups = await get_rollup(
             production_report,
             site_id=site_id,
-            from_month=from_first,
-            to_month=to_last,
+            bucket=bucket,
+            from_date=from_date,
+            to_date=to_date,
             department_id=department_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    return MonthlyRollupResponse(
+    return RollupResponse(
         site_id=site_id,
-        from_month=from_month,
-        to_month=to_month,
+        bucket=bucket,
+        from_date=from_date,
+        to_date=to_date,
         department_id=department_id,
         generated_at=datetime.now(UTC),
         rollups=[_to_rollup_entry(r) for r in rollups],
     )
 
 
-# --- /circuit-monthly-rollup (Phase 14b) ----------------------------------
+# --- /circuit-rollup/{bucket} (Phase 14b + Phase 18) ----------------------
 
 
-def _to_pyd_circuit_entry(e: SvcCircuitMonthlyEntry) -> PydCircuitMonthlyEntry:
-    return PydCircuitMonthlyEntry(
-        month=e.month,
+def _to_pyd_circuit_entry(e: SvcCircuitBucketEntry) -> PydCircuitBucketEntry:
+    return PydCircuitBucketEntry(
+        bucket_label=e.bucket_label,
         total_tons=e.total_tons,
         runtime_hours=e.runtime_hours,
         avg_tph=e.avg_tph,
@@ -410,7 +379,7 @@ def _to_pyd_line(line: SvcLineRollup) -> PydLineRollup:
     return PydLineRollup(
         line_id=line.line_id,
         description=line.description,
-        monthly=[_to_pyd_circuit_entry(m) for m in line.monthly],
+        buckets=[_to_pyd_circuit_entry(b) for b in line.buckets],
     )
 
 
@@ -418,7 +387,7 @@ def _to_pyd_circuit(c: SvcCircuitRollup) -> PydCircuitRollup:
     return PydCircuitRollup(
         circuit_id=c.circuit_id,
         description=c.description,
-        monthly=[_to_pyd_circuit_entry(m) for m in c.monthly],
+        buckets=[_to_pyd_circuit_entry(b) for b in c.buckets],
         lines=[_to_pyd_line(l) for l in c.lines],
     )
 
@@ -432,68 +401,68 @@ def _to_pyd_department(d: SvcDepartmentCircuitRollup) -> PydDepartmentCircuitRol
 
 
 @router.get(
-    "/circuit-monthly-rollup",
-    response_model=CircuitMonthlyRollupResponse,
-    summary="Per-circuit and per-line monthly rollups",
+    "/circuit-rollup/{bucket}",
+    response_model=CircuitRollupResponse,
+    summary="Per-circuit and per-line bucket rollups (monthly or yearly)",
     description=(
         "Walks payload.Metrics.Circuit on every production-report row "
-        "in [from_month, to_month] and returns a hierarchical "
-        "(department -> circuits -> [optional] lines -> monthly) view "
-        "of TPH, total tons, and yield per node. Site-specific topology "
-        "is encoded in node `description` fields; consumers render "
-        "them as labels with no hard-coded knowledge of '57-1' / "
-        "'Main Circuit'. Aggregations are simple averages across "
-        "reports in each (node, month) bucket. Maximum window: 37 months."
+        "in [from_date, to_date] and returns a hierarchical "
+        "(department -> circuits -> [optional] lines -> buckets) view "
+        "of TPH, total tons, and yield per node. ``bucket`` is "
+        "'monthly' or 'yearly'; same shape, different bucket_label "
+        "format. Site-specific topology is encoded in node "
+        "`description` fields; consumers render them as labels with "
+        "no hard-coded knowledge of '57-1' / 'Main Circuit'. "
+        "Aggregations are simple averages across reports in each "
+        "(node, bucket) pair. Caps: 37 monthly buckets, 50 yearly."
     ),
 )
-async def circuit_monthly_rollup(
+async def circuit_rollup(
     production_report: ProductionReportSourceDep,
+    bucket: Annotated[
+        BucketLiteral,
+        Path(description="Bucket regime: 'monthly' or 'yearly'."),
+    ],
     site_id: Annotated[str, Query(description="Site to roll up (required).")],
-    from_month: Annotated[
-        str,
-        Query(description="Earliest month to include, YYYY-MM (inclusive)."),
-    ],
-    to_month: Annotated[
-        str,
-        Query(description="Latest month to include, YYYY-MM (inclusive)."),
-    ],
+    from_date: Annotated[date, Query(description="Inclusive window start, YYYY-MM-DD.")],
+    to_date: Annotated[date, Query(description="Inclusive window end, YYYY-MM-DD.")],
     department_id: Annotated[
         str | None,
         Query(description="Optional filter: roll up only this department_id."),
     ] = None,
-) -> CircuitMonthlyRollupResponse:
-    from_first = _parse_month_string(from_month, field_name="from_month")
-    to_first = _parse_month_string(to_month, field_name="to_month")
-    if from_first > to_first:
+) -> CircuitRollupResponse:
+    if from_date > to_date:
         raise HTTPException(
             status_code=422,
-            detail=f"from_month ({from_month}) must be <= to_month ({to_month}).",
+            detail=f"from_date ({from_date.isoformat()}) must be <= to_date ({to_date.isoformat()}).",
         )
-    span = _months_between(from_first, to_first)
-    if span > _MAX_ROLLUP_MONTHS:
+    count = _bucket_count(bucket, from_date, to_date)
+    cap = _MAX_BUCKETS[bucket]
+    if count > cap:
         raise HTTPException(
             status_code=422,
             detail=(
-                f"Window too large: {span} months exceeds the "
-                f"{_MAX_ROLLUP_MONTHS}-month cap. Narrow the window."
+                f"Window too large: {count} {bucket} buckets exceeds the "
+                f"{cap}-bucket cap. Narrow the window."
             ),
         )
-    to_last = _last_day_of_month(to_first)
     try:
-        depts = await get_circuit_monthly_rollup(
+        depts = await get_circuit_rollup(
             production_report,
             site_id=site_id,
-            from_month=from_first,
-            to_month=to_last,
+            bucket=bucket,
+            from_date=from_date,
+            to_date=to_date,
             department_id=department_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    return CircuitMonthlyRollupResponse(
+    return CircuitRollupResponse(
         site_id=site_id,
-        from_month=from_month,
-        to_month=to_month,
+        bucket=bucket,
+        from_date=from_date,
+        to_date=to_date,
         department_id=department_id,
         generated_at=datetime.now(UTC),
         departments=[_to_pyd_department(d) for d in depts],

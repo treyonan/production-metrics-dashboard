@@ -290,22 +290,22 @@ def compute_conveyor_totals(
 # (Ignition reports, Excel exports, etc.).
 #
 # Future migration: when Flow publishes monthly aggregate measures
-# for the same metrics, the data path inside ``get_monthly_rollup``
+# for the same metrics, the data path inside ``get_rollup``
 # swaps from ``source.fetch_rows()`` to
 # ``metric_source.fetch_points(interval='monthly')``. The Pydantic
 # response shape doesn't change; consumers don't notice.
 
 
 @dataclass(frozen=True)
-class MonthlyRollup:
-    """Internal dataclass mirror of the Pydantic ``MonthlyRollupEntry``.
+class Rollup:
+    """Internal dataclass mirror of the Pydantic ``RollupEntry``.
 
     Routes convert these to the Pydantic model at the boundary.
     """
 
     department_id: str
     department_name: str
-    month: str  # YYYY-MM
+    bucket_label: str  # YYYY-MM for monthly, YYYY for yearly
     total_tons: float
     total_runtime_hours: float
     tph: float | None
@@ -420,14 +420,15 @@ def _mean_or_none(values: list[float | None]) -> float | None:
     return sum(usable) / len(usable)
 
 
-async def get_monthly_rollup(
+async def get_rollup(
     source: ProductionReportSource,
     *,
     site_id: str,
-    from_month: date,
-    to_month: date,
+    bucket: str,
+    from_date: date,
+    to_date: date,
     department_id: str | None = None,
-) -> list[MonthlyRollup]:
+) -> list[Rollup]:
     """Compute per-(department, month) rollups across the window.
 
     ``from_month`` is the first day of the earliest month to include;
@@ -467,10 +468,14 @@ async def get_monthly_rollup(
     Raises:
         ValueError -- if from_month > to_month.
     """
-    if from_month > to_month:
+    if bucket not in ("monthly", "yearly"):
         raise ValueError(
-            f"from_month ({from_month.strftime('%Y-%m')}) must be <= "
-            f"to_month ({to_month.strftime('%Y-%m')})."
+            f"bucket must be 'monthly' or 'yearly'; got {bucket!r}."
+        )
+    if from_date > to_date:
+        raise ValueError(
+            f"from_date ({from_date.isoformat()}) must be <= "
+            f"to_date ({to_date.isoformat()})."
         )
 
     rows = await source.fetch_rows()
@@ -481,17 +486,21 @@ async def get_monthly_rollup(
     # Window filter -- inclusive on both ends.
     rows = [
         r for r in rows
-        if from_month <= r.prod_date.date() <= to_month
+        if from_date <= r.prod_date.date() <= to_date
     ]
 
-    # Group by (department_id, year-month).
+    # Group by (department_id, bucket-label). Bucket label is YYYY-MM
+    # for monthly, YYYY for yearly.
     grouped: dict[tuple[str, str], list[ProductionReportRow]] = defaultdict(list)
     for r in rows:
-        ym = f"{r.prod_date.year:04d}-{r.prod_date.month:02d}"
-        grouped[(r.department_id, ym)].append(r)
+        if bucket == "yearly":
+            label = f"{r.prod_date.year:04d}"
+        else:
+            label = f"{r.prod_date.year:04d}-{r.prod_date.month:02d}"
+        grouped[(r.department_id, label)].append(r)
 
-    out: list[MonthlyRollup] = []
-    for (dept_id, ym), group in sorted(grouped.items()):
+    out: list[Rollup] = []
+    for (dept_id, label), group in sorted(grouped.items()):
         # Reuse the Phase 5 aggregator for tonnage. Returns a dict
         # keyed by (site_id, dept_id) -- this group's rows all share
         # one (site_id, dept_id), so there's at most one entry.
@@ -527,10 +536,10 @@ async def get_monthly_rollup(
         # non-empty (we only build groups when at least one row lands
         # in the bucket) so direct index is safe.
         out.append(
-            MonthlyRollup(
+            Rollup(
                 department_id=dept_id,
                 department_name=group[0].department_name,
-                month=ym,
+                bucket_label=label,
                 total_tons=total_tons,
                 total_runtime_hours=total_runtime_hours,
                 tph=tph,
@@ -555,9 +564,9 @@ async def get_monthly_rollup(
 
 
 @dataclass(frozen=True)
-class CircuitMonthlyEntry:
-    """One per-(circuit-or-line, month) aggregate."""
-    month: str  # YYYY-MM
+class CircuitBucketEntry:
+    """One per-(circuit-or-line, bucket) aggregate."""
+    bucket_label: str  # YYYY-MM for monthly, YYYY for yearly
     total_tons: float
     runtime_hours: float
     avg_tph: float | None
@@ -571,7 +580,7 @@ class LineRollup:
     (e.g. "57-1"); ``line_id`` is the slot key in the payload (e.g. "A")."""
     line_id: str
     description: str
-    monthly: list[CircuitMonthlyEntry]
+    buckets: list[CircuitBucketEntry]
 
 
 @dataclass(frozen=True)
@@ -580,7 +589,7 @@ class CircuitRollup:
     sub-line structure in the payload (e.g. "CR Circuit")."""
     circuit_id: str
     description: str
-    monthly: list[CircuitMonthlyEntry]
+    buckets: list[CircuitBucketEntry]
     lines: list[LineRollup]
 
 
@@ -616,22 +625,22 @@ def _per_node_tph(node: dict[str, Any]) -> float | None:
 
 def _circuit_node_aggregate(
     node_per_report: list[tuple[str, dict[str, Any] | None]],
-) -> list[CircuitMonthlyEntry]:
-    """Roll a list of ``(month, node)`` pairs into per-month aggregates.
+) -> list[CircuitBucketEntry]:
+    """Roll a list of ``(bucket_label, node)`` pairs into per-bucket aggregates.
 
     Each ``node`` is either a Circuit or a Line dict from the payload,
     or ``None`` if that report didn't have the node. ``None`` reports
     contribute 0 to ``report_count`` (the node didn't exist) and are
     skipped from the means. The mean helpers drop None values.
     """
-    by_month: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for month, node in node_per_report:
+    by_bucket: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for label, node in node_per_report:
         if isinstance(node, dict):
-            by_month[month].append(node)
+            by_bucket[label].append(node)
 
-    out: list[CircuitMonthlyEntry] = []
-    for month in sorted(by_month.keys()):
-        nodes = by_month[month]
+    out: list[CircuitBucketEntry] = []
+    for label in sorted(by_bucket.keys()):
+        nodes = by_bucket[label]
         total_tons = sum(_coerce_finite_float(n.get("Total")) or 0.0 for n in nodes)
         runtime_hours = sum(_coerce_finite_float(n.get("Runtime")) or 0.0 for n in nodes)
 
@@ -645,8 +654,8 @@ def _circuit_node_aggregate(
         )
 
         out.append(
-            CircuitMonthlyEntry(
-                month=month,
+            CircuitBucketEntry(
+                bucket_label=label,
                 total_tons=total_tons,
                 runtime_hours=runtime_hours,
                 avg_tph=avg_tph,
@@ -657,12 +666,13 @@ def _circuit_node_aggregate(
     return out
 
 
-async def get_circuit_monthly_rollup(
+async def get_circuit_rollup(
     source: ProductionReportSource,
     *,
     site_id: str,
-    from_month: date,
-    to_month: date,
+    bucket: str,
+    from_date: date,
+    to_date: date,
     department_id: str | None = None,
 ) -> list[DepartmentCircuitRollup]:
     """Compute hierarchical (department -> circuit -> [lines]) monthly
@@ -686,10 +696,14 @@ async def get_circuit_monthly_rollup(
     Raises:
         ValueError -- if from_month > to_month.
     """
-    if from_month > to_month:
+    if bucket not in ("monthly", "yearly"):
         raise ValueError(
-            f"from_month ({from_month.strftime('%Y-%m')}) must be <= "
-            f"to_month ({to_month.strftime('%Y-%m')})."
+            f"bucket must be 'monthly' or 'yearly'; got {bucket!r}."
+        )
+    if from_date > to_date:
+        raise ValueError(
+            f"from_date ({from_date.isoformat()}) must be <= "
+            f"to_date ({to_date.isoformat()})."
         )
 
     rows = await source.fetch_rows()
@@ -698,7 +712,7 @@ async def get_circuit_monthly_rollup(
         rows = [r for r in rows if r.department_id == department_id]
     rows = [
         r for r in rows
-        if from_month <= r.prod_date.date() <= to_month
+        if from_date <= r.prod_date.date() <= to_date
     ]
 
     # Group reports by department_id.
@@ -746,10 +760,13 @@ async def get_circuit_monthly_rollup(
 
             circuit_node_per_report: list[tuple[str, dict[str, Any] | None]] = []
             for r in dept_rows:
-                ym = f"{r.prod_date.year:04d}-{r.prod_date.month:02d}"
+                if bucket == "yearly":
+                    label = f"{r.prod_date.year:04d}"
+                else:
+                    label = f"{r.prod_date.year:04d}-{r.prod_date.month:02d}"
                 cnode = (r.payload or {}).get("Metrics", {}).get("Circuit", {}).get(cid)
-                circuit_node_per_report.append((ym, cnode))
-            circuit_monthly = _circuit_node_aggregate(circuit_node_per_report)
+                circuit_node_per_report.append((label, cnode))
+            circuit_buckets = _circuit_node_aggregate(circuit_node_per_report)
 
             # Lines under this circuit (if any).
             lines_out: list[LineRollup] = []
@@ -758,15 +775,18 @@ async def get_circuit_monthly_rollup(
                     continue
                 line_node_per_report: list[tuple[str, dict[str, Any] | None]] = []
                 for r in dept_rows:
-                    ym = f"{r.prod_date.year:04d}-{r.prod_date.month:02d}"
+                    if bucket == "yearly":
+                        label = f"{r.prod_date.year:04d}"
+                    else:
+                        label = f"{r.prod_date.year:04d}-{r.prod_date.month:02d}"
                     cnode = (r.payload or {}).get("Metrics", {}).get("Circuit", {}).get(cid) or {}
                     lnode = cnode.get("Line", {}).get(lid) if isinstance(cnode, dict) else None
-                    line_node_per_report.append((ym, lnode))
+                    line_node_per_report.append((label, lnode))
                 lines_out.append(
                     LineRollup(
                         line_id=lid,
                         description=ldesc,
-                        monthly=_circuit_node_aggregate(line_node_per_report),
+                        buckets=_circuit_node_aggregate(line_node_per_report),
                     )
                 )
             lines_out.sort(key=lambda l: l.line_id)
@@ -775,7 +795,7 @@ async def get_circuit_monthly_rollup(
                 CircuitRollup(
                     circuit_id=cid,
                     description=cdesc,
-                    monthly=circuit_monthly,
+                    buckets=circuit_buckets,
                     lines=lines_out,
                 )
             )

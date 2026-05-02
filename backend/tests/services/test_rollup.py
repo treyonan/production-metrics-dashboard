@@ -1,4 +1,4 @@
-"""Service-level tests for ``get_monthly_rollup`` -- Phase 14a additions.
+"""Service-level tests for ``get_rollup`` -- Phase 14a + Phase 18.
 
 Constructs ``ProductionReportRow`` instances directly with known
 ``Workcenter.Rate`` / ``Workcenter.Availability`` values (and the
@@ -8,9 +8,9 @@ propagation when no report in a bucket has a usable value.
 
 Indirectly exercises ``_avg_tph_fed_for_report``,
 ``_avg_runtime_pct_for_report``, and ``_mean_or_none`` via the
-``get_monthly_rollup`` boundary -- the helpers themselves are
+``get_rollup`` boundary -- the helpers themselves are
 private, but the service emits their output as fields on each
-``MonthlyRollup``.
+``Rollup``.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ from app.integrations.production_report.base import (
     ProductionReportRow,
     SourceStatus,
 )
-from app.services.production_report import get_monthly_rollup
+from app.services.production_report import get_rollup
 
 
 def _row(
@@ -85,11 +85,12 @@ async def test_avg_tph_fed_uses_workcenter_rate_when_present() -> None:
         )
         for i, (day, rate) in enumerate([(1, 600.0), (2, 800.0), (3, 1000.0)], start=1)
     ]
-    rollups = await get_monthly_rollup(
+    rollups = await get_rollup(
         _FakeSource(rows),
         site_id="101",
-        from_month=date(2026, 4, 1),
-        to_month=date(2026, 4, 30),
+        bucket="monthly",
+        from_date=date(2026, 4, 1),
+        to_date=date(2026, 4, 30),
     )
     assert len(rollups) == 1
     assert rollups[0].avg_tph_fed == pytest.approx(800.0)
@@ -105,11 +106,12 @@ async def test_avg_tph_fed_falls_back_to_total_over_runtime_when_rate_null() -> 
             workcenter={"Rate": None, "Total": 1000.0, "Runtime": 5.0},
         )
     ]
-    rollups = await get_monthly_rollup(
+    rollups = await get_rollup(
         _FakeSource(rows),
         site_id="101",
-        from_month=date(2026, 4, 1),
-        to_month=date(2026, 4, 30),
+        bucket="monthly",
+        from_date=date(2026, 4, 1),
+        to_date=date(2026, 4, 30),
     )
     assert rollups[0].avg_tph_fed == pytest.approx(200.0)
 
@@ -136,11 +138,12 @@ async def test_avg_tph_fed_skips_unusable_reports_in_average() -> None:
             workcenter={"Rate": 1000.0},
         ),
     ]
-    rollups = await get_monthly_rollup(
+    rollups = await get_rollup(
         _FakeSource(rows),
         site_id="101",
-        from_month=date(2026, 4, 1),
-        to_month=date(2026, 4, 30),
+        bucket="monthly",
+        from_date=date(2026, 4, 1),
+        to_date=date(2026, 4, 30),
     )
     assert rollups[0].avg_tph_fed == pytest.approx(800.0)
     assert rollups[0].report_count == 3  # all three counted as reports
@@ -162,11 +165,12 @@ async def test_avg_tph_fed_none_when_every_report_unusable() -> None:
             workcenter={},  # empty workcenter
         ),
     ]
-    rollups = await get_monthly_rollup(
+    rollups = await get_rollup(
         _FakeSource(rows),
         site_id="101",
-        from_month=date(2026, 4, 1),
-        to_month=date(2026, 4, 30),
+        bucket="monthly",
+        from_date=date(2026, 4, 1),
+        to_date=date(2026, 4, 30),
     )
     assert rollups[0].avg_tph_fed is None
 
@@ -182,11 +186,12 @@ async def test_avg_runtime_pct_uses_workcenter_availability_when_present() -> No
         )
         for i, (day, pct) in enumerate([(1, 49.0), (2, 46.0), (3, 56.0), (4, 62.0)], start=1)
     ]
-    rollups = await get_monthly_rollup(
+    rollups = await get_rollup(
         _FakeSource(rows),
         site_id="101",
-        from_month=date(2026, 4, 1),
-        to_month=date(2026, 4, 30),
+        bucket="monthly",
+        from_date=date(2026, 4, 1),
+        to_date=date(2026, 4, 30),
     )
     assert rollups[0].avg_runtime_pct == pytest.approx(53.25)
 
@@ -209,11 +214,12 @@ async def test_avg_runtime_pct_falls_back_to_runtime_over_scheduled_capped_at_10
             workcenter={"Availability": None, "Runtime": 5.1, "Scheduled_Runtime": 5.0},
         ),
     ]
-    rollups = await get_monthly_rollup(
+    rollups = await get_rollup(
         _FakeSource(rows),
         site_id="101",
-        from_month=date(2026, 4, 1),
-        to_month=date(2026, 4, 30),
+        bucket="monthly",
+        from_date=date(2026, 4, 1),
+        to_date=date(2026, 4, 30),
     )
     # mean of 50.0 (4/8 * 100) and 100.0 (capped from 102) = 75.0
     assert rollups[0].avg_runtime_pct == pytest.approx(75.0)
@@ -230,11 +236,12 @@ async def test_avg_runtime_pct_none_when_all_unusable() -> None:
             workcenter={"Availability": None, "Scheduled_Runtime": 0.0},
         ),
     ]
-    rollups = await get_monthly_rollup(
+    rollups = await get_rollup(
         _FakeSource(rows),
         site_id="101",
-        from_month=date(2026, 4, 1),
-        to_month=date(2026, 4, 30),
+        bucket="monthly",
+        from_date=date(2026, 4, 1),
+        to_date=date(2026, 4, 30),
     )
     assert rollups[0].avg_runtime_pct is None
 
@@ -252,11 +259,12 @@ async def test_avg_performance_pct_uses_workcenter_performance() -> None:
         )
         for i, (day, p) in enumerate([(1, 60.0), (2, 80.0), (3, 100.0)], start=1)
     ]
-    rollups = await get_monthly_rollup(
+    rollups = await get_rollup(
         _FakeSource(rows),
         site_id="101",
-        from_month=date(2026, 4, 1),
-        to_month=date(2026, 4, 30),
+        bucket="monthly",
+        from_date=date(2026, 4, 1),
+        to_date=date(2026, 4, 30),
     )
     assert rollups[0].avg_performance_pct == pytest.approx(80.0)
 
@@ -271,11 +279,12 @@ async def test_avg_performance_pct_skips_null_reports() -> None:
         _row(row_id=2, prod_date=datetime(2026, 4, 2), workcenter={"Performance": None}),
         _row(row_id=3, prod_date=datetime(2026, 4, 3), workcenter={"Performance": 90.0}),
     ]
-    rollups = await get_monthly_rollup(
+    rollups = await get_rollup(
         _FakeSource(rows),
         site_id="101",
-        from_month=date(2026, 4, 1),
-        to_month=date(2026, 4, 30),
+        bucket="monthly",
+        from_date=date(2026, 4, 1),
+        to_date=date(2026, 4, 30),
     )
     assert rollups[0].avg_performance_pct == pytest.approx(80.0)
     assert rollups[0].report_count == 3  # all three counted as reports
@@ -289,10 +298,63 @@ async def test_avg_performance_pct_none_when_all_reports_null() -> None:
         _row(row_id=1, prod_date=datetime(2026, 4, 1), workcenter={"Performance": None}),
         _row(row_id=2, prod_date=datetime(2026, 4, 2), workcenter={}),
     ]
-    rollups = await get_monthly_rollup(
+    rollups = await get_rollup(
         _FakeSource(rows),
         site_id="101",
-        from_month=date(2026, 4, 1),
-        to_month=date(2026, 4, 30),
+        bucket="monthly",
+        from_date=date(2026, 4, 1),
+        to_date=date(2026, 4, 30),
     )
     assert rollups[0].avg_performance_pct is None
+
+# ---- Phase 18: yearly bucket tests --------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_rollup_yearly_groups_by_year() -> None:
+    """Yearly bucket collapses month-level rows into one entry per year."""
+    rows = [
+        _row(
+            row_id=1,
+            prod_date=datetime(2025, 3, 15),
+            workcenter={"Rate": 100.0, "Runtime": 5.0},
+        ),
+        _row(
+            row_id=2,
+            prod_date=datetime(2025, 7, 4),
+            workcenter={"Rate": 200.0, "Runtime": 4.0},
+        ),
+        _row(
+            row_id=3,
+            prod_date=datetime(2026, 1, 8),
+            workcenter={"Rate": 300.0, "Runtime": 6.0},
+        ),
+    ]
+    rollups = await get_rollup(
+        _FakeSource(rows),
+        site_id="101",
+        bucket="yearly",
+        from_date=date(2025, 1, 1),
+        to_date=date(2026, 12, 31),
+    )
+    by_year = {r.bucket_label: r for r in rollups}
+    assert set(by_year.keys()) == {"2025", "2026"}
+    # 2025 has two reports; avg_tph_fed = mean(100, 200) = 150
+    assert by_year["2025"].avg_tph_fed == pytest.approx(150.0)
+    assert by_year["2025"].report_count == 2
+    # 2026 has one report; avg_tph_fed = 300
+    assert by_year["2026"].avg_tph_fed == pytest.approx(300.0)
+    assert by_year["2026"].report_count == 1
+
+
+@pytest.mark.asyncio
+async def test_rollup_rejects_unknown_bucket() -> None:
+    """The service-layer bucket guard rejects bad values before any work."""
+    with pytest.raises(ValueError, match="bucket"):
+        await get_rollup(
+            _FakeSource([]),
+            site_id="101",
+            bucket="weekly",  # not yet supported
+            from_date=date(2026, 1, 1),
+            to_date=date(2026, 12, 31),
+        )

@@ -981,3 +981,34 @@ body {
    workcenter section. Smaller than the workcenter header so the
    visual hierarchy reads workcenter -> circuits. Inset slightly to
    reinforce the nesting. */
+
+/* Phase 18 -- Trends Monthly/Yearly bucket toggle. */
+.trends-bucket-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border-strong);
+  border-radius: 2px;
+  overflow: hidden;
+  height: 28px;
+  align-items: stretch;
+}
+.bucket-btn {
+  padding: 0 14px;
+  border: none;
+  background: var(--bg-card);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.bucket-btn:hover:not(.on) { background: var(--bg-canvas); }
+.bucket-btn.on {
+  background: var(--accent);
+  color: #ffffff;
+}
+.bucket-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.bucket-btn + .bucket-btn { border-left: 1px solid var(--border-strong); }

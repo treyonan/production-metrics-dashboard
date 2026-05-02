@@ -304,61 +304,76 @@ def test_history_endpoint_removed(client: TestClient) -> None:
 
 
 
-# ---- /monthly-rollup --------------------------------------------------
+# ---- /rollup/{bucket} --------------------------------------------------
 
 
-def test_monthly_rollup_returns_envelope_shape(client) -> None:
+def test_rollup_monthly_returns_envelope_shape(client) -> None:
     """Happy-path: returns a populated envelope for the sample window."""
     resp = client.get(
-        "/api/production-report/monthly-rollup",
+        "/api/production-report/rollup/monthly",
         params={
             "site_id": "101",
-            "from_month": "2025-05",
-            "to_month": "2026-06",
+            "from_date": "2025-05-01",
+            "to_date": "2026-06-30",
         },
     )
     assert resp.status_code == 200
     body = resp.json()
     assert body["site_id"] == "101"
-    assert body["from_month"] == "2025-05"
-    assert body["to_month"] == "2026-06"
+    assert body["bucket"] == "monthly"
+    assert body["from_date"] == "2025-05-01"
+    assert body["to_date"] == "2026-06-30"
     assert "generated_at" in body
     assert isinstance(body["rollups"], list)
-    # Sample data has multiple departments under site 101 across
-    # multiple months -- expect at least one rollup.
     assert len(body["rollups"]) > 0
 
 
-def test_monthly_rollup_rollup_entry_fields_present(client) -> None:
+def test_rollup_monthly_entry_fields_present(client) -> None:
     resp = client.get(
-        "/api/production-report/monthly-rollup",
+        "/api/production-report/rollup/monthly",
         params={
             "site_id": "101",
-            "from_month": "2025-05",
-            "to_month": "2026-06",
+            "from_date": "2025-05-01",
+            "to_date": "2026-06-30",
         },
     )
     body = resp.json()
     sample = body["rollups"][0]
     expected = {
-        "department_id", "month", "total_tons",
+        "department_id", "bucket_label", "total_tons",
         "total_runtime_hours", "tph", "report_count",
-        # Phase 14a:
         "avg_tph_fed", "avg_runtime_pct",
     }
     assert expected.issubset(sample.keys())
-    # Month always YYYY-MM.
     import re as _re
-    assert _re.match(r"^\d{4}-\d{2}$", sample["month"])
+    assert _re.match(r"^\d{4}-\d{2}$", sample["bucket_label"])
 
 
-def test_monthly_rollup_filter_by_department(client) -> None:
+def test_rollup_yearly_returns_envelope_shape(client) -> None:
+    """Phase 18: yearly bucket happy path."""
     resp = client.get(
-        "/api/production-report/monthly-rollup",
+        "/api/production-report/rollup/yearly",
         params={
             "site_id": "101",
-            "from_month": "2025-05",
-            "to_month": "2026-06",
+            "from_date": "2025-01-01",
+            "to_date": "2026-12-31",
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["bucket"] == "yearly"
+    sample = body["rollups"][0]
+    import re as _re
+    assert _re.match(r"^\d{4}$", sample["bucket_label"])
+
+
+def test_rollup_filter_by_department(client) -> None:
+    resp = client.get(
+        "/api/production-report/rollup/monthly",
+        params={
+            "site_id": "101",
+            "from_date": "2025-05-01",
+            "to_date": "2026-06-30",
             "department_id": "127",
         },
     )
@@ -368,50 +383,63 @@ def test_monthly_rollup_filter_by_department(client) -> None:
     assert all(r["department_id"] == "127" for r in body["rollups"])
 
 
-def test_monthly_rollup_rejects_inverted_window(client) -> None:
+def test_rollup_rejects_inverted_window(client) -> None:
     resp = client.get(
-        "/api/production-report/monthly-rollup",
+        "/api/production-report/rollup/monthly",
         params={
             "site_id": "101",
-            "from_month": "2026-06",
-            "to_month": "2026-01",
+            "from_date": "2026-06-01",
+            "to_date": "2026-01-31",
         },
     )
     assert resp.status_code == 422
-    assert "from_month" in resp.json()["detail"].lower()
+    assert "from_date" in resp.json()["detail"].lower()
 
 
-def test_monthly_rollup_rejects_bad_month_format(client) -> None:
+def test_rollup_rejects_bad_bucket(client) -> None:
+    """Phase 18: path Literal validation rejects unknown buckets."""
     resp = client.get(
-        "/api/production-report/monthly-rollup",
+        "/api/production-report/rollup/weekly",
         params={
             "site_id": "101",
-            "from_month": "April-2026",
-            "to_month": "2026-04",
-        },
-    )
-    assert resp.status_code == 422
-
-
-def test_monthly_rollup_rejects_oversized_window(client) -> None:
-    resp = client.get(
-        "/api/production-report/monthly-rollup",
-        params={
-            "site_id": "101",
-            "from_month": "2020-01",
-            "to_month": "2026-12",
+            "from_date": "2026-01-01",
+            "to_date": "2026-04-30",
         },
     )
     assert resp.status_code == 422
 
 
-def test_monthly_rollup_unknown_site_returns_empty(client) -> None:
+def test_rollup_rejects_bad_date_format(client) -> None:
     resp = client.get(
-        "/api/production-report/monthly-rollup",
+        "/api/production-report/rollup/monthly",
+        params={
+            "site_id": "101",
+            "from_date": "April-2026",
+            "to_date": "2026-04-30",
+        },
+    )
+    assert resp.status_code == 422
+
+
+def test_rollup_rejects_oversized_monthly_window(client) -> None:
+    resp = client.get(
+        "/api/production-report/rollup/monthly",
+        params={
+            "site_id": "101",
+            "from_date": "2020-01-01",
+            "to_date": "2026-12-31",
+        },
+    )
+    assert resp.status_code == 422
+
+
+def test_rollup_unknown_site_returns_empty(client) -> None:
+    resp = client.get(
+        "/api/production-report/rollup/monthly",
         params={
             "site_id": "999",
-            "from_month": "2026-01",
-            "to_month": "2026-04",
+            "from_date": "2026-01-01",
+            "to_date": "2026-04-30",
         },
     )
     assert resp.status_code == 200
@@ -419,21 +447,17 @@ def test_monthly_rollup_unknown_site_returns_empty(client) -> None:
     assert body["rollups"] == []
 
 
-def test_monthly_rollup_tph_null_when_runtime_zero(client) -> None:
-    """In a window where the sample has zero runtime, tph must be null
-    (not Inf, not NaN, not divide-by-zero error). The committed CSV
-    sample has at least one C3 row with Runtime=0.0."""
+def test_rollup_tph_null_when_runtime_zero(client) -> None:
+    """In a window where the sample has zero runtime, tph must be null."""
     resp = client.get(
-        "/api/production-report/monthly-rollup",
+        "/api/production-report/rollup/monthly",
         params={
             "site_id": "101",
-            "from_month": "2025-05",
-            "to_month": "2026-06",
+            "from_date": "2025-05-01",
+            "to_date": "2026-06-30",
         },
     )
     body = resp.json()
-    # At least one rollup with runtime > 0 should have a numeric tph;
-    # any rollup with runtime == 0 should have tph == None.
     for r in body["rollups"]:
         if r["total_runtime_hours"] == 0:
             assert r["tph"] is None

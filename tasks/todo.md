@@ -2865,6 +2865,146 @@ intentionally narrative, so the maintenance burden is light --
 update sections 4-6 when the picture changes; section 7 when an
 open question is resolved.
 
+## Phase 18 -- Yearly rollup + parametric bucket route (PLANNED 2026-05-01)
+
+**Trigger:** Trey wants a Yearly rollup view on the Trends page
+toggling between Monthly and Yearly. The architectural call is to
+parametrize the bucket interval (matches Phase 15's pattern), so
+adding weekly / quarterly later is a Literal widening rather than a
+new route.
+
+### Decisions
+
+- **D1 -- Single endpoint, bucket as path Literal.** Replace the two
+  monthly-specific routes with a parametric pair:
+  /api/production-report/rollup/{bucket} and
+  /api/production-report/circuit-rollup/{bucket}.
+  bucket: `Literal["monthly", "yearly"]` for v1; widens to weekly /
+  quarterly later. Same shape as Phase 15's
+  /api/metrics/{subject_type}/{interval}.
+- **D2 -- Real ISO dates always.** Frontend always sends from_date /
+  to_date as YYYY-MM-DD. Service chops the range into buckets. No
+  bucket-specific date formats on the wire.
+- **D3 -- Whole-bucket selection enforced in the UI.** Yearly mode
+  exposes year-only pickers; the frontend auto-expands to
+  YYYY-01-01 / YYYY-12-31 before sending. Monthly mode keeps the
+  existing month-picker behavior. No partial buckets reach the API.
+- **D4 -- Simple averages stay simple.** Yearly avg_tph_fed,
+  avg_runtime_pct, avg_performance_pct are simple averages of the
+  monthly averages within each year. Matches the existing monthly
+  pattern; no new aggregation rule.
+- **D5 -- Single global toggle on the Trends panel.** All sections
+  (Overview, Workcenter, Circuit, Line) flip together. Toggle state
+  persists in localStorage (key: `pmd-trends-bucket`).
+- **D6 -- Excel export mirrors the displayed bucket.** Yearly mode
+  exports yearly rollups; monthly mode exports monthly.
+- **D7 -- Year picker shape.** Two select dropdowns (from-year /
+  to-year) populated with the years that have data. Default
+  selection: earliest year with data through current year.
+  Validation: from_year <= to_year. No upper limit on span.
+- **D8 -- `bucket_label` field on each entry.** Formatted per bucket
+  type: "2026-04" for monthly, "2026" for yearly. `bucket_start` /
+  `bucket_end` remain real ISO dates so consumers can sort or align
+  numerically.
+- **D9 -- Clean cut on the old endpoint names.** No compat alias
+  for /monthly-rollup. Internal API; we own all consumers.
+- **D10 -- BUILD_TAG bump to "2026-05-01-phase18-rollup-bucket".**
+- **D11 -- scada/ignition/api.py update is Phase 19 follow-on.**
+  Lands after backend + frontend ship and we verify end-to-end.
+
+### Files to modify
+
+Backend:
+- `backend/app/api/routes/production_report.py` -- replace
+  /monthly-rollup with /rollup/{bucket}; replace /circuit-monthly-rollup
+  with /circuit-rollup/{bucket}; bucket Literal validated at the path layer.
+- `backend/app/services/production_report.py` -- generalize the
+  rollup service to take a bucket arg; add `_bucket_boundaries`
+  and `_bucket_label` helpers.
+- `backend/app/schemas/production_report.py` -- add `bucket` and
+  `bucket_label` fields to rollup entry models.
+- `backend/app/main.py` -- BUILD_TAG bump.
+
+Frontend:
+- `frontend/index.html` -- Monthly/Yearly toggle on Trends panel;
+  year-picker UI (from-year, to-year selects).
+- `frontend/app.css` -- toggle + year-picker styling.
+- `frontend/app.js` -- bucket-aware fetch + render; localStorage
+  persistence; theme-toggle path threaded with bucket.
+
+Tests:
+- `backend/tests/services/test_monthly_rollup.py` -- rename to
+  `test_rollup.py`; parametrize over bucket; add yearly cases.
+- `backend/tests/services/test_circuit_monthly_rollup.py` -- rename
+  to `test_circuit_rollup.py`; parametrize.
+- `backend/tests/api/test_production_report.py` -- update to new URLs.
+
+Docs:
+- ARCHITECTURE.md -- update endpoint references.
+- RUNBOOK.md -- update endpoint table.
+- docs/comprehensive-overview/build.js -- mention the parametric
+  rollup pattern; regenerate the docx.
+
+### Verification
+
+Programmatic:
+- [ ] py_compile clean on modified Python files.
+- [ ] node --check on app.js after the rewrite.
+- [ ] pytest backend/tests -- full suite green.
+
+On the Windows host (after deploy):
+- [ ] /api/__ping shows the new BUILD_TAG.
+- [ ] /api/production-report/rollup/monthly returns the same shape
+      as the old /monthly-rollup, plus bucket_label.
+- [ ] /api/production-report/rollup/yearly with a 3-year window
+      returns 3 yearly entries.
+- [ ] /api/production-report/circuit-rollup/{bucket} hierarchical
+      response works for both monthly and yearly.
+- [ ] Trends page Monthly/Yearly toggle visible at the top.
+- [ ] Yearly mode shows year-only picker; full-year coverage on
+      submit.
+- [ ] Toggle state persists across reload via localStorage.
+- [ ] Excel export reflects the active bucket.
+
+### Out of scope (deferred)
+
+- Weekly / quarterly buckets -- trivial Literal extension when needed.
+- Migration of rollup math to Flow-sourced data -- still planned.
+- `scada/ignition/api.py` rename -- Phase 19 follow-on (below).
+
+### Implementation sequence
+
+1. Backend: routes + service + schemas + tests via bash + Python
+   atomic rewrite; py_compile + pytest.
+2. Hand back for backend smoke test against the live data.
+3. Frontend: index.html + app.css + app.js; node --check.
+4. Hand back for live verification on the Windows host.
+5. Docs: ARCHITECTURE / RUNBOOK / comprehensive overview.
+6. Phase 19 lands after that.
+
+## Phase 19 -- scada/ignition/api.py rollup-route update (PLANNED 2026-05-01)
+
+**Trigger:** Phase 18 renames the rollup routes. The Ignition rich
+client wraps those routes; it needs to track.
+
+### Scope
+
+- `scada/ignition/api.py`:
+  - `get_monthly_rollup(site_id)` -> `get_rollup(bucket, site_id, from_date=None, to_date=None)`
+  - `get_circuit_monthly_rollup(site_id)` -> `get_circuit_rollup(bucket, site_id, from_date=None, to_date=None)`
+  - `monthly_rollup_dataset(site_id)` -> `rollup_dataset(bucket, site_id, from_date=None, to_date=None)`
+  - bucket validation against `("monthly", "yearly")`.
+  - Update docstring + examples.
+- Demo Perspective view (`scada/ignition/perspective/Production_Metrics/`)
+  is unaffected today (uses the latest endpoint, not rollups).
+  If we later add a yearly view, it consumes the new function shape.
+
+### Verification
+
+- Script Console: `MES.Integrations.Production_Metrics.API.get_rollup("monthly", 101)` returns the envelope.
+- Same with `"yearly"`.
+- Bucket typo -> ValueError before any HTTP call.
+
 ## Lessons captured
 
 See `tasks/lessons.md`:

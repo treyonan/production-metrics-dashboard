@@ -1,4 +1,4 @@
-"""Service-level tests for ``get_circuit_monthly_rollup`` -- Phase 14b.
+"""Service-level tests for ``get_circuit_rollup`` -- Phase 14b + Phase 18.
 
 Exercises the dynamic Circuit/Line topology walk, hierarchical
 aggregation, and the simple-mean rules for ``avg_tph`` and
@@ -17,7 +17,7 @@ from app.integrations.production_report.base import (
     ProductionReportRow,
     SourceStatus,
 )
-from app.services.production_report import get_circuit_monthly_rollup
+from app.services.production_report import get_circuit_rollup
 
 
 def _row(
@@ -118,11 +118,12 @@ async def test_circuit_rollup_basic_hierarchy_one_month() -> None:
             ),
         ),
     ]
-    depts = await get_circuit_monthly_rollup(
+    depts = await get_circuit_rollup(
         _FakeSource(rows),
         site_id="101",
-        from_month=date(2026, 4, 1),
-        to_month=date(2026, 4, 30),
+        bucket="monthly",
+        from_date=date(2026, 4, 1),
+        to_date=date(2026, 4, 30),
     )
     assert len(depts) == 1
     dept = depts[0]
@@ -133,24 +134,24 @@ async def test_circuit_rollup_basic_hierarchy_one_month() -> None:
     main = next(c for c in dept.circuits if c.description == "Main Circuit")
     assert main.circuit_id == "A"
     assert len(main.lines) == 2
-    assert main.monthly[0].total_tons == 500.0
-    assert main.monthly[0].runtime_hours == 2.0
-    assert main.monthly[0].avg_tph == pytest.approx(250.0)
-    assert main.monthly[0].avg_yield == pytest.approx(0.6)
+    assert main.buckets[0].total_tons == 500.0
+    assert main.buckets[0].runtime_hours == 2.0
+    assert main.buckets[0].avg_tph == pytest.approx(250.0)
+    assert main.buckets[0].avg_yield == pytest.approx(0.6)
 
     line_descs = sorted(l.description for l in main.lines)
     assert line_descs == ["57-1", "57-2"]
     line_57_1 = next(l for l in main.lines if l.description == "57-1")
-    assert line_57_1.monthly[0].total_tons == 300.0
-    assert line_57_1.monthly[0].avg_tph == pytest.approx(300.0)
-    assert line_57_1.monthly[0].avg_yield == pytest.approx(0.3)
+    assert line_57_1.buckets[0].total_tons == 300.0
+    assert line_57_1.buckets[0].avg_tph == pytest.approx(300.0)
+    assert line_57_1.buckets[0].avg_yield == pytest.approx(0.3)
 
     cr = next(c for c in dept.circuits if c.description == "CR Circuit")
     assert cr.lines == []
     # Zero-runtime, zero-Total CR circuit -> avg_tph None, avg_yield 0.0
     # (Yield value is the literal 0.0 in the payload, not None).
-    assert cr.monthly[0].avg_tph is None
-    assert cr.monthly[0].avg_yield == pytest.approx(0.0)
+    assert cr.buckets[0].avg_tph is None
+    assert cr.buckets[0].avg_yield == pytest.approx(0.0)
 
 
 @pytest.mark.asyncio
@@ -176,16 +177,17 @@ async def test_circuit_rollup_aggregates_across_months() -> None:
             ),
         ),
     ]
-    depts = await get_circuit_monthly_rollup(
+    depts = await get_circuit_rollup(
         _FakeSource(rows),
         site_id="101",
-        from_month=date(2026, 1, 1),
-        to_month=date(2026, 2, 28),
+        bucket="monthly",
+        from_date=date(2026, 1, 1),
+        to_date=date(2026, 2, 28),
     )
     main = next(c for c in depts[0].circuits if c.description == "Main Circuit")
-    assert [m.month for m in main.monthly] == ["2026-01", "2026-02"]
-    assert main.monthly[0].avg_tph == pytest.approx(200.0)
-    assert main.monthly[1].avg_tph == pytest.approx(300.0)
+    assert [m.bucket_label for m in main.buckets] == ["2026-01", "2026-02"]
+    assert main.buckets[0].avg_tph == pytest.approx(200.0)
+    assert main.buckets[1].avg_tph == pytest.approx(300.0)
 
 
 @pytest.mark.asyncio
@@ -214,19 +216,20 @@ async def test_circuit_rollup_simple_mean_across_multi_report_month() -> None:
             ),
         ),
     ]
-    depts = await get_circuit_monthly_rollup(
+    depts = await get_circuit_rollup(
         _FakeSource(rows),
         site_id="101",
-        from_month=date(2026, 4, 1),
-        to_month=date(2026, 4, 30),
+        bucket="monthly",
+        from_date=date(2026, 4, 1),
+        to_date=date(2026, 4, 30),
     )
     main = next(c for c in depts[0].circuits if c.description == "Main Circuit")
     # per-report TPH = 200 and 600 -> simple mean 400.
-    assert main.monthly[0].avg_tph == pytest.approx(400.0)
+    assert main.buckets[0].avg_tph == pytest.approx(400.0)
     # per-report yield = 0.4 and 0.8 -> simple mean 0.6.
-    assert main.monthly[0].avg_yield == pytest.approx(0.6)
+    assert main.buckets[0].avg_yield == pytest.approx(0.6)
     # Sums add normally (200 + 600 = 800).
-    assert main.monthly[0].total_tons == pytest.approx(800.0)
+    assert main.buckets[0].total_tons == pytest.approx(800.0)
 
 
 @pytest.mark.asyncio
@@ -246,16 +249,17 @@ async def test_circuit_rollup_runtime_zero_avg_tph_is_none() -> None:
             },
         ),
     ]
-    depts = await get_circuit_monthly_rollup(
+    depts = await get_circuit_rollup(
         _FakeSource(rows),
         site_id="101",
-        from_month=date(2026, 4, 1),
-        to_month=date(2026, 4, 30),
+        bucket="monthly",
+        from_date=date(2026, 4, 1),
+        to_date=date(2026, 4, 30),
     )
     main = depts[0].circuits[0]
-    assert main.monthly[0].avg_tph is None
+    assert main.buckets[0].avg_tph is None
     # Yield was a literal 0.0 (not null), so the mean is 0.0 -- not None.
-    assert main.monthly[0].avg_yield == pytest.approx(0.0)
+    assert main.buckets[0].avg_yield == pytest.approx(0.0)
 
 
 @pytest.mark.asyncio
@@ -273,11 +277,12 @@ async def test_circuit_rollup_empty_when_no_rows_match_filter() -> None:
             ),
         ),
     ]
-    depts = await get_circuit_monthly_rollup(
+    depts = await get_circuit_rollup(
         _FakeSource(rows),
         site_id="101",
-        from_month=date(2026, 4, 1),
-        to_month=date(2026, 4, 30),
+        bucket="monthly",
+        from_date=date(2026, 4, 1),
+        to_date=date(2026, 4, 30),
     )
     assert depts == []
 
@@ -311,11 +316,12 @@ async def test_circuit_rollup_multi_department_groups_correctly() -> None:
             },
         ),
     ]
-    depts = await get_circuit_monthly_rollup(
+    depts = await get_circuit_rollup(
         _FakeSource(rows),
         site_id="101",
-        from_month=date(2026, 4, 1),
-        to_month=date(2026, 4, 30),
+        bucket="monthly",
+        from_date=date(2026, 4, 1),
+        to_date=date(2026, 4, 30),
     )
     assert len(depts) == 2
     by_id = {d.department_id: d for d in depts}
@@ -332,12 +338,13 @@ async def test_circuit_rollup_multi_department_groups_correctly() -> None:
 @pytest.mark.asyncio
 async def test_circuit_rollup_inverted_window_raises_value_error() -> None:
     """Service guards against from > to even though the route also catches it."""
-    with pytest.raises(ValueError, match=r"from_month .* must be <="):
-        await get_circuit_monthly_rollup(
+    with pytest.raises(ValueError, match=r"from_date .* must be <="):
+        await get_circuit_rollup(
             _FakeSource([]),
             site_id="101",
-            from_month=date(2026, 4, 1),
-            to_month=date(2026, 1, 1),
+            bucket="monthly",
+            from_date=date(2026, 4, 1),
+            to_date=date(2026, 1, 1),
         )
 
 
@@ -376,15 +383,16 @@ async def test_circuit_rollup_prefers_rate_over_total_runtime_division() -> None
             },
         ),
     ]
-    depts = await get_circuit_monthly_rollup(
+    depts = await get_circuit_rollup(
         _FakeSource(rows),
         site_id="101",
-        from_month=date(2026, 4, 1),
-        to_month=date(2026, 4, 30),
+        bucket="monthly",
+        from_date=date(2026, 4, 1),
+        to_date=date(2026, 4, 30),
     )
     main = depts[0].circuits[0]
     # mean of [250, 350] = 300, NOT mean of [100, 100]
-    assert main.monthly[0].avg_tph == pytest.approx(300.0)
+    assert main.buckets[0].avg_tph == pytest.approx(300.0)
 
 
 @pytest.mark.asyncio
@@ -418,12 +426,13 @@ async def test_circuit_rollup_falls_back_to_total_over_runtime_when_rate_absent(
             },
         ),
     ]
-    depts = await get_circuit_monthly_rollup(
+    depts = await get_circuit_rollup(
         _FakeSource(rows),
         site_id="101",
-        from_month=date(2026, 4, 1),
-        to_month=date(2026, 4, 30),
+        bucket="monthly",
+        from_date=date(2026, 4, 1),
+        to_date=date(2026, 4, 30),
     )
     main = depts[0].circuits[0]
     # Per-report TPH via fallback: 400/2=200, 300/1=300. Mean = 250.
-    assert main.monthly[0].avg_tph == pytest.approx(250.0)
+    assert main.buckets[0].avg_tph == pytest.approx(250.0)

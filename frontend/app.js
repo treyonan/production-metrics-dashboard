@@ -78,6 +78,17 @@
   // when the same section still exists in the new render; falls
   // back to "overview" otherwise.
   let _activeTrendsTab = "overview";
+  // Phase 18: which bucket the Trends view currently shows. Persists in
+  // localStorage so the choice carries across reloads. Toggles between
+  // "monthly" and "yearly"; future buckets (weekly/quarterly) extend the
+  // Literal in the backend route -- this state goes wherever they go.
+  let _activeTrendsBucket = "monthly";
+  try {
+    const _storedBucket = localStorage.getItem("pmd-trends-bucket");
+    if (_storedBucket === "monthly" || _storedBucket === "yearly") {
+      _activeTrendsBucket = _storedBucket;
+    }
+  } catch (_e) { /* localStorage unavailable in some embeds */ }
 
   // --- generic helpers ---
   const $ = (id) => document.getElementById(id);
@@ -1445,7 +1456,7 @@
   // --- Phase 10b: Trends view ----------------------------------------
   //
   // Hash-routed. #trends shows multi-month line charts of monthly
-  // rollups computed by the backend at /api/production-report/monthly-rollup.
+  // rollups computed by the backend at /api/production-report/rollup/{bucket}.
   // No client-side math -- the frontend just groups by department_id
   // and feeds Chart.js. When Flow eventually publishes monthly aggregate
   // measures, the swap happens inside the backend service; this code
@@ -1517,7 +1528,8 @@
   }
 
   function populateTrendsRangeDefaults() {
-    // Default range: last 12 calendar months ending at the current month.
+    // Default monthly range: last 12 calendar months ending at the
+    // current month.
     const now = new Date();
     const toY = now.getFullYear();
     const toM = now.getMonth() + 1;
@@ -1528,38 +1540,130 @@
     const toInput = $("trends-to-month");
     if (fromInput) fromInput.value = `${fromY}-${pad2(fromM)}`;
     if (toInput) toInput.value = `${toY}-${pad2(toM)}`;
+
+    // Phase 18: populate yearly selects with 2020..currentYear.
+    // Default selection: last 5 years ending at current year.
+    const fromYearSel = $("trends-from-year");
+    const toYearSel = $("trends-to-year");
+    if (fromYearSel && fromYearSel.children.length === 0) {
+      for (let y = 2020; y <= toY; y++) {
+        const opt = document.createElement("option");
+        opt.value = String(y);
+        opt.textContent = String(y);
+        fromYearSel.appendChild(opt);
+      }
+      fromYearSel.value = String(Math.max(2020, toY - 4));
+    }
+    if (toYearSel && toYearSel.children.length === 0) {
+      for (let y = 2020; y <= toY; y++) {
+        const opt = document.createElement("option");
+        opt.value = String(y);
+        opt.textContent = String(y);
+        toYearSel.appendChild(opt);
+      }
+      toYearSel.value = String(toY);
+    }
+
+    // Sync the toggle button + picker visibility to the saved bucket.
+    _applyBucketUi(_activeTrendsBucket);
   }
 
   function wireTrendsControls() {
-    const fromInput = $("trends-from-month");
-    const toInput = $("trends-to-month");
+    const monthInputs = ["trends-from-month", "trends-to-month",
+                         "trends-from-year", "trends-to-year"];
     const onChange = () => {
       if (currentView === "trends" && currentSiteId) refreshTrends();
     };
-    if (fromInput) fromInput.addEventListener("change", onChange);
-    if (toInput) toInput.addEventListener("change", onChange);
+    for (const id of monthInputs) {
+      const el = $(id);
+      if (el) el.addEventListener("change", onChange);
+    }
+
+    // Phase 18: bucket toggle (Monthly/Yearly).
+    const toggle = $("trends-bucket-toggle");
+    if (toggle) {
+      toggle.addEventListener("click", (ev) => {
+        const btn = ev.target.closest(".bucket-btn");
+        if (!btn) return;
+        _setActiveTrendsBucket(btn.dataset.bucket);
+      });
+    }
+  }
+
+  // Phase 18: switch between Monthly and Yearly bucket modes. Persists
+  // to localStorage so the choice survives reloads.
+  function _setActiveTrendsBucket(bucket) {
+    if (bucket !== "monthly" && bucket !== "yearly") return;
+    if (bucket === _activeTrendsBucket) return;
+    _activeTrendsBucket = bucket;
+    try { localStorage.setItem("pmd-trends-bucket", bucket); } catch (_e) {}
+    _applyBucketUi(bucket);
+    // Clear cached payloads immediately so neither the export nor any
+    // theme-toggle re-render uses the previous bucket's data while the
+    // refetch is in flight. updateExportButtonState() flips Excel to
+    // disabled because rollups.length will be 0.
+    _lastTrendsPayload = null;
+    _lastTrendsCircuitPayload = null;
+    updateExportButtonState();
+    if (currentView === "trends" && currentSiteId) refreshTrends();
+  }
+
+  // Visual sync only: button "on" state + picker group visibility.
+  // Separated so populateTrendsRangeDefaults can call it on boot
+  // without triggering a refetch.
+  function _applyBucketUi(bucket) {
+    for (const btn of document.querySelectorAll("#trends-bucket-toggle .bucket-btn")) {
+      const on = btn.dataset.bucket === bucket;
+      btn.classList.toggle("on", on);
+      btn.setAttribute("aria-selected", on ? "true" : "false");
+    }
+    for (const elx of document.querySelectorAll(".trends-monthly-only")) {
+      elx.style.display = bucket === "monthly" ? "" : "none";
+    }
+    for (const elx of document.querySelectorAll(".trends-yearly-only")) {
+      elx.style.display = bucket === "yearly" ? "" : "none";
+    }
   }
 
   function _trendsRange() {
-    const from = ($("trends-from-month") || {}).value || "";
-    const to = ($("trends-to-month") || {}).value || "";
-    return { from, to };
+    if (_activeTrendsBucket === "yearly") {
+      const fromY = parseInt(($("trends-from-year") || {}).value || "0", 10);
+      const toY = parseInt(($("trends-to-year") || {}).value || "0", 10);
+      if (!fromY || !toY) return null;
+      return {
+        bucket: "yearly",
+        from_date: `${fromY}-01-01`,
+        to_date: `${toY}-12-31`,
+      };
+    }
+    const fromMonth = ($("trends-from-month") || {}).value || "";
+    const toMonth = ($("trends-to-month") || {}).value || "";
+    if (!fromMonth || !toMonth) return null;
+    const [fy, fm] = fromMonth.split("-");
+    const [ty, tm] = toMonth.split("-");
+    // Last day of the to-month: JS Date with day=0 of next month.
+    const lastDay = new Date(parseInt(ty, 10), parseInt(tm, 10), 0).getDate();
+    return {
+      bucket: "monthly",
+      from_date: `${fy}-${fm}-01`,
+      to_date: `${ty}-${tm}-${pad2(lastDay)}`,
+    };
   }
 
   async function refreshTrends() {
     if (!currentSiteId) return;
-    const { from, to } = _trendsRange();
-    if (!from || !to) return;
+    const range = _trendsRange();
+    if (!range) return;
 
     const status = $("trends-status");
     if (status) status.textContent = "Loading...";
 
     const baseQs =
         `?site_id=${encodeURIComponent(currentSiteId)}`
-      + `&from_month=${encodeURIComponent(from)}`
-      + `&to_month=${encodeURIComponent(to)}`;
-    const rollupUrl  = `/api/production-report/monthly-rollup${baseQs}`;
-    const circuitUrl = `/api/production-report/circuit-monthly-rollup${baseQs}`;
+      + `&from_date=${encodeURIComponent(range.from_date)}`
+      + `&to_date=${encodeURIComponent(range.to_date)}`;
+    const rollupUrl  = `/api/production-report/rollup/${range.bucket}${baseQs}`;
+    const circuitUrl = `/api/production-report/circuit-rollup/${range.bucket}${baseQs}`;
 
     try {
       // Phase 14b: both rollups in parallel. The dashboard pairs
@@ -1616,14 +1720,14 @@
     // Build the X-axis: union of distinct months across all rollups,
     // sorted lexicographically (YYYY-MM sorts naturally).
     const monthSet = new Set();
-    for (const r of rollups) monthSet.add(r.month);
+    for (const r of rollups) monthSet.add(r.bucket_label);
     const months = [...monthSet].sort();
 
     // Group rollups by department_id, indexed by month for fast lookup.
     const byDept = new Map();
     for (const r of rollups) {
       if (!byDept.has(r.department_id)) byDept.set(r.department_id, new Map());
-      byDept.get(r.department_id).set(r.month, r);
+      byDept.get(r.department_id).set(r.bucket_label, r);
     }
     const deptIds = [...byDept.keys()].sort();
 
@@ -1805,7 +1909,7 @@
 
     // Per-month lookup for the circuit-level series.
     const cMap = new Map();
-    for (const m of (circuit.monthly || [])) cMap.set(m.month, m);
+    for (const m of (circuit.buckets || [])) cMap.set(m.bucket_label, m);
 
     const buildCircuitDataset = (extractor, color) => {
       const data = months.map((m) => {
@@ -1834,7 +1938,7 @@
       // paired-bar panels (TPH/Yield/Tons by Line).
       const lineMaps = circuit.lines.map((l, i) => {
         const m = new Map();
-        for (const e of (l.monthly || [])) m.set(e.month, e);
+        for (const e of (l.buckets || [])) m.set(e.bucket_label, e);
         return { line: l, map: m, color: TREND_COLORS[(deptIdx * 2 + circuitIdx + i + 1) % TREND_COLORS.length] };
       });
       const buildPerLineDatasets = (extractor) => lineMaps.map(({ line, map, color }) => {
@@ -2037,10 +2141,27 @@
     XLSX.utils.book_append_sheet(wb, sheet, _truncateSheetName(name));
   }
 
-  function exportTrends() {
-    if (!_lastTrendsPayload) return;
+  async function exportTrends() {
     if (typeof XLSX === "undefined") {
       _showTrendsError("Export unavailable: XLSX library failed to load.");
+      return;
+    }
+    // Defense in depth: if the cache's bucket doesn't match the current
+    // toggle (e.g. user clicked Export immediately after toggling, before
+    // _setActiveTrendsBucket's refresh landed), force a sync refresh
+    // first. Without this, the export would write whichever bucket's
+    // data happened to be cached.
+    if (
+      !_lastTrendsPayload
+      || _lastTrendsPayload.bucket !== _activeTrendsBucket
+    ) {
+      await refreshTrends();
+    }
+    if (
+      !_lastTrendsPayload
+      || _lastTrendsPayload.bucket !== _activeTrendsBucket
+    ) {
+      // Refresh failed or still mismatches; nothing useful to export.
       return;
     }
     const payload = _lastTrendsPayload;
@@ -2069,7 +2190,7 @@
 
       // ---- Overview sheet (mirrors the cross-workcenter line charts).
       const overviewRows = rollups.map((r) => ({
-        "Month":              r.month,
+        "Bucket":             r.bucket_label,
         "Workcenter":         labelFor(r.department_id),
         "Total Tons":         numOrEmpty(r.total_tons),
         "TPH":                numOrEmpty(r.tph),
@@ -2091,7 +2212,7 @@
         const wcRows = rollups
           .filter((r) => r.department_id === dept)
           .map((r) => ({
-            "Month":                r.month,
+            "Bucket":               r.bucket_label,
             "Total Tons":           numOrEmpty(r.total_tons),
             "Total Runtime (hours)": numOrEmpty(r.total_runtime_hours),
             "TPH":                  numOrEmpty(r.tph),
@@ -2118,10 +2239,10 @@
             // Circuit-with-lines: one long-format table with a Level
             // column. "Circuit" rows first, then per-line rows.
             rows = [];
-            for (const m of (circuit.monthly || [])) {
+            for (const m of (circuit.buckets || [])) {
               rows.push({
                 "Level":            "Circuit",
-                "Month":            m.month,
+                "Bucket":           m.bucket_label,
                 "Total Tons":       numOrEmpty(m.total_tons),
                 "Runtime (hours)":  numOrEmpty(m.runtime_hours),
                 "TPH":              numOrEmpty(m.avg_tph),
@@ -2130,10 +2251,10 @@
               });
             }
             for (const line of circuit.lines) {
-              for (const m of (line.monthly || [])) {
+              for (const m of (line.buckets || [])) {
                 rows.push({
                   "Level":            line.description || line.line_id,
-                  "Month":            m.month,
+                  "Bucket":           m.bucket_label,
                   "Total Tons":       numOrEmpty(m.total_tons),
                   "Runtime (hours)":  numOrEmpty(m.runtime_hours),
                   "TPH":              numOrEmpty(m.avg_tph),
@@ -2143,8 +2264,8 @@
               }
             }
           } else {
-            rows = (circuit.monthly || []).map((m) => ({
-              "Month":            m.month,
+            rows = (circuit.buckets || []).map((m) => ({
+              "Bucket":           m.bucket_label,
               "Total Tons":       numOrEmpty(m.total_tons),
               "Runtime (hours)":  numOrEmpty(m.runtime_hours),
               "TPH":              numOrEmpty(m.avg_tph),
@@ -2161,8 +2282,8 @@
         });
       });
 
-      const fromMonth = (payload.from_month || "").replace(/[^0-9-]/g, "");
-      const toMonth = (payload.to_month || "").replace(/[^0-9-]/g, "");
+      const fromMonth = (payload.from_date || "").replace(/[^0-9-]/g, "");
+      const toMonth = (payload.to_date || "").replace(/[^0-9-]/g, "");
       const filename =
         `production-metrics_${slugifySite(siteMeta.name, siteMeta.id)}` +
         `_trends_${fromMonth}_${toMonth}_${timestampSlug()}.xlsx`;
