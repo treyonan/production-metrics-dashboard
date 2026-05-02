@@ -29,9 +29,12 @@ Endpoints covered:
                                          -> /api/production-report/range
         get_production_report_latest_date(site_id)
                                          -> /api/production-report/latest-date
-        get_monthly_rollup(site_id)      -> /api/production-report/monthly-rollup
-        get_circuit_monthly_rollup(site_id)
-                                         -> /api/production-report/circuit-monthly-rollup
+        get_rollup(bucket, site_id, from_date, to_date,
+                   department_id=None)
+                                         -> /api/production-report/rollup/{bucket}
+        get_circuit_rollup(bucket, site_id, from_date, to_date,
+                           department_id=None)
+                                         -> /api/production-report/circuit-rollup/{bucket}
 
     Interval metrics (Domain 2, curated by Flow)
         get_metric_subjects(subject_type, site_id, department_id=None)
@@ -44,7 +47,8 @@ Endpoints covered:
     Dataset wrappers (Perspective Table-friendly)
         production_report_latest_dataset(site_id)
         production_report_range_dataset(site_id, from_date, to_date)
-        monthly_rollup_dataset(site_id)
+        rollup_dataset(bucket, site_id, from_date, to_date,
+                       department_id=None)
         metric_subjects_dataset(subject_type, site_id, department_id=None)
         metric_history_dataset(subject_type, interval, site_id,
                                from_date, to_date,
@@ -231,24 +235,57 @@ def get_production_report_latest_date(site_id):
     return _get("/api/production-report/latest-date", {"site_id": site_id})
 
 
-def get_monthly_rollup(site_id):
-    """GET /api/production-report/monthly-rollup?site_id=<X>
+VALID_ROLLUP_BUCKETS = ("monthly", "yearly")
 
-    Per-month KPI aggregates per workcenter, assembled from the
-    curated production-report rows. Today this is a small convenience
-    the API performs over already-curated data; Flow can publish
-    equivalent rolled-up interval data directly in the future.
+
+def _check_bucket(bucket):
+    if bucket not in VALID_ROLLUP_BUCKETS:
+        raise ValueError(
+            "bucket must be one of %s; got %r" %
+            (list(VALID_ROLLUP_BUCKETS), bucket)
+        )
+
+
+def get_rollup(bucket, site_id, from_date, to_date, department_id=None):
+    """GET /api/production-report/rollup/{bucket}
+            ?site_id=&from_date=&to_date=[&department_id=]
+
+    Per-bucket KPI aggregates per workcenter, assembled from the
+    curated production-report rows. ``bucket`` is "monthly" or
+    "yearly". Dates are YYYY-MM-DD strings:
+      - For monthly bucket: from_date is the first of the from-month,
+        to_date is the last day of the to-month.
+      - For yearly bucket: pass YYYY-01-01 / YYYY-12-31 of the chosen
+        years (no partial buckets reach the API).
+
+    Each entry has a ``bucket_label`` formatted "YYYY-MM" for monthly
+    and "YYYY" for yearly. Future versions may swap the data path to
+    Flow-sourced rolled-up metrics; the wire shape stays stable.
     """
-    return _get("/api/production-report/monthly-rollup", {"site_id": site_id})
+    _check_bucket(bucket)
+    return _get("/api/production-report/rollup/%s" % bucket, {
+        "site_id": site_id,
+        "from_date": from_date,
+        "to_date": to_date,
+        "department_id": department_id,
+    })
 
 
-def get_circuit_monthly_rollup(site_id):
-    """GET /api/production-report/circuit-monthly-rollup?site_id=<X>
+def get_circuit_rollup(bucket, site_id, from_date, to_date, department_id=None):
+    """GET /api/production-report/circuit-rollup/{bucket}
+            ?site_id=&from_date=&to_date=[&department_id=]
 
-    Hierarchical per-circuit and per-line monthly rollup driving the
-    Trends view's circuit charts.
+    Hierarchical per-circuit and per-line rollup driving the Trends
+    view's circuit charts. Same bucket / date semantics as
+    ``get_rollup``.
     """
-    return _get("/api/production-report/circuit-monthly-rollup", {"site_id": site_id})
+    _check_bucket(bucket)
+    return _get("/api/production-report/circuit-rollup/%s" % bucket, {
+        "site_id": site_id,
+        "from_date": from_date,
+        "to_date": to_date,
+        "department_id": department_id,
+    })
 
 
 # ===================================================================
@@ -354,8 +391,8 @@ PRODUCTION_REPORT_COLUMNS = (
     "notes",
 )
 
-MONTHLY_ROLLUP_COLUMNS = (
-    "department_id", "department_name", "month",
+ROLLUP_COLUMNS = (
+    "department_id", "department_name", "bucket_label",
     "total_tons", "total_runtime_hours", "tph",
     "report_count",
     "avg_tph_fed", "avg_runtime_pct", "avg_performance_pct",
@@ -388,12 +425,17 @@ def production_report_range_dataset(site_id, from_date, to_date):
                                PRODUCTION_REPORT_COLUMNS)
 
 
-def monthly_rollup_dataset(site_id):
-    """Dataset wrapper around get_monthly_rollup()."""
-    payload = get_monthly_rollup(site_id)
-    # The monthly rollup envelope uses ``rollups`` rather than ``entries``.
-    rows = payload.get("rollups") or payload.get("entries") or []
-    return _entries_to_dataset(rows, MONTHLY_ROLLUP_COLUMNS)
+def rollup_dataset(bucket, site_id, from_date, to_date, department_id=None):
+    """Dataset wrapper around get_rollup() suitable for binding to a
+    Perspective Table or Power Chart. ``bucket`` is "monthly" or
+    "yearly"; dates are YYYY-MM-DD strings (frontend forces whole-bucket
+    selection in monthly and yearly modes alike, so YYYY-01-01 /
+    YYYY-12-31 is the right shape for yearly).
+    """
+    payload = get_rollup(bucket, site_id, from_date, to_date,
+                         department_id=department_id)
+    rows = payload.get("rollups") or []
+    return _entries_to_dataset(rows, ROLLUP_COLUMNS)
 
 
 def metric_subjects_dataset(subject_type, site_id, department_id=None):

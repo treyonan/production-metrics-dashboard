@@ -1,7 +1,7 @@
 # Production_Metrics -- Ignition Perspective view
 
 A small demo view that exercises the rich API client at
-`scada/ignition/api.py`. Renders the latest end-of-shift production
+`scada/ignition/API.py`. Renders the latest end-of-shift production
 reports for one site as a Perspective Table, with a site_id input
 that updates the data live.
 
@@ -18,7 +18,7 @@ that updates the data live.
 
 ## Prerequisites
 
-1. The rich client at `scada/ignition/api.py` is installed in the
+1. The rich client at `scada/ignition/API.py` is installed in the
    Ignition Project Library at
    `MES.Integrations.Production_Metrics.API`.
 2. The Ignition gateway can reach the FastAPI host
