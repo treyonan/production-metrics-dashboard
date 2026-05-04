@@ -90,6 +90,19 @@
     }
   } catch (_e) { /* localStorage unavailable in some embeds */ }
 
+  // Phase 19/20: Production ID prefix filter for the dashboard's
+  // per-workcenter tables and Excel export. Three states:
+  //   "all" -- show all rows (default)
+  //   "PR"  -- show rows whose prod_id starts with PR but not PRM
+  //   "PRM" -- show rows whose prod_id starts with PRM
+  let _activeProdIdFilter = "all";
+  try {
+    const _storedProdId = localStorage.getItem("pmd-prodid-filter");
+    if (_storedProdId === "all" || _storedProdId === "PR" || _storedProdId === "PRM") {
+      _activeProdIdFilter = _storedProdId;
+    }
+  } catch (_e) {}
+
   // --- generic helpers ---
   const $ = (id) => document.getElementById(id);
   const el = (tag, attrs = {}, children = []) => {
@@ -356,6 +369,15 @@
         onSelectionChanged();
       });
     }
+    // Phase 19/20: Production ID prefix filter. Client-side; no
+    // refetch on toggle. Sync visible state to the saved filter on
+    // every wire call (boot + any later re-wire).
+    for (const btn of document.querySelectorAll("#prodid-filter .gb")) {
+      btn.addEventListener("click", () => {
+        _setActiveProdIdFilter(btn.dataset.prodid);
+      });
+    }
+    _applyProdIdFilterUi(_activeProdIdFilter);
     const dayInput = $("day-date");
     if (dayInput) {
       dayInput.addEventListener("change", () => {
@@ -627,18 +649,47 @@
   function renderData(payload) {
     const host = $("wc-panels");
     destroyAllCharts();
-    _currentConveyorTotals = payload.conveyor_totals || null;
     host.innerHTML = "";
     const empty = $("empty-state");
-    const entries = payload.entries || [];
+    const allEntries = payload.entries || [];
 
-    if (entries.length === 0) {
+    // Phase 19/20: apply the Production ID prefix filter before grouping
+    // so departments with no matching reports drop out cleanly. Filter
+    // is applied client-side; the cached payload in _lastPayload still
+    // holds the full envelope so toggling the filter re-renders without
+    // a refetch.
+    const entries = allEntries.filter((e) => _matchesProdIdFilter(e.prod_id));
+
+    // Phase 19/20: when the filter is "all", use the backend's
+    // pre-computed conveyor_totals (cheaper, authoritative). When it's
+    // narrowed to PR or PRM, recompute client-side from the filtered
+    // entries so the chart matches the visible table rows.
+    if (_activeProdIdFilter === "all") {
+      _currentConveyorTotals = payload.conveyor_totals || null;
+    } else {
+      _currentConveyorTotals = _computeConveyorTotalsFromEntries(entries);
+    }
+
+    if (allEntries.length === 0) {
       empty.style.display = "";
       empty.textContent = currentSelection
         ? `Nothing reported for ${selectionLabel(currentSelection)}.`
         : "No production data for this selection.";
       $("refresh-lbl").textContent =
         `Refreshed ${new Date(payload.generated_at).toLocaleTimeString()} (no data in window)`;
+      return;
+    }
+    if (entries.length === 0) {
+      // Data exists in the window but nothing matches the active filter.
+      empty.style.display = "";
+      const filterLabel = _activeProdIdFilter === "PR" ? "PR (excluding PRM)"
+                        : _activeProdIdFilter === "PRM" ? "PRM"
+                        : "current";
+      empty.textContent =
+        `No reports match the ${filterLabel} Production ID filter for ${selectionLabel(currentSelection)}. ` +
+        `Switch to All in the sidebar to see everything.`;
+      $("refresh-lbl").textContent =
+        `Refreshed ${new Date(payload.generated_at).toLocaleTimeString()} (filtered)`;
       return;
     }
     empty.style.display = "none";
@@ -719,7 +770,13 @@
         `${totals.conveyors_counted} ${convLabel}, ${totals.reports_counted} ${reportLabel}`),
     ]));
 
-    const conveyorNames = Object.keys(totals.per_conveyor);
+    // Sort conveyors ascending by numeric suffix (C1, C2, C3, ...)
+    // regardless of insertion order in totals.per_conveyor. Backend
+    // already returns sorted keys; the client-side recomputation path
+    // (filter != "all") inherits whatever order the iteration produced,
+    // so sort here defensively.
+    const conveyorNames = Object.keys(totals.per_conveyor)
+      .sort((a, b) => parseInt(a.slice(1), 10) - parseInt(b.slice(1), 10));
     const data = conveyorNames.map((k) => totals.per_conveyor[k]);
     const labels = conveyorNames.map((k) => {
       const rawProduct = (totals.product_mode && totals.product_mode[k]) || null;
@@ -817,7 +874,7 @@
     // then by newest-first within the group so the exported order
     // mirrors what the dashboard renders.
     const rows = [];
-    const entries = payload.entries || [];
+    const entries = (payload.entries || []).filter((e) => _matchesProdIdFilter(e.prod_id));
 
     // Phase 11b: discover the union of payload.Metrics.Site keys across
     // every entry in the current selection. We use this list to append
@@ -1240,6 +1297,122 @@
     // future fields may nest. JSON-stringify rather than printing
     // "[object Object]" or throwing.
     try { return JSON.stringify(v); } catch { return String(v); }
+  }
+
+  // Phase 19/20: Production ID filter helpers. The "PR" branch must
+  // exclude PRM matches -- bare "PR..." is one logical group, "PRM..."
+  // is a separate group, and "All" is the union.
+  // Phase 19/20: client-side recomputation of payload.conveyor_totals
+  // for cases where the prod-id filter is active. Mirrors the backend's
+  // compute_conveyor_totals shape -- keyed "site_id:department_id" ->
+  // { per_conveyor, product_mode, grand_total, conveyors_counted,
+  //   reports_counted } -- so getConveyorTotalsFor() needs no change.
+  // Strict CX selection (/^C\d+$/) and placeholder filtering for
+  // product_mode mirror the Python side. Tie-break for the mode picks
+  // the value seen first in iteration order; entries are pre-sorted
+  // newest-first by /api/production-report/range, so first-seen ==
+  // newest, matching the backend's tie rule.
+  function _computeConveyorTotalsFromEntries(entries) {
+    const out = {};
+    const byKey = new Map();
+    for (const e of entries) {
+      const k = e.site_id + ":" + e.department_id;
+      if (!byKey.has(k)) byKey.set(k, []);
+      byKey.get(k).push(e);
+    }
+    for (const [key, group] of byKey) {
+      const perConveyor = {};
+      const productCounts = {};   // conveyor -> { value -> count }
+      const productFirstSeen = {}; // conveyor -> { value -> first idx }
+      let reportsContributing = 0;
+      for (let i = 0; i < group.length; i++) {
+        const e = group[i];
+        const metrics = (e.payload && e.payload.Metrics) || {};
+        let contributed = false;
+        for (const ck of Object.keys(metrics)) {
+          if (!/^C\d+$/.test(ck)) continue;
+          const node = metrics[ck];
+          if (!node || typeof node !== "object") continue;
+          const v = Number(node.Total);
+          if (Number.isFinite(v)) {
+            perConveyor[ck] = (perConveyor[ck] || 0) + v;
+            contributed = true;
+          }
+          const desc = node.Produced_Item_Description;
+          if (typeof desc === "string") {
+            const trimmed = desc.trim();
+            if (trimmed && trimmed !== "None" && trimmed !== "_") {
+              if (!productCounts[ck]) {
+                productCounts[ck] = {};
+                productFirstSeen[ck] = {};
+              }
+              productCounts[ck][desc] = (productCounts[ck][desc] || 0) + 1;
+              if (productFirstSeen[ck][desc] === undefined) {
+                productFirstSeen[ck][desc] = i;
+              }
+            }
+          }
+        }
+        if (contributed) reportsContributing++;
+      }
+      const productMode = {};
+      for (const ck of Object.keys(perConveyor)) {
+        const counts = productCounts[ck];
+        if (!counts) { productMode[ck] = null; continue; }
+        const firstSeen = productFirstSeen[ck];
+        let best = null, bestCount = -1, bestFirst = Infinity;
+        for (const v of Object.keys(counts)) {
+          const c = counts[v];
+          const fs = firstSeen[v];
+          if (c > bestCount || (c === bestCount && fs < bestFirst)) {
+            best = v;
+            bestCount = c;
+            bestFirst = fs;
+          }
+        }
+        productMode[ck] = best;
+      }
+      let grandTotal = 0;
+      for (const v of Object.values(perConveyor)) grandTotal += v;
+      out[key] = {
+        per_conveyor: perConveyor,
+        product_mode: productMode,
+        grand_total: grandTotal,
+        conveyors_counted: Object.keys(perConveyor).length,
+        reports_counted: reportsContributing,
+      };
+    }
+    return out;
+  }
+
+  function _matchesProdIdFilter(prodId) {
+    if (_activeProdIdFilter === "all") return true;
+    const p = String(prodId || "");
+    if (_activeProdIdFilter === "PRM") return p.indexOf("PRM") === 0;
+    if (_activeProdIdFilter === "PR")  return p.indexOf("PR") === 0 && p.indexOf("PRM") !== 0;
+    return true;
+  }
+
+  function _setActiveProdIdFilter(filter) {
+    if (filter !== "all" && filter !== "PR" && filter !== "PRM") return;
+    if (filter === _activeProdIdFilter) return;
+    _activeProdIdFilter = filter;
+    try { localStorage.setItem("pmd-prodid-filter", filter); } catch (_e) {}
+    _applyProdIdFilterUi(filter);
+    // Re-render with the new filter from the cached payload (no
+    // network refetch needed -- filtering is purely client-side).
+    if (currentView === "dashboard" && _lastPayload) {
+      renderData(_lastPayload);
+      updateExportButtonState();
+    }
+  }
+
+  function _applyProdIdFilterUi(filter) {
+    for (const btn of document.querySelectorAll("#prodid-filter .gb")) {
+      const on = btn.dataset.prodid === filter;
+      btn.classList.toggle("on", on);
+      btn.setAttribute("aria-selected", on ? "true" : "false");
+    }
   }
 
   // Phase 19/20: Crusher discovery + label helpers. Crushers live at
