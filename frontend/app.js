@@ -841,6 +841,27 @@
     }
     const siteKeys = _sortSiteKeys(discoveredSiteKeys);
 
+    // Phase 19/20: Crusher columns. Discover the union of CrusherN keys
+    // across the current selection. Variable count per site; older
+    // reports may have none. Same union-by-discovery approach as
+    // Site keys above.
+    const discoveredCrusherKeys = [];
+    const seenCrusherKeys = new Set();
+    for (const e of entries) {
+      const _m = e.payload && e.payload.Metrics;
+      if (_m) {
+        for (const _ck of _extractCrusherKeys(_m)) {
+          if (!seenCrusherKeys.has(_ck)) {
+            seenCrusherKeys.add(_ck);
+            discoveredCrusherKeys.push(_ck);
+          }
+        }
+      }
+    }
+    const crusherKeys = discoveredCrusherKeys
+      .slice()
+      .sort((a, b) => parseInt(a.slice(7), 10) - parseInt(b.slice(7), 10));
+
     const grouped = new Map();
     for (const e of entries) {
       if (!grouped.has(e.department_id)) grouped.set(e.department_id, []);
@@ -896,6 +917,16 @@
           // (per _siteValueForExport's null-on-missing rule).
           for (const sk of siteKeys) {
             row[_formatSiteLabel(sk)] = _siteValueForExport(siteObj[sk]);
+          }
+          // Phase 19/20: Crusher columns at the very tail. Three per
+          // discovered crusher (Description / Setpoint / Runtime hrs).
+          // A row whose Metrics lacks a given CrusherN gets blank cells.
+          for (const ck of crusherKeys) {
+            const cnode = (metrics[ck] && typeof metrics[ck] === "object") ? metrics[ck] : {};
+            const label = _humanizeCrusherKey(ck);
+            row[label + " Description"] = _siteValueForExport(cnode.Description);
+            row[label + " Setpoint"] = _siteValueForExport(cnode.Setpoint);
+            row[label + " Runtime (hrs)"] = numOrEmpty(cnode.Runtime);
           }
           rows.push(row);
         }
@@ -1211,6 +1242,29 @@
     try { return JSON.stringify(v); } catch { return String(v); }
   }
 
+  // Phase 19/20: Crusher discovery + label helpers. Crushers live at
+  // payload.Metrics.CrusherN (variable count per site). Each Crusher
+  // node carries Description, Setpoint, and Runtime (decimal hours,
+  // matching the rest of the payload).
+  function _extractCrusherKeys(metrics) {
+    if (!metrics || typeof metrics !== "object") return [];
+    return Object.keys(metrics)
+      .filter((k) => /^Crusher\d+$/.test(k))
+      .sort((a, b) => parseInt(a.slice(7), 10) - parseInt(b.slice(7), 10));
+  }
+
+  function _humanizeCrusherKey(key) {
+    // "Crusher1" -> "Crusher 1"
+    return String(key).replace(/^Crusher(\d+)$/, "Crusher $1");
+  }
+
+  function _fmtRuntimeHours(v) {
+    if (v === null || v === undefined || v === "") return "—";
+    const n = Number(v);
+    if (!isFinite(n)) return "—";
+    return n.toFixed(1);
+  }
+
   function _siteMetaRows(siteObj) {
     // Flat list of alternating key/value DOM nodes for the dm-meta
     // 2-column grid. Keys are grouped by base type via _sortSiteKeys
@@ -1279,6 +1333,40 @@
       siteSection.push(el("div", { class: "dm-empty" }, "No site data for this report."));
     }
     body.appendChild(el("div", {}, siteSection));
+
+    // Section: Crushers (Phase 19/20). Variable count of CrusherN nodes
+    // under payload.Metrics. Each row in the table is one crusher with
+    // its Description, Setpoint, and Runtime in decimal hours. Section
+    // is skipped entirely when no CrusherN keys are present -- not all
+    // reports / older data carry them.
+    {
+      const _metrics = entry.payload && entry.payload.Metrics;
+      const _crusherKeys = _extractCrusherKeys(_metrics);
+      if (_crusherKeys.length > 0) {
+        const _thead = el("thead", {}, [
+          el("tr", {}, [
+            el("th", {}, "Crusher"),
+            el("th", {}, "Description"),
+            el("th", {}, "Setpoint"),
+            el("th", { class: "num" }, "Runtime (hrs)"),
+          ]),
+        ]);
+        const _tbody = el("tbody", {});
+        for (const _ck of _crusherKeys) {
+          const _c = (_metrics[_ck] && typeof _metrics[_ck] === "object") ? _metrics[_ck] : {};
+          _tbody.appendChild(el("tr", {}, [
+            el("td", {}, _humanizeCrusherKey(_ck)),
+            el("td", {}, _formatSiteValue(_c.Description)),
+            el("td", {}, _formatSiteValue(_c.Setpoint)),
+            el("td", { class: "num" }, _fmtRuntimeHours(_c.Runtime)),
+          ]));
+        }
+        body.appendChild(el("div", {}, [
+          el("div", { class: "dm-section-label" }, "Crushers"),
+          el("table", { class: "dm-crusher-table" }, [_thead, _tbody]),
+        ]));
+      }
+    }
 
     // Section: Weather. Header row shows the severity-picked icon as
     // the at-a-glance summary; three numeric cells show the shift

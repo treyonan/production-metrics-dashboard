@@ -1012,3 +1012,33 @@ body {
   outline-offset: -2px;
 }
 .bucket-btn + .bucket-btn { border-left: 1px solid var(--border-strong); }
+
+/* Phase 19/20 -- Crusher table inside the details modal. */
+.dm-crusher-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 6px 0 12px;
+  font-size: 12px;
+  background: var(--bg-card);
+}
+.dm-crusher-table th,
+.dm-crusher-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+.dm-crusher-table th {
+  background: var(--bg-canvas);
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.dm-crusher-table th.num,
+.dm-crusher-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
+}
+.dm-crusher-table tbody tr:hover { background: var(--bg-canvas); }
