@@ -552,7 +552,7 @@
     if (weatherEl) headerChildren.push(weatherEl);
     headerChildren.push(el("span", { class: "wc-spacer" }));
     headerChildren.push(statusPillFor(wc));
-    headerChildren.push(detailsButton(entry));
+    headerChildren.push(detailsButton(entry, "Report Details"));
 
     return el("section", { class: "wc-panel" }, [
       el("div", { class: "wc-header" }, headerChildren),
@@ -1185,14 +1185,14 @@
 
   // Small button that opens the Details modal for a given entry.
   // Used inline in table rows and in the single-report panel header.
-  function detailsButton(entry) {
+  function detailsButton(entry, label) {
     return el("button", {
       type: "button",
       class: "details-btn",
       "aria-label": "Open details for this production report",
       title: "Open details",
       onclick: () => openDetailsModal(entry),
-    }, "View");
+    }, label || "View");
   }
 
   function fmtWithUnit(v, unit) {
