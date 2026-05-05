@@ -1042,3 +1042,13 @@ body {
   font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
 }
 .dm-crusher-table tbody tr:hover { background: var(--bg-canvas); }
+
+/* Phase 22 -- Calcs formula footnote under the chart subtitle. */
+.trend-panel-calcs {
+  display: block;
+  font-size: 11px;
+  font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
+  color: var(--text-muted);
+  margin-top: 2px;
+  word-break: break-word;
+}

@@ -1961,6 +1961,48 @@
     if (bar) bar.style.display = "none";
   }
 
+  // Phase 22: extract the latest bucket's Calcs.<metric> formula for
+  // an entity (workcenter / circuit / line). Buckets are sorted by
+  // bucket_label ascending; iterate from the end so the freshest one
+  // wins. Returns the formula string or null.
+  function _calcsLatest(buckets, metric) {
+    if (!buckets) return null;
+    // Accept both Array (circuit.buckets, line.buckets) and Map
+    // (renderTrends' per-dept Map keyed by bucket_label). Materialize
+    // the Map's values in insertion order so latest-bucket-wins still
+    // means walking from the end.
+    const list = Array.isArray(buckets) ? buckets : [...buckets.values()];
+    if (!list.length) return null;
+    for (let i = list.length - 1; i >= 0; i--) {
+      const c = list[i] && list[i].calcs;
+      if (c && typeof c === "object" && typeof c[metric] === "string" && c[metric]) {
+        return c[metric];
+      }
+    }
+    return null;
+  }
+
+  // Single-entity calcs line (per-workcenter / circuit / line).
+  // Returns "Calcs.<metric> = <formula>" or null when absent.
+  function _singleCalcsLine(buckets, metric) {
+    const f = _calcsLatest(buckets, metric);
+    return f ? `Calcs.${metric} = ${f}` : null;
+  }
+
+  // Multi-entity calcs line (Overview Total Tons by Workcenter,
+  // Tons-per-Line). `items` is [{label, buckets}, ...]. Builds
+  // "Calcs.<metric> — Label1: f1  •  Label2: f2"; null when no entity
+  // surfaces a formula.
+  function _multiCalcsLine(items, metric) {
+    const parts = [];
+    for (const item of items) {
+      const f = _calcsLatest(item.buckets, metric);
+      if (f) parts.push(`${item.label}: ${f}`);
+    }
+    if (!parts.length) return null;
+    return `Calcs.${metric} \u2014 ${parts.join("  \u2022  ")}`;
+  }
+
   function renderTrends(payload, circuitPayload) {
     const grid = $("trends-grid");
     const tablist = $("trends-tablist");
@@ -2046,7 +2088,11 @@
       build: (s) => {
         s.appendChild(_renderTrendPanel({
           title: "Total Tons by Workcenter",
-          subtitle: "Sum of belt-scaled conveyor totals per month, per workcenter.",
+          subtitle: "Sum of Workcenter.Total across the selected range, per workcenter.",
+          calcsLine: _multiCalcsLine(
+            deptIds.map((d) => ({ label: deptLabel(d), buckets: byDept.get(d) || [] })),
+            "Total"
+          ),
           labels: months,
           datasets: buildDatasets((r) => r.total_tons),
           yLabel: "Tons",
@@ -2054,9 +2100,13 @@
         }));
         s.appendChild(_renderTrendPanel({
           title: "TPH by Workcenter",
-          subtitle: "Tons per hour. Months with zero runtime are gapped.",
+          subtitle: "Average of per-report Workcenter.Rate (with fallback to Total/Runtime), per workcenter.",
+          calcsLine: _multiCalcsLine(
+            deptIds.map((d) => ({ label: deptLabel(d), buckets: byDept.get(d) || [] })),
+            "Rate"
+          ),
           labels: months,
-          datasets: buildDatasets((r) => r.tph),
+          datasets: buildDatasets((r) => r.avg_tph_fed),
           yLabel: "Tons/hr",
           yFormat: (v) => `${fmt1(v)} tph`,
         }));
@@ -2073,9 +2123,11 @@
         label: deptLabel(dept),
         indent: 0,
         build: (s) => {
+          const _wcBuckets = byDept.get(dept) || [];
           s.appendChild(_renderTrendPanel({
             title: "Total TPH Fed",
             subtitle: "Average of Workcenter.Rate per month.",
+            calcsLine: _singleCalcsLine(_wcBuckets, "Rate"),
             labels: months,
             datasets: [buildBarDataset(dept, (r) => r.avg_tph_fed, idx)],
             yLabel: "Tons/hr",
@@ -2085,6 +2137,7 @@
           s.appendChild(_renderTrendPanel({
             title: "Runtime %",
             subtitle: "Average of Workcenter.Availability per month.",
+            calcsLine: _singleCalcsLine(_wcBuckets, "Availability"),
             labels: months,
             datasets: [buildBarDataset(dept, (r) => r.avg_runtime_pct, idx)],
             yLabel: "%",
@@ -2094,6 +2147,7 @@
           s.appendChild(_renderTrendPanel({
             title: "Performance %",
             subtitle: "Average of Workcenter.Performance (Rate / Ideal_Rate * 100) per month.",
+            calcsLine: _singleCalcsLine(_wcBuckets, "Performance"),
             labels: months,
             datasets: [buildBarDataset(dept, (r) => r.avg_performance_pct, idx)],
             yLabel: "%",
@@ -2222,6 +2276,10 @@
       grid.appendChild(_renderTrendPanel({
         title: "TPH per Line",
         subtitle: "Mean of per-report Total/Runtime per line per month.",
+        calcsLine: _multiCalcsLine(
+          (circuit.lines || []).map((l) => ({ label: l.description || l.line_id, buckets: l.buckets || [] })),
+          "Rate"
+        ),
         labels: months,
         datasets: buildPerLineDatasets((e) => e.avg_tph),
         yLabel: "Tons/hr",
@@ -2231,6 +2289,7 @@
       grid.appendChild(_renderTrendPanel({
         title: "Total TPH",
         subtitle: "Circuit-level mean of per-report Total/Runtime per month.",
+        calcsLine: _singleCalcsLine(circuit.buckets || [], "Rate"),
         labels: months,
         datasets: [buildCircuitDataset((e) => e.avg_tph, baseColor)],
         yLabel: "Tons/hr",
@@ -2241,6 +2300,10 @@
       grid.appendChild(_renderTrendPanel({
         title: "Yield per Line",
         subtitle: "Mean of per-report Yield (mass-conversion ratio) per line per month.",
+        calcsLine: _multiCalcsLine(
+          (circuit.lines || []).map((l) => ({ label: l.description || l.line_id, buckets: l.buckets || [] })),
+          "Yield"
+        ),
         labels: months,
         datasets: buildPerLineDatasets((e) => e.avg_yield),
         yLabel: "Yield",
@@ -2250,6 +2313,7 @@
       grid.appendChild(_renderTrendPanel({
         title: "Total Yield",
         subtitle: "Circuit-level mean of per-report Yield per month.",
+        calcsLine: _singleCalcsLine(circuit.buckets || [], "Yield"),
         labels: months,
         datasets: [buildCircuitDataset((e) => e.avg_yield, baseColor)],
         yLabel: "Yield",
@@ -2260,6 +2324,10 @@
       grid.appendChild(_renderTrendPanel({
         title: "Tons per Line",
         subtitle: "Sum of node.Total per line per month.",
+        calcsLine: _multiCalcsLine(
+          (circuit.lines || []).map((l) => ({ label: l.description || l.line_id, buckets: l.buckets || [] })),
+          "Total"
+        ),
         labels: months,
         datasets: buildPerLineDatasets((e) => e.total_tons),
         yLabel: "Tons",
@@ -2269,6 +2337,7 @@
       grid.appendChild(_renderTrendPanel({
         title: "Total Tons",
         subtitle: "Circuit-level sum of node.Total per month.",
+        calcsLine: _singleCalcsLine(circuit.buckets || [], "Total"),
         labels: months,
         datasets: [buildCircuitDataset((e) => e.total_tons, baseColor)],
         yLabel: "Tons",
@@ -2280,6 +2349,7 @@
       grid.appendChild(_renderTrendPanel({
         title: "TPH",
         subtitle: "Mean of per-report Total/Runtime per month.",
+        calcsLine: _singleCalcsLine(circuit.buckets || [], "Rate"),
         labels: months,
         datasets: [buildCircuitDataset((e) => e.avg_tph, baseColor)],
         yLabel: "Tons/hr",
@@ -2289,6 +2359,7 @@
       grid.appendChild(_renderTrendPanel({
         title: "Yield",
         subtitle: "Mean of per-report Yield per month.",
+        calcsLine: _singleCalcsLine(circuit.buckets || [], "Yield"),
         labels: months,
         datasets: [buildCircuitDataset((e) => e.avg_yield, baseColor)],
         yLabel: "Yield",
@@ -2298,6 +2369,7 @@
       grid.appendChild(_renderTrendPanel({
         title: "Tons",
         subtitle: "Sum of node.Total per month.",
+        calcsLine: _singleCalcsLine(circuit.buckets || [], "Total"),
         labels: months,
         datasets: [buildCircuitDataset((e) => e.total_tons, baseColor)],
         yLabel: "Tons",
@@ -2307,7 +2379,7 @@
     }
   }
 
-  function _renderTrendPanel({ title, subtitle, labels, datasets, yLabel, yFormat, chartType }) {
+  function _renderTrendPanel({ title, subtitle, calcsLine, labels, datasets, yLabel, yFormat, chartType }) {
     const colors = _themeColors();
     // Phase 14a/b: chartType defaults to "line" for backward compat.
     // Legend visibility follows dataset count -- multi-series shows,
@@ -2317,11 +2389,15 @@
     // on, one bar series per circuit Line) without per-call config.
     const _type = chartType || "line";
     const _showLegend = (datasets || []).length > 1;
+    // Phase 22: optional Calcs footnote rendered below the subtitle.
+    // Falsy/empty -> no extra row.
+    const _headerKids = [
+      el("span", { class: "trend-panel-title" }, title),
+      el("span", { class: "trend-panel-meta" }, subtitle),
+    ];
+    if (calcsLine) _headerKids.push(el("span", { class: "trend-panel-calcs" }, calcsLine));
     const panel = el("section", { class: "trend-panel" }, [
-      el("div", { class: "trend-panel-header" }, [
-        el("span", { class: "trend-panel-title" }, title),
-        el("span", { class: "trend-panel-meta" }, subtitle),
-      ]),
+      el("div", { class: "trend-panel-header" }, _headerKids),
       (() => {
         const wrap = el("div", { class: "trend-chart-wrap" });
         const canvas = el("canvas", { class: "trend-chart-canvas" });
@@ -2454,7 +2530,6 @@
         "Bucket":             r.bucket_label,
         "Workcenter":         labelFor(r.department_id),
         "Total Tons":         numOrEmpty(r.total_tons),
-        "TPH":                numOrEmpty(r.tph),
         "Avg TPH Fed":        numOrEmpty(r.avg_tph_fed),
         "Avg Runtime %":      numOrEmpty(r.avg_runtime_pct),
         "Avg Performance %":  numOrEmpty(r.avg_performance_pct),
@@ -2462,7 +2537,6 @@
       }));
       _appendSheet(wb, overviewRows, {
         "Total Tons": "#,##0",
-        "TPH": "0.0",
         "Avg TPH Fed": "0.0",
         "Avg Runtime %": '0.0"%"',
         "Avg Performance %": '0.0"%"',
@@ -2476,7 +2550,6 @@
             "Bucket":               r.bucket_label,
             "Total Tons":           numOrEmpty(r.total_tons),
             "Total Runtime (hours)": numOrEmpty(r.total_runtime_hours),
-            "TPH":                  numOrEmpty(r.tph),
             "Avg TPH Fed":          numOrEmpty(r.avg_tph_fed),
             "Avg Runtime %":        numOrEmpty(r.avg_runtime_pct),
             "Avg Performance %":    numOrEmpty(r.avg_performance_pct),
@@ -2485,7 +2558,6 @@
         _appendSheet(wb, wcRows, {
           "Total Tons": "#,##0",
           "Total Runtime (hours)": "0.0",
-          "TPH": "0.0",
           "Avg TPH Fed": "0.0",
           "Avg Runtime %": '0.0"%"',
           "Avg Performance %": '0.0"%"',

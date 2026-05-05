@@ -393,7 +393,7 @@ PRODUCTION_REPORT_COLUMNS = (
 
 ROLLUP_COLUMNS = (
     "department_id", "department_name", "bucket_label",
-    "total_tons", "total_runtime_hours", "tph",
+    "total_tons", "total_runtime_hours",
     "report_count",
     "avg_tph_fed", "avg_runtime_pct", "avg_performance_pct",
 )

@@ -3005,6 +3005,167 @@ client wraps those routes; it needs to track.
 - Same with `"yearly"`.
 - Bucket typo -> ValueError before any HTTP call.
 
+## Phase 21 -- Workcenter-sourced rollup totals + canonical TPH (PLANNED 2026-05-02)
+
+**Trigger:** Trey wants every total-tons / TPH metric in the system to
+read from Flow's authoritative `Workcenter.Total` / `Workcenter.Rate`
+(or circuit-level `Total` / `Rate`) -- the only legitimate use of
+summing belt-scaled C{n}.Total values is the per-conveyor bar chart
+on the dashboard, where the breakdown semantic actually matters.
+
+### Decisions
+
+- **D1 -- Repoint `total_tons` to Workcenter.Total.** The rollup
+  entry's `total_tons` field becomes the sum of `Workcenter.Total`
+  across reports in the bucket (was: sum of belt-scaled C{n}.Total
+  via `compute_conveyor_totals`). Same wire field name; new source.
+- **D2 -- Drop `tph` field entirely (Option A).** `avg_tph_fed`
+  becomes the canonical TPH metric. The Overview chart that read
+  `r.tph` swaps to `r.avg_tph_fed`. Excel "TPH" column removed
+  (replaced by the existing "Avg TPH Fed" column).
+- **D3 -- Both TPH charts coexist intentionally.** Overview "TPH by
+  Workcenter" (multi-series comparison) and per-workcenter "Total
+  TPH Fed" (single-series in the manager-style triple with Runtime%
+  + Performance%) read the same field; one number, two views.
+- **D4 -- Per-conveyor bar chart unchanged.** `payload.conveyor_totals`
+  (sum of C{n}.Total) keeps powering the bar chart and its
+  "Conveyor Total: N tons" subtitle. This is the only place where
+  summing belt-scale conveyor values is the right semantic.
+- **D5 -- Circuit-level charts unchanged.** Already source from
+  circuit-node `Total` / `Rate` (Phase 14b); no audit needed.
+- **D6 -- Null Workcenter.Total contributes 0 to the sum.** Same
+  defensive defaulting used elsewhere; matches the Phase 14a
+  helpers that coerce to None and drop from means.
+- **D7 -- BUILD_TAG bump to "2026-05-02-phase21-workcenter-sourced-rollups".**
+
+### Files to modify
+
+- `backend/app/services/production_report.py`:
+  - `Rollup` dataclass: remove `tph` field.
+  - `get_rollup()`: change `total_tons` computation to sum
+    `Workcenter.Total` across reports (drop the
+    `compute_conveyor_totals` call here -- still used by the
+    dashboard's chart envelope path elsewhere).
+  - Drop the `tph = total_tons / total_runtime_hours` block.
+  - Update docstring.
+- `backend/app/schemas/production_report.py`:
+  - `RollupEntry`: remove `tph` field; rewrite `total_tons`
+    description.
+- `backend/app/api/routes/production_report.py`:
+  - `_to_rollup_entry`: drop `tph=r.tph` line.
+- `backend/tests/services/test_rollup.py`:
+  - Update fixtures so `Workcenter.Total` is populated; assertions
+    for `total_tons` now expect the Workcenter sum.
+  - Drop tests that exercise `tph`.
+- `backend/tests/api/test_production_report.py`:
+  - Drop `"tph"` from the expected-fields set; rest of the assertions
+    stand.
+- `frontend/app.js`:
+  - Trends Overview "TOTAL TONS BY WORKCENTER": keep `r.total_tons`
+    extractor (same field, new source) -- update subtitle.
+  - Trends Overview "TPH BY WORKCENTER": swap extractor to
+    `r.avg_tph_fed`; update subtitle.
+  - Excel export of rollups: drop the `"TPH"` column from the
+    rollup sheets.
+- `scada/ignition/API.py`:
+  - Remove `"tph"` from `ROLLUP_COLUMNS`.
+- `backend/app/main.py`: BUILD_TAG bump per D7.
+
+### Verification
+
+- `py_compile` on all modified backend files.
+- `pytest backend/tests` -- all 125 still pass after the test updates.
+- `node --check` on `frontend/app.js`.
+- On the Windows host post-deploy: TOTAL TONS BY WORKCENTER chart
+  numbers should match the per-asset table's "Total (tons)" column
+  (which already reads Workcenter.Total). TPH BY WORKCENTER should
+  show identical values to the per-workcenter "Total TPH Fed" chart.
+
+### Out of scope
+
+- Comprehensive overview docx subtitle polish -- skim and update if
+  any "belt-scaled conveyor sum" language survives, but defer the
+  full regen.
+
+## Phase 22 -- Calcs formula display on Trends charts (PLANNED 2026-05-02)
+
+**Trigger:** Trey wants viewers to see *how* a charted metric is
+derived (e.g. "Workcenter.Total = C1+C8-C7") so the number isn't a
+black box. Payloads now carry a `Calcs` block at workcenter / circuit
+/ line nodes; surface its values at the top of the affected Trends
+charts.
+
+### Decisions
+
+- **D1 -- Trends-only scope.** Dashboard tables and the modal are
+  out of scope; this is a Trends-page transparency feature.
+- **D2 -- Top of the chart.** Formula renders below the chart title
+  in the existing subtitle area, as a small additional line. No
+  hover required; always visible when a Calcs entry is present.
+- **D3 -- Latest-report-wins.** A bucket may span 30+ reports; if
+  Calcs differ across the bucket (rare; would imply mid-period
+  topology change), the most recent report's Calcs is what surfaces.
+- **D4 -- No Calcs => no formula line.** The chart renders exactly
+  as today when the relevant Calcs.<metric> entry is absent.
+- **D5 -- Pass-through dict on the wire.** Backend adds an optional
+  `calcs: dict[str, str] | None` field to `RollupEntry` and
+  `CircuitBucketEntry`. Verbatim copy of the source node's `Calcs`
+  block from the latest report. Frontend picks the relevant key
+  per chart.
+- **D6 -- Per-chart metric mapping.** Each chart knows which Calcs
+  key it cares about:
+    Overview "Total Tons by Workcenter" -> Workcenter.Calcs.Total
+    Overview "TPH by Workcenter"        -> Workcenter.Calcs.Rate
+    Per-workcenter "Total TPH Fed"      -> Workcenter.Calcs.Rate
+    Per-workcenter "Runtime %"          -> Workcenter.Calcs.Availability
+    Per-workcenter "Performance %"      -> Workcenter.Calcs.Performance
+    Circuit "Tons" / "TPH"              -> circuit.Calcs.Total / .Rate
+    Line "Tons" / "TPH"                 -> line.Calcs.Total / .Rate
+- **D7 -- Multi-entity formula lists.** The Overview "Total Tons by
+  Workcenter" chart overlays multiple workcenters with potentially
+  different formulas; render them as `Secondary: C1+C8-C7  •  Wash
+  Plant: C1+C2+C3` on a single line under the title. Per-workcenter,
+  per-circuit, and per-line charts are single-entity and render
+  one formula line.
+- **D8 -- BUILD_TAG bump to "2026-05-02-phase22-calcs-display".**
+
+### Files to modify
+
+- `backend/app/services/production_report.py`:
+  - `Rollup` dataclass: add `calcs: dict[str, str] | None`.
+  - `get_rollup()`: extract `Workcenter.Calcs` from the latest report
+    in each bucket; pass-through verbatim.
+  - `CircuitBucketEntry` dataclass: add `calcs: dict[str, str] | None`.
+  - `_circuit_node_aggregate()`: extract `node.Calcs` from the latest
+    report's matching node; pass-through.
+  - `get_circuit_rollup()`: thread Calcs into circuit and line entries.
+- `backend/app/schemas/production_report.py`:
+  - `RollupEntry`: add optional `calcs` field.
+  - `CircuitBucketEntry`: add optional `calcs` field.
+- `backend/app/api/routes/production_report.py`:
+  - `_to_rollup_entry`, `_to_pyd_circuit_entry`: pass through `calcs`.
+- `frontend/app.js`:
+  - `_renderTrendPanel`: accept optional `calcsLine` prop; render a
+    small line under the title when present.
+  - Each chart call site looks up the relevant Calcs key and builds
+    the line.
+- `backend/app/main.py`: BUILD_TAG bump.
+
+### Verification
+
+- `py_compile` on modified backend files.
+- `node --check` on `frontend/app.js`.
+- pytest still green.
+- Live: open a workcenter on the Trends page and confirm the
+  formula shows under the chart title for any chart whose metric
+  has a Calcs entry; absent for those that don't.
+
+### Out of scope
+
+- Dashboard / modal display of Calcs (deferred; could be Phase 23).
+- Strict-agreement check across reports in a bucket; simple
+  latest-wins for v1.
+
 ## Lessons captured
 
 See `tasks/lessons.md`:

@@ -341,7 +341,7 @@ def test_rollup_monthly_entry_fields_present(client) -> None:
     sample = body["rollups"][0]
     expected = {
         "department_id", "bucket_label", "total_tons",
-        "total_runtime_hours", "tph", "report_count",
+        "total_runtime_hours", "report_count",
         "avg_tph_fed", "avg_runtime_pct",
     }
     assert expected.issubset(sample.keys())
@@ -447,19 +447,3 @@ def test_rollup_unknown_site_returns_empty(client) -> None:
     assert body["rollups"] == []
 
 
-def test_rollup_tph_null_when_runtime_zero(client) -> None:
-    """In a window where the sample has zero runtime, tph must be null."""
-    resp = client.get(
-        "/api/production-report/rollup/monthly",
-        params={
-            "site_id": "101",
-            "from_date": "2025-05-01",
-            "to_date": "2026-06-30",
-        },
-    )
-    body = resp.json()
-    for r in body["rollups"]:
-        if r["total_runtime_hours"] == 0:
-            assert r["tph"] is None
-        else:
-            assert isinstance(r["tph"], (int, float))

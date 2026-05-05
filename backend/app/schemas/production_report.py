@@ -238,10 +238,12 @@ class RollupEntry(BaseModel):
     )
     total_tons: float = Field(
         description=(
-            "Sum of belt-scaled conveyor tonnage across every "
-            "production-report row in this (department, month) "
-            "combination. Computed via the same strict `/^C\d+$/` "
-            "selection as Phase 5's bar-chart aggregation."
+            "Sum of per-report ``Workcenter.Total`` across every "
+            "production-report row in this (department, bucket) "
+            "combination (Phase 21). Belt-scaled C{n}.Total summing "
+            "is intentionally NOT surfaced here -- that math lives "
+            "on the ``payload.conveyor_totals`` envelope which "
+            "powers the dashboard's per-conveyor bar chart."
         )
     )
     total_runtime_hours: float = Field(
@@ -252,15 +254,6 @@ class RollupEntry(BaseModel):
             "are decimal hours as of 2026-04-28; the legacy "
             "minutes/hours unit-mismatch quirk is gone."
         )
-    )
-    tph: float | None = Field(
-        default=None,
-        description=(
-            "Tons-per-hour: total_tons / total_runtime_hours. Null "
-            "when total_runtime_hours is 0 (would be a divide-by-"
-            "zero). Consumers render null as em-dash or skip the "
-            "data point."
-        ),
     )
     report_count: int = Field(
         description=(
@@ -303,6 +296,17 @@ class RollupEntry(BaseModel):
             "utilization against nameplate capacity). Drives the "
             "'Performance %' bar chart. Null when no report in "
             "the bucket has a non-null Performance value."
+        ),
+    )
+    calcs: dict[str, str] | None = Field(
+        default=None,
+        description=(
+            "Phase 22. Verbatim pass-through of the latest report's "
+            "Workcenter.Calcs block in this bucket -- a dict mapping "
+            "metric name to formula string (e.g. {'Total': 'C1+C8-C7'}). "
+            "Surfaced so Trends charts can show how the metric is "
+            "derived. Null when no report in the bucket carried a "
+            "Calcs block."
         ),
     )
 
@@ -354,6 +358,14 @@ class CircuitBucketEntry(BaseModel):
         ),
     )
     report_count: int = Field(description="Number of reports contributing to this bucket.")
+    calcs: dict[str, str] | None = Field(
+        default=None,
+        description=(
+            "Phase 22. Pass-through of the latest report's node "
+            "Calcs block in this bucket. Same pattern as the "
+            "workcenter rollup's calcs field."
+        ),
+    )
 
 
 class LineRollup(BaseModel):

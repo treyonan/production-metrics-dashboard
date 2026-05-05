@@ -308,8 +308,10 @@ class Rollup:
     bucket_label: str  # YYYY-MM for monthly, YYYY for yearly
     total_tons: float
     total_runtime_hours: float
-    tph: float | None
     report_count: int
+    # Phase 22: latest report's Workcenter.Calcs in this bucket
+    # (verbatim pass-through). None when absent.
+    calcs: dict[str, str] | None
     # Phase 14a: simple-average per-report metrics for the
     # manager-style bar charts (Total TPH Fed, Runtime %). None when
     # no report in the bucket contributed a non-null value (after
@@ -436,14 +438,13 @@ async def get_rollup(
     route layer does the YYYY-MM parsing.
 
     Aggregation rules:
-      - ``total_tons`` is the sum of belt-scaled CX conveyor totals
-        (strict /^C\d+$/) across every report in the
-        (department, month) bucket. Reuses Phase 5's
-        ``compute_conveyor_totals``.
+      - ``total_tons`` is the sum of per-report ``Workcenter.Total``
+        across every report in the (department, bucket) bucket
+        (Phase 21). Belt-scaled C{n}.Total summing is reserved for
+        the dashboard's per-conveyor bar chart and lives on the
+        ``payload.conveyor_totals`` envelope, not on rollup entries.
       - ``total_runtime_hours`` sums ``Workcenter.Runtime`` (decimal
         hours) across every report in the bucket.
-      - ``tph`` divides total_tons by total_runtime_hours; returns
-        None when runtime is zero (avoids /0).
       - ``avg_tph_fed`` (Phase 14a) is the simple mean of per-report
         ``Workcenter.Rate`` (with fallback to Total / Runtime when
         Rate is null but the denominators are present). None if
@@ -501,26 +502,26 @@ async def get_rollup(
 
     out: list[Rollup] = []
     for (dept_id, label), group in sorted(grouped.items()):
-        # Reuse the Phase 5 aggregator for tonnage. Returns a dict
-        # keyed by (site_id, dept_id) -- this group's rows all share
-        # one (site_id, dept_id), so there's at most one entry.
-        totals = compute_conveyor_totals(group)
-        agg = next(iter(totals.values()), None)
-        total_tons = agg.grand_total if agg is not None else 0.0
-
-        # Walk each report's Workcenter once for all per-report
-        # signals Phase 14a needs (runtime, TPH-fed, runtime-%).
+        # Phase 21: total_tons sums per-report Workcenter.Total
+        # (Flow's authoritative workcenter-level tonnage). Belt-scaled
+        # C{n}.Total summing is reserved for the dashboard's per-conveyor
+        # bar chart via payload.conveyor_totals; we don't surface it on
+        # the rollup wire shape any more. Missing / null Workcenter.Total
+        # contributes 0 (defensive default; matches the per-report
+        # helpers' coerce-or-None pattern).
         wcs = [
             (r.payload or {}).get("Metrics", {}).get("Workcenter")
             for r in group
         ]
-        total_runtime_hours = sum(_runtime_hours_from_workcenter(wc) for wc in wcs)
+        total_tons = 0.0
+        for wc in wcs:
+            if not isinstance(wc, dict):
+                continue
+            v = _coerce_finite_float(wc.get("Total"))
+            if v is not None:
+                total_tons += v
 
-        tph: float | None
-        if total_runtime_hours > 0:
-            tph = total_tons / total_runtime_hours
-        else:
-            tph = None
+        total_runtime_hours = sum(_runtime_hours_from_workcenter(wc) for wc in wcs)
 
         # Phase 14a: simple-average per-report metrics. Each helper
         # returns None when the per-report value is unusable; the
@@ -535,6 +536,15 @@ async def get_rollup(
         # therefore the same Departments row. Group is guaranteed
         # non-empty (we only build groups when at least one row lands
         # in the bucket) so direct index is safe.
+        # Phase 22: latest report's Workcenter.Calcs (max prod_date in group).
+        latest_report = max(group, key=lambda r: r.prod_date)
+        latest_wc = (latest_report.payload or {}).get("Metrics", {}).get("Workcenter")
+        latest_calcs: dict[str, str] | None = None
+        if isinstance(latest_wc, dict):
+            c = latest_wc.get("Calcs")
+            if isinstance(c, dict) and c:
+                latest_calcs = {str(k): str(v) for k, v in c.items()}
+
         out.append(
             Rollup(
                 department_id=dept_id,
@@ -542,11 +552,11 @@ async def get_rollup(
                 bucket_label=label,
                 total_tons=total_tons,
                 total_runtime_hours=total_runtime_hours,
-                tph=tph,
                 report_count=len(group),
                 avg_tph_fed=avg_tph_fed,
                 avg_runtime_pct=avg_runtime_pct,
                 avg_performance_pct=avg_performance_pct,
+                calcs=latest_calcs,
             )
         )
 
@@ -572,6 +582,8 @@ class CircuitBucketEntry:
     avg_tph: float | None
     avg_yield: float | None
     report_count: int
+    # Phase 22: latest report's node.Calcs in this bucket. None if absent.
+    calcs: dict[str, str] | None
 
 
 @dataclass(frozen=True)
@@ -624,7 +636,7 @@ def _per_node_tph(node: dict[str, Any]) -> float | None:
 
 
 def _circuit_node_aggregate(
-    node_per_report: list[tuple[str, dict[str, Any] | None]],
+    node_per_report: list[tuple[str, dict[str, Any] | None, datetime]],
 ) -> list[CircuitBucketEntry]:
     """Roll a list of ``(bucket_label, node)`` pairs into per-bucket aggregates.
 
@@ -633,14 +645,15 @@ def _circuit_node_aggregate(
     contribute 0 to ``report_count`` (the node didn't exist) and are
     skipped from the means. The mean helpers drop None values.
     """
-    by_bucket: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for label, node in node_per_report:
+    by_bucket: dict[str, list[tuple[dict[str, Any], "datetime"]]] = defaultdict(list)
+    for label, node, prod_date in node_per_report:
         if isinstance(node, dict):
-            by_bucket[label].append(node)
+            by_bucket[label].append((node, prod_date))
 
     out: list[CircuitBucketEntry] = []
     for label in sorted(by_bucket.keys()):
-        nodes = by_bucket[label]
+        pairs = by_bucket[label]
+        nodes = [n for n, _ in pairs]
         total_tons = sum(_coerce_finite_float(n.get("Total")) or 0.0 for n in nodes)
         runtime_hours = sum(_coerce_finite_float(n.get("Runtime")) or 0.0 for n in nodes)
 
@@ -653,6 +666,13 @@ def _circuit_node_aggregate(
             [_coerce_finite_float(n.get("Yield")) for n in nodes]
         )
 
+        # Phase 22: latest node's Calcs (latest by prod_date).
+        latest_node, _ = max(pairs, key=lambda p: p[1])
+        latest_c = latest_node.get("Calcs")
+        latest_calcs: dict[str, str] | None = None
+        if isinstance(latest_c, dict) and latest_c:
+            latest_calcs = {str(k): str(v) for k, v in latest_c.items()}
+
         out.append(
             CircuitBucketEntry(
                 bucket_label=label,
@@ -661,6 +681,7 @@ def _circuit_node_aggregate(
                 avg_tph=avg_tph,
                 avg_yield=avg_yield,
                 report_count=len(nodes),
+                calcs=latest_calcs,
             )
         )
     return out
@@ -758,14 +779,14 @@ async def get_circuit_rollup(
         for cid in sorted(circuit_meta.keys()):
             cdesc = circuit_meta[cid]
 
-            circuit_node_per_report: list[tuple[str, dict[str, Any] | None]] = []
+            circuit_node_per_report: list[tuple[str, dict[str, Any] | None, datetime]] = []
             for r in dept_rows:
                 if bucket == "yearly":
                     label = f"{r.prod_date.year:04d}"
                 else:
                     label = f"{r.prod_date.year:04d}-{r.prod_date.month:02d}"
                 cnode = (r.payload or {}).get("Metrics", {}).get("Circuit", {}).get(cid)
-                circuit_node_per_report.append((label, cnode))
+                circuit_node_per_report.append((label, cnode, r.prod_date))
             circuit_buckets = _circuit_node_aggregate(circuit_node_per_report)
 
             # Lines under this circuit (if any).
@@ -773,7 +794,7 @@ async def get_circuit_rollup(
             for (lc, lid), ldesc in line_meta.items():
                 if lc != cid:
                     continue
-                line_node_per_report: list[tuple[str, dict[str, Any] | None]] = []
+                line_node_per_report: list[tuple[str, dict[str, Any] | None, datetime]] = []
                 for r in dept_rows:
                     if bucket == "yearly":
                         label = f"{r.prod_date.year:04d}"
@@ -781,7 +802,7 @@ async def get_circuit_rollup(
                         label = f"{r.prod_date.year:04d}-{r.prod_date.month:02d}"
                     cnode = (r.payload or {}).get("Metrics", {}).get("Circuit", {}).get(cid) or {}
                     lnode = cnode.get("Line", {}).get(lid) if isinstance(cnode, dict) else None
-                    line_node_per_report.append((label, lnode))
+                    line_node_per_report.append((label, lnode, r.prod_date))
                 lines_out.append(
                     LineRollup(
                         line_id=lid,

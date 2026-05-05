@@ -252,11 +252,11 @@ def _to_rollup_entry(r: Rollup) -> RollupEntry:
         bucket_label=r.bucket_label,
         total_tons=r.total_tons,
         total_runtime_hours=r.total_runtime_hours,
-        tph=r.tph,
         report_count=r.report_count,
         avg_tph_fed=r.avg_tph_fed,                     # Phase 14a
         avg_runtime_pct=r.avg_runtime_pct,             # Phase 14a
         avg_performance_pct=r.avg_performance_pct,     # Phase 14a
+        calcs=r.calcs,                                  # Phase 22
     )
 
 
@@ -372,6 +372,7 @@ def _to_pyd_circuit_entry(e: SvcCircuitBucketEntry) -> PydCircuitBucketEntry:
         avg_tph=e.avg_tph,
         avg_yield=e.avg_yield,
         report_count=e.report_count,
+        calcs=e.calcs,                                  # Phase 22
     )
 
 
