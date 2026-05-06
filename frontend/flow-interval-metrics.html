@@ -87,6 +87,17 @@
     justify-content: space-between;
     border-bottom: 1px solid var(--border-strong);
   }
+  .brand-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .brand-logo {
+    height: 36px;
+    width: auto;
+    display: block;
+    flex-shrink: 0;
+  }
   .brand { display: flex; flex-direction: column; gap: 2px; }
   .brand b {
     font-weight: 600;
@@ -287,9 +298,12 @@
 </head>
 <body>
 <header class="topbar">
-  <div class="brand">
-    <b>Flow Interval Metrics</b>
-    <small>Secondary data source &mdash; aggregated metrics from Flow REST API</small>
+  <div class="brand-row">
+    <img class="brand-logo" src="/content/dolese-logo.png" alt="Dolese">
+    <div class="brand">
+      <b>Flow Interval Metrics</b>
+      <small>Secondary data source &mdash; aggregated metrics from Flow REST API</small>
+    </div>
   </div>
   <div class="topbar-actions">
     <a class="home-link" href="/">Dashboard</a>

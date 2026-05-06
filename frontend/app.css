@@ -1062,3 +1062,13 @@ body {
 #status-filter .gb {
   flex: 1 1 auto;
 }
+
+/* Phase 24 -- Dolese Delivers logo in the dashboard topbar.
+   Source image is 800x200 (4:1). Constrain the height so the logo
+   fits the 40px-tall topbar with breathing room top and bottom; let
+   width auto-scale to keep the aspect ratio. */
+.tlogo-img {
+  height: 28px;
+  width: auto;
+  display: block;
+}
