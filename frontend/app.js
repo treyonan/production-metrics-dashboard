@@ -103,6 +103,17 @@
     }
   } catch (_e) {}
 
+  // Phase 23: Workcenter Scheduled_Status filter. "all" / "Scheduled"
+  // / "Unscheduled". Note: PRM-prefixed reports have null Status, so
+  // combining PRM + (Scheduled or Unscheduled) returns an empty set.
+  let _activeStatusFilter = "all";
+  try {
+    const _storedStatus = localStorage.getItem("pmd-status-filter");
+    if (_storedStatus === "all" || _storedStatus === "Scheduled" || _storedStatus === "Unscheduled") {
+      _activeStatusFilter = _storedStatus;
+    }
+  } catch (_e) {}
+
   // --- generic helpers ---
   const $ = (id) => document.getElementById(id);
   const el = (tag, attrs = {}, children = []) => {
@@ -378,6 +389,14 @@
       });
     }
     _applyProdIdFilterUi(_activeProdIdFilter);
+
+    // Phase 23: Status filter. Same wire pattern.
+    for (const btn of document.querySelectorAll("#status-filter .gb")) {
+      btn.addEventListener("click", () => {
+        _setActiveStatusFilter(btn.dataset.status);
+      });
+    }
+    _applyStatusFilterUi(_activeStatusFilter);
     const dayInput = $("day-date");
     if (dayInput) {
       dayInput.addEventListener("change", () => {
@@ -653,18 +672,19 @@
     const empty = $("empty-state");
     const allEntries = payload.entries || [];
 
-    // Phase 19/20: apply the Production ID prefix filter before grouping
-    // so departments with no matching reports drop out cleanly. Filter
-    // is applied client-side; the cached payload in _lastPayload still
-    // holds the full envelope so toggling the filter re-renders without
+    // Phase 19/20 + 23: apply both client-side filters before grouping
+    // so departments with no matching reports drop out cleanly. Filters
+    // compose via AND. The cached payload in _lastPayload still holds
+    // the full envelope so toggling either filter re-renders without
     // a refetch.
-    const entries = allEntries.filter((e) => _matchesProdIdFilter(e.prod_id));
+    const entries = allEntries.filter(_matchesAllFilters);
 
-    // Phase 19/20: when the filter is "all", use the backend's
-    // pre-computed conveyor_totals (cheaper, authoritative). When it's
-    // narrowed to PR or PRM, recompute client-side from the filtered
-    // entries so the chart matches the visible table rows.
-    if (_activeProdIdFilter === "all") {
+    // Phase 19/20 + 23: when no filter is active, use the backend's
+    // pre-computed conveyor_totals (cheaper, authoritative). When
+    // either the prod-id or status filter is narrowing, recompute
+    // client-side from the filtered entries so the chart matches the
+    // visible table rows.
+    if (_activeProdIdFilter === "all" && _activeStatusFilter === "all") {
       _currentConveyorTotals = payload.conveyor_totals || null;
     } else {
       _currentConveyorTotals = _computeConveyorTotalsFromEntries(entries);
@@ -680,14 +700,22 @@
       return;
     }
     if (entries.length === 0) {
-      // Data exists in the window but nothing matches the active filter.
+      // Data exists in the window but nothing matches the active filter
+      // combination. List which filters are narrowing the result so the
+      // operator knows what to relax.
       empty.style.display = "";
-      const filterLabel = _activeProdIdFilter === "PR" ? "PR (excluding PRM)"
-                        : _activeProdIdFilter === "PRM" ? "PRM"
-                        : "current";
+      const active = [];
+      if (_activeProdIdFilter !== "all") {
+        active.push("Production ID = " + _activeProdIdFilter
+          + (_activeProdIdFilter === "PR" ? " (excluding PRM)" : ""));
+      }
+      if (_activeStatusFilter !== "all") {
+        active.push("Status = " + _activeStatusFilter);
+      }
+      const desc = active.length ? active.join(" + ") : "current filters";
       empty.textContent =
-        `No reports match the ${filterLabel} Production ID filter for ${selectionLabel(currentSelection)}. ` +
-        `Switch to All in the sidebar to see everything.`;
+        `No reports match ${desc} for ${selectionLabel(currentSelection)}. ` +
+        `Adjust the filters in the sidebar (set either to All) to widen the view.`;
       $("refresh-lbl").textContent =
         `Refreshed ${new Date(payload.generated_at).toLocaleTimeString()} (filtered)`;
       return;
@@ -874,7 +902,7 @@
     // then by newest-first within the group so the exported order
     // mirrors what the dashboard renders.
     const rows = [];
-    const entries = (payload.entries || []).filter((e) => _matchesProdIdFilter(e.prod_id));
+    const entries = (payload.entries || []).filter(_matchesAllFilters);
 
     // Phase 11b: discover the union of payload.Metrics.Site keys across
     // every entry in the current selection. We use this list to append
@@ -1413,6 +1441,39 @@
       btn.classList.toggle("on", on);
       btn.setAttribute("aria-selected", on ? "true" : "false");
     }
+  }
+
+  // Phase 23: Status filter. Reads entry.payload.Metrics.Workcenter
+  // .Scheduled_Status, which is "Scheduled", "Unscheduled", or null.
+  function _matchesStatusFilter(entry) {
+    if (_activeStatusFilter === "all") return true;
+    const wc = (entry.payload && entry.payload.Metrics && entry.payload.Metrics.Workcenter) || {};
+    return wc.Scheduled_Status === _activeStatusFilter;
+  }
+
+  function _setActiveStatusFilter(filter) {
+    if (filter !== "all" && filter !== "Scheduled" && filter !== "Unscheduled") return;
+    if (filter === _activeStatusFilter) return;
+    _activeStatusFilter = filter;
+    try { localStorage.setItem("pmd-status-filter", filter); } catch (_e) {}
+    _applyStatusFilterUi(filter);
+    if (currentView === "dashboard" && _lastPayload) {
+      renderData(_lastPayload);
+      updateExportButtonState();
+    }
+  }
+
+  function _applyStatusFilterUi(filter) {
+    for (const btn of document.querySelectorAll("#status-filter .gb")) {
+      const on = btn.dataset.status === filter;
+      btn.classList.toggle("on", on);
+      btn.setAttribute("aria-selected", on ? "true" : "false");
+    }
+  }
+
+  // Composite predicate -- both filters AND'd together.
+  function _matchesAllFilters(entry) {
+    return _matchesProdIdFilter(entry.prod_id) && _matchesStatusFilter(entry);
   }
 
   // Phase 19/20: Crusher discovery + label helpers. Crushers live at

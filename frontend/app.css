@@ -1052,3 +1052,13 @@ body {
   margin-top: 2px;
   word-break: break-word;
 }
+
+/* Phase 23: status filter labels are longer than the prod-id filter's
+   ("Unscheduled" overflows the narrow row). Stack buttons vertically
+   so each gets the sidebar's full width and stays readable. */
+#status-filter {
+  flex-direction: column;
+}
+#status-filter .gb {
+  flex: 1 1 auto;
+}
