@@ -958,6 +958,10 @@ body {
 .trend-panel-meta {
   font-size: 10px;
   color: var(--text-muted);
+  /* Phase 22 (refined): preserve embedded newlines from calcsLine so
+     each entity's formula renders on its own line, sharing the
+     subtitle's font/size/color and a common left edge. */
+  white-space: pre-line;
 }
 .trend-chart-wrap {
   position: relative;
@@ -1042,16 +1046,6 @@ body {
   font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
 }
 .dm-crusher-table tbody tr:hover { background: var(--bg-canvas); }
-
-/* Phase 22 -- Calcs formula footnote under the chart subtitle. */
-.trend-panel-calcs {
-  display: block;
-  font-size: 11px;
-  font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
-  color: var(--text-muted);
-  margin-top: 2px;
-  word-break: break-word;
-}
 
 /* Phase 23: status filter labels are longer than the prod-id filter's
    ("Unscheduled" overflows the narrow row). Stack buttons vertically

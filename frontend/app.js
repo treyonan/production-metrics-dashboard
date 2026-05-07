@@ -2044,16 +2044,22 @@
   }
 
   // Single-entity calcs line (per-workcenter / circuit / line).
-  // Returns "Calcs.<metric> = <formula>" or null when absent.
-  function _singleCalcsLine(buckets, metric) {
+  // Returns "<label>: <formula>" or null when absent. The label is
+  // typically the entity's display name (workcenter / circuit / line
+  // description) -- matches the multi-entity format so all charts
+  // read consistently.
+  function _singleCalcsLine(buckets, metric, label) {
     const f = _calcsLatest(buckets, metric);
-    return f ? `Calcs.${metric} = ${f}` : null;
+    if (!f) return null;
+    return label ? `${label}: ${f}` : f;
   }
 
   // Multi-entity calcs line (Overview Total Tons by Workcenter,
-  // Tons-per-Line). `items` is [{label, buckets}, ...]. Builds
-  // "Calcs.<metric> — Label1: f1  •  Label2: f2"; null when no entity
-  // surfaces a formula.
+  // Tons-per-Line). `items` is [{label, buckets}, ...]. Builds one
+  // "<label>: <formula>" line per entity, joined by \n so the meta
+  // span (white-space: pre-line) renders them stacked vertically,
+  // sharing a common left edge. Null when no entity surfaces a
+  // formula.
   function _multiCalcsLine(items, metric) {
     const parts = [];
     for (const item of items) {
@@ -2061,7 +2067,7 @@
       if (f) parts.push(`${item.label}: ${f}`);
     }
     if (!parts.length) return null;
-    return `Calcs.${metric} \u2014 ${parts.join("  \u2022  ")}`;
+    return parts.join("\n");
   }
 
   function renderTrends(payload, circuitPayload) {
@@ -2185,10 +2191,11 @@
         indent: 0,
         build: (s) => {
           const _wcBuckets = byDept.get(dept) || [];
+          const _wcLabel = deptLabel(dept);
           s.appendChild(_renderTrendPanel({
             title: "Total TPH Fed",
             subtitle: "Average of Workcenter.Rate per month.",
-            calcsLine: _singleCalcsLine(_wcBuckets, "Rate"),
+            calcsLine: _singleCalcsLine(_wcBuckets, "Rate", _wcLabel),
             labels: months,
             datasets: [buildBarDataset(dept, (r) => r.avg_tph_fed, idx)],
             yLabel: "Tons/hr",
@@ -2198,7 +2205,7 @@
           s.appendChild(_renderTrendPanel({
             title: "Runtime %",
             subtitle: "Average of Workcenter.Availability per month.",
-            calcsLine: _singleCalcsLine(_wcBuckets, "Availability"),
+            calcsLine: _singleCalcsLine(_wcBuckets, "Availability", _wcLabel),
             labels: months,
             datasets: [buildBarDataset(dept, (r) => r.avg_runtime_pct, idx)],
             yLabel: "%",
@@ -2208,7 +2215,7 @@
           s.appendChild(_renderTrendPanel({
             title: "Performance %",
             subtitle: "Average of Workcenter.Performance (Rate / Ideal_Rate * 100) per month.",
-            calcsLine: _singleCalcsLine(_wcBuckets, "Performance"),
+            calcsLine: _singleCalcsLine(_wcBuckets, "Performance", _wcLabel),
             labels: months,
             datasets: [buildBarDataset(dept, (r) => r.avg_performance_pct, idx)],
             yLabel: "%",
@@ -2350,7 +2357,7 @@
       grid.appendChild(_renderTrendPanel({
         title: "Total TPH",
         subtitle: "Circuit-level mean of per-report Total/Runtime per month.",
-        calcsLine: _singleCalcsLine(circuit.buckets || [], "Rate"),
+        calcsLine: _singleCalcsLine(circuit.buckets || [], "Rate", circuit.description || circuit.circuit_id),
         labels: months,
         datasets: [buildCircuitDataset((e) => e.avg_tph, baseColor)],
         yLabel: "Tons/hr",
@@ -2374,7 +2381,7 @@
       grid.appendChild(_renderTrendPanel({
         title: "Total Yield",
         subtitle: "Circuit-level mean of per-report Yield per month.",
-        calcsLine: _singleCalcsLine(circuit.buckets || [], "Yield"),
+        calcsLine: _singleCalcsLine(circuit.buckets || [], "Yield", circuit.description || circuit.circuit_id),
         labels: months,
         datasets: [buildCircuitDataset((e) => e.avg_yield, baseColor)],
         yLabel: "Yield",
@@ -2398,7 +2405,7 @@
       grid.appendChild(_renderTrendPanel({
         title: "Total Tons",
         subtitle: "Circuit-level sum of node.Total per month.",
-        calcsLine: _singleCalcsLine(circuit.buckets || [], "Total"),
+        calcsLine: _singleCalcsLine(circuit.buckets || [], "Total", circuit.description || circuit.circuit_id),
         labels: months,
         datasets: [buildCircuitDataset((e) => e.total_tons, baseColor)],
         yLabel: "Tons",
@@ -2410,7 +2417,7 @@
       grid.appendChild(_renderTrendPanel({
         title: "TPH",
         subtitle: "Mean of per-report Total/Runtime per month.",
-        calcsLine: _singleCalcsLine(circuit.buckets || [], "Rate"),
+        calcsLine: _singleCalcsLine(circuit.buckets || [], "Rate", circuit.description || circuit.circuit_id),
         labels: months,
         datasets: [buildCircuitDataset((e) => e.avg_tph, baseColor)],
         yLabel: "Tons/hr",
@@ -2420,7 +2427,7 @@
       grid.appendChild(_renderTrendPanel({
         title: "Yield",
         subtitle: "Mean of per-report Yield per month.",
-        calcsLine: _singleCalcsLine(circuit.buckets || [], "Yield"),
+        calcsLine: _singleCalcsLine(circuit.buckets || [], "Yield", circuit.description || circuit.circuit_id),
         labels: months,
         datasets: [buildCircuitDataset((e) => e.avg_yield, baseColor)],
         yLabel: "Yield",
@@ -2430,7 +2437,7 @@
       grid.appendChild(_renderTrendPanel({
         title: "Tons",
         subtitle: "Sum of node.Total per month.",
-        calcsLine: _singleCalcsLine(circuit.buckets || [], "Total"),
+        calcsLine: _singleCalcsLine(circuit.buckets || [], "Total", circuit.description || circuit.circuit_id),
         labels: months,
         datasets: [buildCircuitDataset((e) => e.total_tons, baseColor)],
         yLabel: "Tons",
@@ -2450,15 +2457,17 @@
     // on, one bar series per circuit Line) without per-call config.
     const _type = chartType || "line";
     const _showLegend = (datasets || []).length > 1;
-    // Phase 22: optional Calcs footnote rendered below the subtitle.
-    // Falsy/empty -> no extra row.
-    const _headerKids = [
-      el("span", { class: "trend-panel-title" }, title),
-      el("span", { class: "trend-panel-meta" }, subtitle),
-    ];
-    if (calcsLine) _headerKids.push(el("span", { class: "trend-panel-calcs" }, calcsLine));
+    // Phase 22 (refined): Calcs lines are appended to the subtitle
+    // text with embedded newlines. The .trend-panel-meta span has
+    // white-space: pre-line, so each entity's "<label>: <formula>"
+    // renders on its own line, sharing the subtitle's font/size/color
+    // and a common left edge.
+    const _metaText = calcsLine ? subtitle + "\n" + calcsLine : subtitle;
     const panel = el("section", { class: "trend-panel" }, [
-      el("div", { class: "trend-panel-header" }, _headerKids),
+      el("div", { class: "trend-panel-header" }, [
+        el("span", { class: "trend-panel-title" }, title),
+        el("span", { class: "trend-panel-meta" }, _metaText),
+      ]),
       (() => {
         const wrap = el("div", { class: "trend-chart-wrap" });
         const canvas = el("canvas", { class: "trend-chart-canvas" });
