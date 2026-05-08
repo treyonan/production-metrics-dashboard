@@ -2155,7 +2155,7 @@
       build: (s) => {
         s.appendChild(_renderTrendPanel({
           title: "Total Tons by Workcenter",
-          subtitle: "Sum of Workcenter.Total across the selected range, per workcenter.",
+          subtitle: "",
           calcsLine: _multiCalcsLine(
             deptIds.map((d) => ({ label: deptLabel(d), buckets: byDept.get(d) || [] })),
             "Total"
@@ -2166,8 +2166,8 @@
           yFormat: (v) => `${fmtInt(v)} t`,
         }));
         s.appendChild(_renderTrendPanel({
-          title: "TPH by Workcenter",
-          subtitle: "Average of per-report Workcenter.Rate (with fallback to Total/Runtime), per workcenter.",
+          title: "Average TPH by Workcenter",
+          subtitle: "",
           calcsLine: _multiCalcsLine(
             deptIds.map((d) => ({ label: deptLabel(d), buckets: byDept.get(d) || [] })),
             "Rate"
@@ -2193,8 +2193,8 @@
           const _wcBuckets = byDept.get(dept) || [];
           const _wcLabel = deptLabel(dept);
           s.appendChild(_renderTrendPanel({
-            title: "Total TPH Fed",
-            subtitle: "Average of Workcenter.Rate per month.",
+            title: "Average TPH",
+            subtitle: "",
             calcsLine: _singleCalcsLine(_wcBuckets, "Rate", _wcLabel),
             labels: months,
             datasets: [buildBarDataset(dept, (r) => r.avg_tph_fed, idx)],
@@ -2203,8 +2203,8 @@
             chartType: "bar",
           }));
           s.appendChild(_renderTrendPanel({
-            title: "Runtime %",
-            subtitle: "Average of Workcenter.Availability per month.",
+            title: "Average Runtime",
+            subtitle: "",
             calcsLine: _singleCalcsLine(_wcBuckets, "Availability", _wcLabel),
             labels: months,
             datasets: [buildBarDataset(dept, (r) => r.avg_runtime_pct, idx)],
@@ -2213,8 +2213,8 @@
             chartType: "bar",
           }));
           s.appendChild(_renderTrendPanel({
-            title: "Performance %",
-            subtitle: "Average of Workcenter.Performance (Rate / Ideal_Rate * 100) per month.",
+            title: "Average Performance",
+            subtitle: "",
             calcsLine: _singleCalcsLine(_wcBuckets, "Performance", _wcLabel),
             labels: months,
             datasets: [buildBarDataset(dept, (r) => r.avg_performance_pct, idx)],
@@ -2340,23 +2340,22 @@
         };
       });
 
-      // 6 panels: paired-line + circuit-total for each of TPH / Yield / Tons.
+      // 6 panels in a 3x2 grid (DOM order = left-to-right, top-to-bottom):
+      //   Row 1: Total Tons         | Average TPH         | Average Yield
+      //   Row 2: Total Tons by Line | Average TPH by Line | Average Yield by Line
       grid.appendChild(_renderTrendPanel({
-        title: "TPH per Line",
-        subtitle: "Mean of per-report Total/Runtime per line per month.",
-        calcsLine: _multiCalcsLine(
-          (circuit.lines || []).map((l) => ({ label: l.description || l.line_id, buckets: l.buckets || [] })),
-          "Rate"
-        ),
+        title: "Total Tons",
+        subtitle: "",
+        calcsLine: _singleCalcsLine(circuit.buckets || [], "Total", circuit.description || circuit.circuit_id),
         labels: months,
-        datasets: buildPerLineDatasets((e) => e.avg_tph),
-        yLabel: "Tons/hr",
-        yFormat: (v) => `${fmtInt(v)} tph`,
+        datasets: [buildCircuitDataset((e) => e.total_tons, baseColor)],
+        yLabel: "Tons",
+        yFormat: (v) => `${fmtInt(v)} t`,
         chartType: "bar",
       }));
       grid.appendChild(_renderTrendPanel({
-        title: "Total TPH",
-        subtitle: "Circuit-level mean of per-report Total/Runtime per month.",
+        title: "Average TPH",
+        subtitle: "",
         calcsLine: _singleCalcsLine(circuit.buckets || [], "Rate", circuit.description || circuit.circuit_id),
         labels: months,
         datasets: [buildCircuitDataset((e) => e.avg_tph, baseColor)],
@@ -2364,34 +2363,20 @@
         yFormat: (v) => `${fmtInt(v)} tph`,
         chartType: "bar",
       }));
-
       grid.appendChild(_renderTrendPanel({
-        title: "Yield per Line",
-        subtitle: "Mean of per-report Yield (mass-conversion ratio) per line per month.",
-        calcsLine: _multiCalcsLine(
-          (circuit.lines || []).map((l) => ({ label: l.description || l.line_id, buckets: l.buckets || [] })),
-          "Yield"
-        ),
-        labels: months,
-        datasets: buildPerLineDatasets((e) => e.avg_yield),
-        yLabel: "Yield",
-        yFormat: (v) => fmt1(v),
-        chartType: "bar",
-      }));
-      grid.appendChild(_renderTrendPanel({
-        title: "Total Yield",
-        subtitle: "Circuit-level mean of per-report Yield per month.",
+        title: "Average Yield",
+        subtitle: "",
         calcsLine: _singleCalcsLine(circuit.buckets || [], "Yield", circuit.description || circuit.circuit_id),
         labels: months,
         datasets: [buildCircuitDataset((e) => e.avg_yield, baseColor)],
         yLabel: "Yield",
-        yFormat: (v) => fmt1(v),
+        yFormat: (v) => `${fmt1(v)}%`,
         chartType: "bar",
       }));
 
       grid.appendChild(_renderTrendPanel({
-        title: "Tons per Line",
-        subtitle: "Sum of node.Total per line per month.",
+        title: "Total Tons by Line",
+        subtitle: "",
         calcsLine: _multiCalcsLine(
           (circuit.lines || []).map((l) => ({ label: l.description || l.line_id, buckets: l.buckets || [] })),
           "Total"
@@ -2403,8 +2388,37 @@
         chartType: "bar",
       }));
       grid.appendChild(_renderTrendPanel({
+        title: "Average TPH by Line",
+        subtitle: "",
+        calcsLine: _multiCalcsLine(
+          (circuit.lines || []).map((l) => ({ label: l.description || l.line_id, buckets: l.buckets || [] })),
+          "Rate"
+        ),
+        labels: months,
+        datasets: buildPerLineDatasets((e) => e.avg_tph),
+        yLabel: "Tons/hr",
+        yFormat: (v) => `${fmtInt(v)} tph`,
+        chartType: "bar",
+      }));
+      grid.appendChild(_renderTrendPanel({
+        title: "Average Yield by Line",
+        subtitle: "",
+        calcsLine: _multiCalcsLine(
+          (circuit.lines || []).map((l) => ({ label: l.description || l.line_id, buckets: l.buckets || [] })),
+          "Yield"
+        ),
+        labels: months,
+        datasets: buildPerLineDatasets((e) => e.avg_yield),
+        yLabel: "Yield",
+        yFormat: (v) => `${fmt1(v)}%`,
+        chartType: "bar",
+      }));
+    } else {
+      // Line-less circuit: 3 single-series panels.
+      // Order (left-to-right): Total Tons | Average TPH | Average Yield.
+      grid.appendChild(_renderTrendPanel({
         title: "Total Tons",
-        subtitle: "Circuit-level sum of node.Total per month.",
+        subtitle: "",
         calcsLine: _singleCalcsLine(circuit.buckets || [], "Total", circuit.description || circuit.circuit_id),
         labels: months,
         datasets: [buildCircuitDataset((e) => e.total_tons, baseColor)],
@@ -2412,11 +2426,9 @@
         yFormat: (v) => `${fmtInt(v)} t`,
         chartType: "bar",
       }));
-    } else {
-      // Line-less circuit: 3 single-series panels for TPH / Yield / Tons.
       grid.appendChild(_renderTrendPanel({
-        title: "TPH",
-        subtitle: "Mean of per-report Total/Runtime per month.",
+        title: "Average TPH",
+        subtitle: "",
         calcsLine: _singleCalcsLine(circuit.buckets || [], "Rate", circuit.description || circuit.circuit_id),
         labels: months,
         datasets: [buildCircuitDataset((e) => e.avg_tph, baseColor)],
@@ -2425,23 +2437,13 @@
         chartType: "bar",
       }));
       grid.appendChild(_renderTrendPanel({
-        title: "Yield",
-        subtitle: "Mean of per-report Yield per month.",
+        title: "Average Yield",
+        subtitle: "",
         calcsLine: _singleCalcsLine(circuit.buckets || [], "Yield", circuit.description || circuit.circuit_id),
         labels: months,
         datasets: [buildCircuitDataset((e) => e.avg_yield, baseColor)],
         yLabel: "Yield",
-        yFormat: (v) => fmt1(v),
-        chartType: "bar",
-      }));
-      grid.appendChild(_renderTrendPanel({
-        title: "Tons",
-        subtitle: "Sum of node.Total per month.",
-        calcsLine: _singleCalcsLine(circuit.buckets || [], "Total", circuit.description || circuit.circuit_id),
-        labels: months,
-        datasets: [buildCircuitDataset((e) => e.total_tons, baseColor)],
-        yLabel: "Tons",
-        yFormat: (v) => `${fmtInt(v)} t`,
+        yFormat: (v) => `${fmt1(v)}%`,
         chartType: "bar",
       }));
     }
