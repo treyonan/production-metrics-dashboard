@@ -20,8 +20,8 @@ _DEFAULT_FRONTEND_DIR = _REPO_ROOT / "frontend"
 # reports which IDs exist; the service layer joins in these labels. Missing
 # IDs fall back to "Site <id>".
 _DEFAULT_SITE_NAMES: dict[str, str] = {
+    "100": "Ardmore Quarry",
     "101": "Big Canyon Quarry",
-    "102": "Big Canyon Quarry - Synthetic Demo",
 }
 
 
