@@ -2351,7 +2351,7 @@
       grid.appendChild(_renderTrendPanel({
         title: "Total Tons",
         subtitle: "",
-        calcsLine: _singleCalcsLine(circuit.buckets || [], "Total", circuit.description || circuit.circuit_id),
+        calcsLine: _singleCalcsLine(circuit.buckets || [], "Total", "Total"),
         labels: months,
         datasets: [buildCircuitDataset((e) => e.total_tons, baseColor)],
         yLabel: "Tons",
@@ -2361,7 +2361,7 @@
       grid.appendChild(_renderTrendPanel({
         title: "Average TPH",
         subtitle: "",
-        calcsLine: _singleCalcsLine(circuit.buckets || [], "Rate", circuit.description || circuit.circuit_id),
+        calcsLine: _singleCalcsLine(circuit.buckets || [], "Rate", "Rate"),
         labels: months,
         datasets: [buildCircuitDataset((e) => e.avg_tph, baseColor)],
         yLabel: "Tons/hr",
@@ -2371,7 +2371,7 @@
       grid.appendChild(_renderTrendPanel({
         title: "Average Yield",
         subtitle: "",
-        calcsLine: _singleCalcsLine(circuit.buckets || [], "Yield", circuit.description || circuit.circuit_id),
+        calcsLine: _singleCalcsLine(circuit.buckets || [], "Yield", "Yield"),
         labels: months,
         datasets: [buildCircuitDataset((e) => e.avg_yield, baseColor)],
         yLabel: "Yield",
@@ -2424,7 +2424,7 @@
       grid.appendChild(_renderTrendPanel({
         title: "Total Tons",
         subtitle: "",
-        calcsLine: _singleCalcsLine(circuit.buckets || [], "Total", circuit.description || circuit.circuit_id),
+        calcsLine: _singleCalcsLine(circuit.buckets || [], "Total", "Total"),
         labels: months,
         datasets: [buildCircuitDataset((e) => e.total_tons, baseColor)],
         yLabel: "Tons",
@@ -2434,7 +2434,7 @@
       grid.appendChild(_renderTrendPanel({
         title: "Average TPH",
         subtitle: "",
-        calcsLine: _singleCalcsLine(circuit.buckets || [], "Rate", circuit.description || circuit.circuit_id),
+        calcsLine: _singleCalcsLine(circuit.buckets || [], "Rate", "Rate"),
         labels: months,
         datasets: [buildCircuitDataset((e) => e.avg_tph, baseColor)],
         yLabel: "Tons/hr",
@@ -2444,7 +2444,7 @@
       grid.appendChild(_renderTrendPanel({
         title: "Average Yield",
         subtitle: "",
-        calcsLine: _singleCalcsLine(circuit.buckets || [], "Yield", circuit.description || circuit.circuit_id),
+        calcsLine: _singleCalcsLine(circuit.buckets || [], "Yield", "Yield"),
         labels: months,
         datasets: [buildCircuitDataset((e) => e.avg_yield, baseColor)],
         yLabel: "Yield",
