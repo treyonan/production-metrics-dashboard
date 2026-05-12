@@ -11,11 +11,11 @@
 :root,
 :root[data-theme="light"] {
   --bg-shell: #201f1e;
-  --bg-canvas: #f3f2f1;
-  --bg-sidebar: #fafaf9;
-  --bg-card: #ffffff;
-  --border: #e1dfdd;
-  --border-strong: #c8c6c4;
+  --bg-canvas: #fafaf6;       /* near-white warm off-white */
+  --bg-sidebar: #fdfcf8;      /* almost white sidebar */
+  --bg-card: #ffffff;         /* cards stay pure white -- they "lift" off the canvas */
+  --border: #e5e0d8;          /* warm-tinted dividers */
+  --border-strong: #cbc5bc;
   --divider-dark: #484644;
 
   --text: #201f1e;
@@ -60,8 +60,8 @@
   --crit-border: #a4262c;
   --crit-fg: #a4262c;
 
-  --row-hover-bg: #fafaf9;
-  --row-divider: #f3f2f1;
+  --row-hover-bg: #f5f3ee;
+  --row-divider: #efece5;
 }
 
 /* Dark theme */

@@ -124,7 +124,10 @@
         </div>
       </div>
 
-      <div class="sb">
+      <!-- ACTIVE FILTERS sidebar block hidden by request. The
+           #chips element is still in the DOM so any code that
+           populates it doesn't error; just not displayed. -->
+      <div class="sb" style="display:none">
         <div class="sh">ACTIVE FILTERS</div>
         <div class="sd" id="chips"></div>
       </div>
