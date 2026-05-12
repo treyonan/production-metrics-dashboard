@@ -772,7 +772,7 @@
     const cs = getComputedStyle(document.documentElement);
     const pick = (name, fallback) => (cs.getPropertyValue(name).trim() || fallback);
     return {
-      accent: pick("--accent", "#0078d4"),
+      accent: pick("--accent", "#00502f"),
       grid:   pick("--border", "#e1dfdd"),
       ink:    pick("--text", "#201f1e"),
     };
@@ -1786,15 +1786,18 @@
 
   // Distinct colors for multi-line charts. Workcenter N gets the Nth
   // entry (modulo). Picked to read in both light and dark themes.
+  // Dolese brand chart palette: 4 primaries at 100% + the same 4 at
+  // 60% opacity (pre-computed as flat hex against a white chart bg).
+  // Cycled by series index across workcenters / circuits / lines.
   const TREND_COLORS = [
-    "#0078d4",  // accent blue
-    "#107c10",  // green
-    "#e66c37",  // orange
-    "#7a4800",  // amber
-    "#a4262c",  // crimson
-    "#5c2d91",  // purple
-    "#2b88d8",  // brighter blue
-    "#6ccb5f",  // light green
+    "#00502f",  // brand green
+    "#ffde74",  // brand yellow
+    "#45545f",  // brand slate
+    "#2d2926",  // brand off-black
+    "#669682",  // brand green 60%
+    "#ffebab",  // brand yellow 60%
+    "#8f999f",  // brand slate 60%
+    "#817e7c",  // brand off-black 60%
   ];
 
   function _destroyTrendCharts() {
@@ -2051,7 +2054,7 @@
   function _singleCalcsLine(buckets, metric, label) {
     const f = _calcsLatest(buckets, metric);
     if (!f) return null;
-    return label ? `${label}: ${f}` : f;
+    return label ? `${label} = ${f}` : f;
   }
 
   // Multi-entity calcs line (Overview Total Tons by Workcenter,
@@ -2064,7 +2067,7 @@
     const parts = [];
     for (const item of items) {
       const f = _calcsLatest(item.buckets, metric);
-      if (f) parts.push(`${item.label}: ${f}`);
+      if (f) parts.push(`${item.label} = ${f}`);
     }
     if (!parts.length) return null;
     return parts.join("\n");
@@ -2125,8 +2128,13 @@
       };
     });
 
-    const buildBarDataset = (dept, extractor, idx) => {
-      const color = TREND_COLORS[idx % TREND_COLORS.length];
+    // Brand-yellow single-series bars across every workcenter and
+    // circuit chart. idx kept in the signature for backward compat but
+    // unused -- the visual differentiator across charts is the title +
+    // calcs footnote, not the bar color.
+    const BAR_YELLOW = "#ffde74";
+    const buildBarDataset = (dept, extractor, _idx) => {
+      const color = BAR_YELLOW;
       const data = months.map((m) => {
         const r = byDept.get(dept).get(m);
         if (!r) return null;
@@ -2148,38 +2156,6 @@
     // panels. The tablist is rendered in parallel so order matches.
     const sections = [];
 
-    sections.push({
-      id: "overview",
-      label: "Overview",
-      indent: 0,
-      build: (s) => {
-        s.appendChild(_renderTrendPanel({
-          title: "Total Tons by Workcenter",
-          subtitle: "",
-          calcsLine: _multiCalcsLine(
-            deptIds.map((d) => ({ label: deptLabel(d), buckets: byDept.get(d) || [] })),
-            "Total"
-          ),
-          labels: months,
-          datasets: buildDatasets((r) => r.total_tons),
-          yLabel: "Tons",
-          yFormat: (v) => `${fmtInt(v)} t`,
-        }));
-        s.appendChild(_renderTrendPanel({
-          title: "Average TPH by Workcenter",
-          subtitle: "",
-          calcsLine: _multiCalcsLine(
-            deptIds.map((d) => ({ label: deptLabel(d), buckets: byDept.get(d) || [] })),
-            "Rate"
-          ),
-          labels: months,
-          datasets: buildDatasets((r) => r.avg_tph_fed),
-          yLabel: "Tons/hr",
-          yFormat: (v) => `${fmt1(v)} tph`,
-        }));
-      },
-    });
-
     const circuitDepts = (circuitPayload && circuitPayload.departments) || [];
     const circuitsByDeptId = new Map();
     for (const d of circuitDepts) circuitsByDeptId.set(d.department_id, d.circuits || []);
@@ -2190,12 +2166,26 @@
         label: deptLabel(dept),
         indent: 0,
         build: (s) => {
+          // Calcs label uses the payload metric key (Total / Rate /
+          // Availability / Performance) rather than the workcenter
+          // name -- per-tab the workcenter is already implied by the
+          // active tab, and the key name maps directly to what's in
+          // Workcenter.Calcs.<key>.
           const _wcBuckets = byDept.get(dept) || [];
-          const _wcLabel = deptLabel(dept);
+          s.appendChild(_renderTrendPanel({
+            title: "Total Tons",
+            subtitle: "",
+            calcsLine: _singleCalcsLine(_wcBuckets, "Total", "Total"),
+            labels: months,
+            datasets: [buildBarDataset(dept, (r) => r.total_tons, idx)],
+            yLabel: "Tons",
+            yFormat: (v) => `${fmtInt(v)} t`,
+            chartType: "bar",
+          }));
           s.appendChild(_renderTrendPanel({
             title: "Average TPH",
             subtitle: "",
-            calcsLine: _singleCalcsLine(_wcBuckets, "Rate", _wcLabel),
+            calcsLine: _singleCalcsLine(_wcBuckets, "Rate", "Rate"),
             labels: months,
             datasets: [buildBarDataset(dept, (r) => r.avg_tph_fed, idx)],
             yLabel: "Tons/hr",
@@ -2203,9 +2193,9 @@
             chartType: "bar",
           }));
           s.appendChild(_renderTrendPanel({
-            title: "Average Runtime",
+            title: "Average Availability",
             subtitle: "",
-            calcsLine: _singleCalcsLine(_wcBuckets, "Availability", _wcLabel),
+            calcsLine: _singleCalcsLine(_wcBuckets, "Availability", "Availability"),
             labels: months,
             datasets: [buildBarDataset(dept, (r) => r.avg_runtime_pct, idx)],
             yLabel: "%",
@@ -2215,7 +2205,7 @@
           s.appendChild(_renderTrendPanel({
             title: "Average Performance",
             subtitle: "",
-            calcsLine: _singleCalcsLine(_wcBuckets, "Performance", _wcLabel),
+            calcsLine: _singleCalcsLine(_wcBuckets, "Performance", "Performance"),
             labels: months,
             datasets: [buildBarDataset(dept, (r) => r.avg_performance_pct, idx)],
             yLabel: "%",
@@ -2261,7 +2251,8 @@
     });
 
     const sectionIds = sections.map((s) => s.id);
-    const targetTab = sectionIds.includes(_activeTrendsTab) ? _activeTrendsTab : "overview";
+    const defaultTab = sectionIds[0] || "";
+    const targetTab = sectionIds.includes(_activeTrendsTab) ? _activeTrendsTab : defaultTab;
     _setActiveTrendsTab(targetTab);
   }
 
@@ -2311,18 +2302,32 @@
     };
 
     const hasLines = (circuit.lines || []).length > 0;
-    // Pick a base color slot deterministically from (deptIdx, circuitIdx)
-    // so adjacent circuits visually distinguish from each other but each
-    // workcenter's circuit family stays in its own color band.
-    const baseColor = TREND_COLORS[(deptIdx * 2 + circuitIdx) % TREND_COLORS.length];
+    // Circuit-total single-series bars are brand yellow, matching the
+    // workcenter single-series bars. (deptIdx/circuitIdx unused here
+    // but kept in the signature for future-proofing.)
+    const baseColor = "#ffde74";
 
     if (hasLines) {
       // Build per-line datasets once -- reused across the three
       // paired-bar panels (TPH/Yield/Tons by Line).
+      // Per-line bar palette: yellow first, then green, then slate,
+      // then off-black, then 60% tints. So a 2-line "by Line" chart
+      // reads as yellow + green, matching the brand pairing.
+      const LINE_PALETTE = [
+        "#ffde74",  // brand yellow (primary line)
+        "#669682",  // brand green 60% -- lighter sage green, paired
+                    //                    with yellow for 2-bar charts
+        "#45545f",  // brand slate
+        "#2d2926",  // brand off-black
+        "#ffebab",  // yellow 60%
+        "#00502f",  // brand green (100%) -- only reached at 6+ lines
+        "#8f999f",  // slate 60%
+        "#817e7c",  // black 60%
+      ];
       const lineMaps = circuit.lines.map((l, i) => {
         const m = new Map();
         for (const e of (l.buckets || [])) m.set(e.bucket_label, e);
-        return { line: l, map: m, color: TREND_COLORS[(deptIdx * 2 + circuitIdx + i + 1) % TREND_COLORS.length] };
+        return { line: l, map: m, color: LINE_PALETTE[i % LINE_PALETTE.length] };
       });
       const buildPerLineDatasets = (extractor) => lineMaps.map(({ line, map, color }) => {
         const data = months.map((m) => {

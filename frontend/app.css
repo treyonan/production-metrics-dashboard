@@ -30,23 +30,23 @@
   --shell-hover-bg: #3b3a39;
   --shell-button-bg: #3b3a39;
 
-  --accent: #0078d4;
-  --accent-tint: #e6f2fb;
+  --accent: #00502f;
+  --accent-tint: #e6efe9;
 
-  --ok: #107c10;
+  --ok: #00502f;
   --warn: #e66c37;
   --crit: #a4262c;
 
   --chip-default-bg: #dce8fa;
   --chip-default-fg: #004578;
-  --chip-g-bg: #dff6dd;
-  --chip-g-fg: #0e5c0e;
+  --chip-g-bg: #dceae3;
+  --chip-g-fg: #00502f;
   --chip-w-bg: #fff4ce;
   --chip-w-fg: #7a4800;
   --chip-r-bg: #fde7e9;
   --chip-r-fg: #a4262c;
 
-  --pill-ok-bg: #107c10;
+  --pill-ok-bg: #00502f;
   --pill-ok-fg: #ffffff;
   --pill-warn-bg: #7a4800;
   --pill-warn-fg: #ffffff;
@@ -80,23 +80,23 @@
   --text-faint: #a19f9d;
   --text-body: #e1dfdd;
 
-  --accent: #2b88d8;
-  --accent-tint: #1e3a5c;
+  --accent: #66877a;
+  --accent-tint: #1a3326;
 
-  --ok: #6ccb5f;
+  --ok: #66877a;
   --warn: #ffaa44;
   --crit: #f85d6a;
 
   --chip-default-bg: #1e3a5c;
   --chip-default-fg: #8ab7e8;
-  --chip-g-bg: #1e3a1e;
-  --chip-g-fg: #6ccb5f;
+  --chip-g-bg: #1a3326;
+  --chip-g-fg: #a3c7b0;
   --chip-w-bg: #3d2f00;
   --chip-w-fg: #ffd567;
   --chip-r-bg: #3d1518;
   --chip-r-fg: #f85d6a;
 
-  --pill-ok-bg: #107c10;
+  --pill-ok-bg: #00502f;
   --pill-ok-fg: #ffffff;
   --pill-warn-bg: #6b4a00;
   --pill-warn-fg: #ffd567;
@@ -127,7 +127,7 @@ body {
 .topbar {
   height: 40px;
   background: var(--bg-shell);
-  border-bottom: 1px solid var(--divider-dark);
+  border-bottom: 2px solid #ffde74;
   display: flex;
   align-items: center;
   padding: 0 10px;
@@ -144,7 +144,10 @@ body {
 
 .site-tog { display: flex; align-items: center; border-right: 1px solid var(--divider-dark); }
 .stbtn {
-  height: 40px;
+  /* 32px (not the full 40px topbar height) so the active-state
+     accent border at the bottom has clearance from the brand
+     yellow stripe under the topbar. */
+  height: 32px;
   padding: 0 14px;
   background: none;
   border: none;
@@ -219,8 +222,8 @@ body {
      dark-shell button so the export action reads as primary. The
      two greens (base + hover) match the OK status pill's palette
      so the topbar feels visually coherent. */
-  background: #107c10;
-  border: 1px solid #0b5c0b;
+  background: #00502f;
+  border: 1px solid #003d23;
   border-radius: 2px;
   color: #ffffff;
   font-family: inherit;
@@ -229,7 +232,7 @@ body {
   cursor: pointer;
   transition: background .15s, color .15s, transform .1s, opacity .15s;
 }
-.export-btn:hover:not(:disabled) { background: #0e6b0e; border-color: #094709; }
+.export-btn:hover:not(:disabled) { background: #003d23; border-color: #002a18; }
 .export-btn:active:not(:disabled) { transform: translateY(1px); }
 .export-btn:disabled { opacity: .45; cursor: not-allowed; }
 .export-btn svg { display: block; width: 12px; height: 12px; flex-shrink: 0; }
