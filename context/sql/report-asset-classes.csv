@@ -1,0 +1,8 @@
+ID,CLASS,DESCRIPTION,RETIRED,DTM
+1,Site,Top-level site metadata block. One per report. ASSET = 'Site'.,0,14:04.6
+2,Workcenter,Overall production unit metrics block. One per report. ASSET = 'Workcenter'.,0,14:04.6
+3,Conveyor,Repeating belt conveyor assets (C1-C9+). ASSET = conveyor key e.g. 'C4'.,0,14:04.6
+4,Crusher,"Repeating crusher assets (Crusher1, Crusher2+). ASSET = crusher key e.g. 'Crusher1'.",0,14:04.6
+5,Circuit,"Top-level circuit nodes (Circuit.A, Circuit.B minimum). ASSET = e.g. 'Circuit.A'.",0,14:04.6
+6,Circuit_Line_A,Line_A-level circuit nodes (A) = e.g. 'Circuit.A.Line.A'.,0,14:04.6
+7,Circuit_Line_B,Line_B-level circuit nodes (A) = e.g. 'Cicuit.A.Line.B'.,0,53:47.8

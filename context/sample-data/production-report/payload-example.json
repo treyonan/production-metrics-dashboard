@@ -47,7 +47,7 @@
       "Calcs": {
         "Availability": "Runtime / Scheduled Runtime",
         "Rate": "Total / Runtime",
-        "Total": "C1\u002BC8-C7",
+        "Total": "C1+C8-C7",
         "Performance": "Rate / 1050"
       },
       "Description": "Secondary",
