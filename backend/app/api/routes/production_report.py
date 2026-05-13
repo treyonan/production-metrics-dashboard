@@ -17,11 +17,12 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 
-from app.api.dependencies import get_production_report_source
+from app.api.dependencies import get_chart_labels, get_production_report_source
 from app.integrations.production_report.base import (
     ProductionReportRow,
     ProductionReportSource,
 )
+from app.integrations.production_report.labels import ChartLabels
 from app.schemas.production_report import (
     CircuitBucketEntry as PydCircuitBucketEntry,
     CircuitRollup as PydCircuitRollup,
@@ -54,6 +55,7 @@ from app.services.production_report import (
 router = APIRouter()
 
 ProductionReportSourceDep = Annotated[ProductionReportSource, Depends(get_production_report_source)]
+ChartLabelsDep = Annotated[ChartLabels, Depends(get_chart_labels)]
 
 # Maximum span of /range in days (inclusive-inclusive). A defensive
 # upper bound so a malformed client can't accidentally scan years of
@@ -245,7 +247,47 @@ async def latest_date_endpoint(
 
 # ---- /rollup/{bucket} (Phase 18) ------------------------------------
 
-def _to_rollup_entry(r: Rollup) -> RollupEntry:
+def _safe_int(s: str) -> int | None:
+    """Coerce a SITE_ID / DEPARTMENT_ID string to int for label lookup.
+
+    Returns ``None`` if the string isn't a clean integer -- the
+    resolver then short-circuits to "no labels" and the frontend
+    falls back to the raw metric key. Defensive against test
+    fixtures or future non-integer ids.
+    """
+    try:
+        return int(s)
+    except (TypeError, ValueError):
+        return None
+
+
+def _resolve_labels_for_calcs(
+    calcs: dict[str, str] | None,
+    labels: ChartLabels,
+    site_id: int | None,
+    dept_id: int | None,
+    scope_class: str,
+    asset: str,
+) -> dict[str, str] | None:
+    """Build a parallel ``calcs_labels`` dict from a ``calcs`` dict.
+
+    Skips entirely when ``calcs`` is empty -- the field stays None on
+    the wire, mirroring ``calcs``. When the labels snapshot doesn't
+    have a row for a given metric, ``resolve()`` returns the raw
+    metric key, so the dict always has the same keys as ``calcs``.
+    """
+    if not calcs or site_id is None or dept_id is None:
+        return None
+    return {
+        m: labels.resolve(site_id, dept_id, scope_class, asset, m)
+        for m in calcs
+    }
+
+
+def _to_rollup_entry(
+    r: Rollup, labels: ChartLabels, site_id: int | None
+) -> RollupEntry:
+    dept_id = _safe_int(r.department_id)
     return RollupEntry(
         department_id=r.department_id,
         department_name=r.department_name,  # Phase 12; non-null per Phase 13 contract.
@@ -257,6 +299,9 @@ def _to_rollup_entry(r: Rollup) -> RollupEntry:
         avg_runtime_pct=r.avg_runtime_pct,             # Phase 14a
         avg_performance_pct=r.avg_performance_pct,     # Phase 14a
         calcs=r.calcs,                                  # Phase 22
+        calcs_labels=_resolve_labels_for_calcs(         # Phase 25
+            r.calcs, labels, site_id, dept_id, "Workcenter", "Workcenter",
+        ),
     )
 
 
@@ -293,6 +338,7 @@ def _bucket_count(bucket: str, from_d: date, to_d: date) -> int:
 )
 async def rollup(
     production_report: ProductionReportSourceDep,
+    chart_labels: ChartLabelsDep,
     bucket: Annotated[
         BucketLiteral,
         Path(description="Bucket regime: 'monthly' or 'yearly'."),
@@ -350,6 +396,7 @@ async def rollup(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    site_id_int = _safe_int(site_id)
     return RollupResponse(
         site_id=site_id,
         bucket=bucket,
@@ -357,14 +404,21 @@ async def rollup(
         to_date=to_date,
         department_id=department_id,
         generated_at=datetime.now(UTC),
-        rollups=[_to_rollup_entry(r) for r in rollups],
+        rollups=[_to_rollup_entry(r, chart_labels, site_id_int) for r in rollups],
     )
 
 
 # --- /circuit-rollup/{bucket} (Phase 14b + Phase 18) ----------------------
 
 
-def _to_pyd_circuit_entry(e: SvcCircuitBucketEntry) -> PydCircuitBucketEntry:
+def _to_pyd_circuit_entry(
+    e: SvcCircuitBucketEntry,
+    labels: ChartLabels,
+    site_id: int | None,
+    dept_id: int | None,
+    scope_class: str,
+    asset: str,
+) -> PydCircuitBucketEntry:
     return PydCircuitBucketEntry(
         bucket_label=e.bucket_label,
         total_tons=e.total_tons,
@@ -373,31 +427,60 @@ def _to_pyd_circuit_entry(e: SvcCircuitBucketEntry) -> PydCircuitBucketEntry:
         avg_yield=e.avg_yield,
         report_count=e.report_count,
         calcs=e.calcs,                                  # Phase 22
+        calcs_labels=_resolve_labels_for_calcs(         # Phase 25
+            e.calcs, labels, site_id, dept_id, scope_class, asset,
+        ),
     )
 
 
-def _to_pyd_line(line: SvcLineRollup) -> PydLineRollup:
+def _to_pyd_line(
+    line: SvcLineRollup,
+    labels: ChartLabels,
+    site_id: int | None,
+    dept_id: int | None,
+    circuit_id: str,
+) -> PydLineRollup:
+    # Line position is encoded in CLASS (Circuit_Line_A / _B / _C),
+    # ASSET carries the parent circuit_id -- mirrors the legacy SP
+    # convention. See backend/app/integrations/production_report/labels.py.
+    scope_class = f"Circuit_Line_{line.line_id}"
     return PydLineRollup(
         line_id=line.line_id,
         description=line.description,
-        buckets=[_to_pyd_circuit_entry(b) for b in line.buckets],
+        buckets=[
+            _to_pyd_circuit_entry(b, labels, site_id, dept_id, scope_class, circuit_id)
+            for b in line.buckets
+        ],
     )
 
 
-def _to_pyd_circuit(c: SvcCircuitRollup) -> PydCircuitRollup:
+def _to_pyd_circuit(
+    c: SvcCircuitRollup,
+    labels: ChartLabels,
+    site_id: int | None,
+    dept_id: int | None,
+) -> PydCircuitRollup:
     return PydCircuitRollup(
         circuit_id=c.circuit_id,
         description=c.description,
-        buckets=[_to_pyd_circuit_entry(b) for b in c.buckets],
-        lines=[_to_pyd_line(l) for l in c.lines],
+        buckets=[
+            _to_pyd_circuit_entry(b, labels, site_id, dept_id, "Circuit", c.circuit_id)
+            for b in c.buckets
+        ],
+        lines=[_to_pyd_line(ln, labels, site_id, dept_id, c.circuit_id) for ln in c.lines],
     )
 
 
-def _to_pyd_department(d: SvcDepartmentCircuitRollup) -> PydDepartmentCircuitRollup:
+def _to_pyd_department(
+    d: SvcDepartmentCircuitRollup,
+    labels: ChartLabels,
+    site_id: int | None,
+) -> PydDepartmentCircuitRollup:
+    dept_id = _safe_int(d.department_id)
     return PydDepartmentCircuitRollup(
         department_id=d.department_id,
         department_name=d.department_name,
-        circuits=[_to_pyd_circuit(c) for c in d.circuits],
+        circuits=[_to_pyd_circuit(c, labels, site_id, dept_id) for c in d.circuits],
     )
 
 
@@ -420,6 +503,7 @@ def _to_pyd_department(d: SvcDepartmentCircuitRollup) -> PydDepartmentCircuitRol
 )
 async def circuit_rollup(
     production_report: ProductionReportSourceDep,
+    chart_labels: ChartLabelsDep,
     bucket: Annotated[
         BucketLiteral,
         Path(description="Bucket regime: 'monthly' or 'yearly'."),
@@ -459,6 +543,7 @@ async def circuit_rollup(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    site_id_int = _safe_int(site_id)
     return CircuitRollupResponse(
         site_id=site_id,
         bucket=bucket,
@@ -466,6 +551,6 @@ async def circuit_rollup(
         to_date=to_date,
         department_id=department_id,
         generated_at=datetime.now(UTC),
-        departments=[_to_pyd_department(d) for d in depts],
+        departments=[_to_pyd_department(d, chart_labels, site_id_int) for d in depts],
     )
 

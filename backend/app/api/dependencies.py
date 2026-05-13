@@ -17,10 +17,19 @@ on the route's dependency -- see ``tests/conftest.py``.
 
 from __future__ import annotations
 
+import time
+
 from fastapi import HTTPException, Request
 
+from app.core.logging import get_logger
 from app.integrations.production_report.base import ProductionReportSource
+from app.integrations.production_report.labels import (
+    LABEL_CACHE_TTL_SECONDS,
+    ChartLabels,
+)
 from app.integrations.production_report.sql_source import SqlProductionReportSource
+
+_log = get_logger("app.api.dependencies")
 
 
 def get_production_report_source(request: Request) -> ProductionReportSource:
@@ -76,3 +85,50 @@ def get_interval_metric_source(request: Request):
         )
 
     return SqlIntervalMetricSource(pool=pool, flow_client=flow_client)
+async def get_chart_labels(request: Request) -> ChartLabels:
+    """Return the cached chart-label snapshot, refreshing if stale.
+
+    The snapshot is loaded once at startup (``main.py`` lifespan). This
+    provider checks the snapshot's age on every call; when older than
+    ``LABEL_CACHE_TTL_SECONDS`` it acquires the app-level lock and
+    reloads (single-flight against the source). Refresh failures log
+    a warning but keep the previous snapshot in place, so a transient
+    SQL hiccup doesn't blank labels out from the dashboard.
+
+    Always returns a ``ChartLabels`` instance, even when the source
+    is unavailable (e.g. SQL pool didn't initialize). An empty
+    snapshot is harmless: ``ChartLabels.resolve()`` falls through to
+    the raw metric key.
+    """
+    state = request.app.state
+    labels = getattr(state, "chart_labels", None) or ChartLabels()
+    source = getattr(state, "chart_label_source", None)
+    lock = getattr(state, "chart_labels_lock", None)
+
+    # Nothing to refresh against -- return whatever we have (possibly
+    # empty). Routes still function; chart titles fall back to the
+    # raw metric keys.
+    if source is None or lock is None:
+        return labels
+
+    if time.monotonic() - labels.loaded_at <= LABEL_CACHE_TTL_SECONDS:
+        return labels
+
+    async with lock:
+        # Re-check after acquiring the lock: another request may have
+        # refreshed while we waited.
+        labels = getattr(state, "chart_labels", None) or ChartLabels()
+        if time.monotonic() - labels.loaded_at <= LABEL_CACHE_TTL_SECONDS:
+            return labels
+        try:
+            fresh = await source.load()
+            state.chart_labels = fresh
+            return fresh
+        except Exception as exc:  # noqa: BLE001 -- degrade gracefully
+            _log.warning(
+                "chart_labels.refresh_failed",
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+                stale_seconds=time.monotonic() - labels.loaded_at,
+            )
+            return labels

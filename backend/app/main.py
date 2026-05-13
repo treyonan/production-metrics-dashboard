@@ -8,6 +8,7 @@ directory with the venv activated::
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -22,9 +23,13 @@ from app.core.correlation import CorrelationIdMiddleware
 from app.core.logging import configure_logging, get_logger
 from app.core.snapshot import InMemorySnapshotStore
 from app.integrations.external.flow_client import FlowClient
+from app.integrations.production_report.labels import (
+    ChartLabels,
+    SqlChartLabelSource,
+)
 from app.integrations.sql.pool import create_pool
 
-BUILD_TAG = "2026-05-02-phase22-calcs-display"
+BUILD_TAG = "2026-05-13-phase25-chart-labels"
 
 
 @asynccontextmanager
@@ -59,6 +64,29 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         except Exception as exc:  # noqa: BLE001 -- degrade-gracefully on any driver error
             log.error(
                 "sql_pool.create_failed",
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+            )
+
+    # Chart labels (Phase 25): load once at startup, refresh on TTL via
+    # the dependency provider. The labels resolver always returns a
+    # graceful fallback (raw metric key) so missing rows / failed load
+    # never breaks chart rendering.
+    app.state.chart_label_source = None
+    app.state.chart_labels = ChartLabels()
+    app.state.chart_labels_lock = asyncio.Lock()
+    if app.state.sql_pool is not None:
+        try:
+            source = SqlChartLabelSource(pool=app.state.sql_pool)
+            app.state.chart_label_source = source
+            app.state.chart_labels = await source.load()
+            log.info(
+                "chart_labels.initialized",
+                row_count=app.state.chart_labels.row_count,
+            )
+        except Exception as exc:  # noqa: BLE001 -- degrade gracefully
+            log.error(
+                "chart_labels.initial_load_failed",
                 error_type=type(exc).__name__,
                 error_message=str(exc),
             )

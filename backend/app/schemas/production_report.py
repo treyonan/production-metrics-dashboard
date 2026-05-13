@@ -309,6 +309,16 @@ class RollupEntry(BaseModel):
             "Calcs block."
         ),
     )
+    calcs_labels: dict[str, str] | None = Field(
+        default=None,
+        description=(
+            "Phase 25. Display label per metric key, resolved from "
+            "IA_ENTERPRISE.MES.RUN_REPORTS_CONFIG at the workcenter "
+            "scope. Same keys as ``calcs`` (e.g. {'Total': 'Total Tons'}). "
+            "When a key is absent here, the frontend falls back to the "
+            "raw metric key. Null when ``calcs`` itself is null."
+        ),
+    )
 
 
 class RollupResponse(BaseModel):
@@ -364,6 +374,15 @@ class CircuitBucketEntry(BaseModel):
             "Phase 22. Pass-through of the latest report's node "
             "Calcs block in this bucket. Same pattern as the "
             "workcenter rollup's calcs field."
+        ),
+    )
+    calcs_labels: dict[str, str] | None = Field(
+        default=None,
+        description=(
+            "Phase 25. Display label per metric key, resolved at the "
+            "appropriate scope (Circuit or Circuit_Line_<L>). When a "
+            "key is absent, the frontend falls back to the raw metric "
+            "key. Null when ``calcs`` itself is null."
         ),
     )
 

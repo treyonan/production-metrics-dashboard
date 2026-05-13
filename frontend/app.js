@@ -2025,11 +2025,14 @@
     if (bar) bar.style.display = "none";
   }
 
-  // Phase 22: extract the latest bucket's Calcs.<metric> formula for
-  // an entity (workcenter / circuit / line). Buckets are sorted by
-  // bucket_label ascending; iterate from the end so the freshest one
-  // wins. Returns the formula string or null.
-  function _calcsLatest(buckets, metric) {
+  // Phase 22/25: extract the latest bucket's Calcs.<metric> entry
+  // for an entity (workcenter / circuit / line). Returns
+  //   { formula, label }
+  // where `label` is the API-resolved display name from
+  // `calcs_labels[metric]` (Phase 25) when present, otherwise null.
+  // Buckets are sorted by bucket_label ascending; iterate from the
+  // end so the freshest one wins.
+  function _calcsLatestEntry(buckets, metric) {
     if (!buckets) return null;
     // Accept both Array (circuit.buckets, line.buckets) and Map
     // (renderTrends' per-dept Map keyed by bucket_label). Materialize
@@ -2038,23 +2041,48 @@
     const list = Array.isArray(buckets) ? buckets : [...buckets.values()];
     if (!list.length) return null;
     for (let i = list.length - 1; i >= 0; i--) {
-      const c = list[i] && list[i].calcs;
+      const b = list[i];
+      const c = b && b.calcs;
       if (c && typeof c === "object" && typeof c[metric] === "string" && c[metric]) {
-        return c[metric];
+        const cl = b.calcs_labels;
+        const label = (cl && typeof cl === "object"
+                          && typeof cl[metric] === "string" && cl[metric])
+                      ? cl[metric] : null;
+        return { formula: c[metric], label };
       }
     }
     return null;
   }
 
+  // Backward-compat shim: returns only the formula string (or null).
+  function _calcsLatest(buckets, metric) {
+    const e = _calcsLatestEntry(buckets, metric);
+    return e ? e.formula : null;
+  }
+
+  // Phase 25: latest bucket's API-resolved display label for a metric.
+  // Used to drive the chart panel TITLE (top-left). Falls back to
+  // `fallback` (typically the previously-hardcoded title string), then
+  // to the metric key. The calcs FOOTNOTE (top-right) does NOT use
+  // this -- it intentionally shows the raw metric key plus formula
+  // so the underlying calculation stays visible regardless of the
+  // configured display name.
+  function _calcsLabelLatest(buckets, metric, fallback) {
+    const e = _calcsLatestEntry(buckets, metric);
+    return (e && e.label) || fallback || metric;
+  }
+
   // Single-entity calcs line (per-workcenter / circuit / line).
-  // Returns "<label>: <formula>" or null when absent. The label is
-  // typically the entity's display name (workcenter / circuit / line
-  // description) -- matches the multi-entity format so all charts
-  // read consistently.
-  function _singleCalcsLine(buckets, metric, label) {
-    const f = _calcsLatest(buckets, metric);
-    if (!f) return null;
-    return label ? `${label} = ${f}` : f;
+  // Returns just the formula string (e.g. "C1+C8-C7") or null when
+  // absent. The metric key is no longer prepended -- the chart title
+  // (top-left) carries the human-readable label, so the footnote only
+  // needs to show the underlying calculation. `label` and `metric`
+  // are accepted for backward compat with existing call sites but
+  // ignored.
+  function _singleCalcsLine(buckets, metric, label) {  // eslint-disable-line no-unused-vars
+    const e = _calcsLatestEntry(buckets, metric);
+    if (!e) return null;
+    return e.formula;
   }
 
   // Multi-entity calcs line (Overview Total Tons by Workcenter,
@@ -2173,7 +2201,7 @@
           // Workcenter.Calcs.<key>.
           const _wcBuckets = byDept.get(dept) || [];
           s.appendChild(_renderTrendPanel({
-            title: "Total Tons",
+            title: _calcsLabelLatest(_wcBuckets, "Total", "Total Tons"),
             subtitle: "",
             calcsLine: _singleCalcsLine(_wcBuckets, "Total", "Total"),
             labels: months,
@@ -2183,7 +2211,7 @@
             chartType: "bar",
           }));
           s.appendChild(_renderTrendPanel({
-            title: "Average TPH",
+            title: _calcsLabelLatest(_wcBuckets, "Rate", "Average TPH"),
             subtitle: "",
             calcsLine: _singleCalcsLine(_wcBuckets, "Rate", "Rate"),
             labels: months,
@@ -2193,7 +2221,7 @@
             chartType: "bar",
           }));
           s.appendChild(_renderTrendPanel({
-            title: "Average Availability",
+            title: _calcsLabelLatest(_wcBuckets, "Availability", "Average Availability"),
             subtitle: "",
             calcsLine: _singleCalcsLine(_wcBuckets, "Availability", "Availability"),
             labels: months,
@@ -2203,7 +2231,7 @@
             chartType: "bar",
           }));
           s.appendChild(_renderTrendPanel({
-            title: "Average Performance",
+            title: _calcsLabelLatest(_wcBuckets, "Performance", "Average Performance"),
             subtitle: "",
             calcsLine: _singleCalcsLine(_wcBuckets, "Performance", "Performance"),
             labels: months,
@@ -2349,7 +2377,7 @@
       //   Row 1: Total Tons         | Average TPH         | Average Yield
       //   Row 2: Total Tons by Line | Average TPH by Line | Average Yield by Line
       grid.appendChild(_renderTrendPanel({
-        title: "Total Tons",
+        title: _calcsLabelLatest(circuit.buckets || [], "Total", "Total Tons"),
         subtitle: "",
         calcsLine: _singleCalcsLine(circuit.buckets || [], "Total", "Total"),
         labels: months,
@@ -2359,7 +2387,7 @@
         chartType: "bar",
       }));
       grid.appendChild(_renderTrendPanel({
-        title: "Average TPH",
+        title: _calcsLabelLatest(circuit.buckets || [], "Rate", "Average TPH"),
         subtitle: "",
         calcsLine: _singleCalcsLine(circuit.buckets || [], "Rate", "Rate"),
         labels: months,
@@ -2369,7 +2397,7 @@
         chartType: "bar",
       }));
       grid.appendChild(_renderTrendPanel({
-        title: "Average Yield",
+        title: _calcsLabelLatest(circuit.buckets || [], "Yield", "Average Yield"),
         subtitle: "",
         calcsLine: _singleCalcsLine(circuit.buckets || [], "Yield", "Yield"),
         labels: months,
@@ -2380,7 +2408,7 @@
       }));
 
       grid.appendChild(_renderTrendPanel({
-        title: "Total Tons by Line",
+        title: _calcsLabelLatest(circuit.buckets || [], "Total", "Total Tons") + " by Line",
         subtitle: "",
         calcsLine: _multiCalcsLine(
           (circuit.lines || []).map((l) => ({ label: l.description || l.line_id, buckets: l.buckets || [] })),
@@ -2393,7 +2421,7 @@
         chartType: "bar",
       }));
       grid.appendChild(_renderTrendPanel({
-        title: "Average TPH by Line",
+        title: _calcsLabelLatest(circuit.buckets || [], "Rate", "Average TPH") + " by Line",
         subtitle: "",
         calcsLine: _multiCalcsLine(
           (circuit.lines || []).map((l) => ({ label: l.description || l.line_id, buckets: l.buckets || [] })),
@@ -2406,7 +2434,7 @@
         chartType: "bar",
       }));
       grid.appendChild(_renderTrendPanel({
-        title: "Average Yield by Line",
+        title: _calcsLabelLatest(circuit.buckets || [], "Yield", "Average Yield") + " by Line",
         subtitle: "",
         calcsLine: _multiCalcsLine(
           (circuit.lines || []).map((l) => ({ label: l.description || l.line_id, buckets: l.buckets || [] })),
@@ -2422,7 +2450,7 @@
       // Line-less circuit: 3 single-series panels.
       // Order (left-to-right): Total Tons | Average TPH | Average Yield.
       grid.appendChild(_renderTrendPanel({
-        title: "Total Tons",
+        title: _calcsLabelLatest(circuit.buckets || [], "Total", "Total Tons"),
         subtitle: "",
         calcsLine: _singleCalcsLine(circuit.buckets || [], "Total", "Total"),
         labels: months,
@@ -2432,7 +2460,7 @@
         chartType: "bar",
       }));
       grid.appendChild(_renderTrendPanel({
-        title: "Average TPH",
+        title: _calcsLabelLatest(circuit.buckets || [], "Rate", "Average TPH"),
         subtitle: "",
         calcsLine: _singleCalcsLine(circuit.buckets || [], "Rate", "Rate"),
         labels: months,
@@ -2442,7 +2470,7 @@
         chartType: "bar",
       }));
       grid.appendChild(_renderTrendPanel({
-        title: "Average Yield",
+        title: _calcsLabelLatest(circuit.buckets || [], "Yield", "Average Yield"),
         subtitle: "",
         calcsLine: _singleCalcsLine(circuit.buckets || [], "Yield", "Yield"),
         labels: months,
