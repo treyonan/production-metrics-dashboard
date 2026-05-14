@@ -355,6 +355,38 @@ def _coerce_finite_float(v: Any) -> float | None:
     return f if math.isfinite(f) else None
 
 
+def _extract_calcs_formulas(c: Any) -> dict[str, str] | None:
+    """Pull ``{metric -> formula-string}`` out of a payload Calcs block.
+
+    Supports two payload shapes:
+
+      * Current (2026-05): each entry is an object with a ``Formula``
+        field, e.g. ``{"Total": {"Formula": "C1+C8-C7"}}``. Future
+        entries may carry other sibling fields beyond ``Formula``;
+        anything else is ignored here.
+      * Legacy: each entry is a plain string formula, e.g.
+        ``{"Total": "C1+C8-C7"}``. Older reports may still be in this
+        shape; the dashboard renders them identically.
+
+    Returns ``None`` when the block is missing/empty or when no entry
+    has a usable formula string. The downstream Pydantic model on the
+    wire stays ``dict[str, str]`` either way -- the consumer never
+    sees the nested object shape.
+    """
+    if not isinstance(c, dict) or not c:
+        return None
+    out: dict[str, str] = {}
+    for k, v in c.items():
+        key = str(k)
+        if isinstance(v, dict):
+            f = v.get("Formula")
+            if isinstance(f, str) and f:
+                out[key] = f
+        elif isinstance(v, str) and v:
+            out[key] = v
+    return out or None
+
+
 def _avg_tph_fed_for_report(wc: Any) -> float | None:
     """Phase 14a: per-report Total TPH Fed.
 
@@ -541,9 +573,7 @@ async def get_rollup(
         latest_wc = (latest_report.payload or {}).get("Metrics", {}).get("Workcenter")
         latest_calcs: dict[str, str] | None = None
         if isinstance(latest_wc, dict):
-            c = latest_wc.get("Calcs")
-            if isinstance(c, dict) and c:
-                latest_calcs = {str(k): str(v) for k, v in c.items()}
+            latest_calcs = _extract_calcs_formulas(latest_wc.get("Calcs"))
 
         out.append(
             Rollup(
@@ -668,10 +698,9 @@ def _circuit_node_aggregate(
 
         # Phase 22: latest node's Calcs (latest by prod_date).
         latest_node, _ = max(pairs, key=lambda p: p[1])
-        latest_c = latest_node.get("Calcs")
-        latest_calcs: dict[str, str] | None = None
-        if isinstance(latest_c, dict) and latest_c:
-            latest_calcs = {str(k): str(v) for k, v in latest_c.items()}
+        latest_calcs: dict[str, str] | None = _extract_calcs_formulas(
+            latest_node.get("Calcs"),
+        )
 
         out.append(
             CircuitBucketEntry(

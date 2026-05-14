@@ -44,13 +44,24 @@
       "Availability": 100.0,
       "Production_Mode": "2",
       "Runtime": 11.5,
-      "Calcs": {
-        "Availability": "Runtime / Scheduled Runtime",
-        "Rate": "Total / Runtime",
-        "Total": "C1+C8-C7",
-        "Performance": "Rate / 1050"
-      },
       "Description": "Secondary",
+      "Calcs": {
+        "Availability": {
+          "Formula": "Secondary Runtime / Workcenter Scheduled Runtime"
+        },
+        "Runtime": {
+          "Formula": "Workcenter Runtime"
+        },
+        "Rate": {
+          "Formula": "Secondary Total / Secondary Runtime"
+        },
+        "Total": {
+          "Formula": "Kleeman Feed Total \u002B Crusher Run Total - Rejects Total"
+        },
+        "Performance": {
+          "Formula": "Secondary Total / Secondary Runtime / Workcenter Ideal Rate"
+        }
+      },
       "Start_Time": "06:15:00",
       "Ideal_Rate": 1050.0,
       "Rate": 468.6,
@@ -104,9 +115,15 @@
             "Runtime": 10.9,
             "Description": "57-2",
             "Calcs": {
-              "Rate": "(C3\u002BC4 Total) / Runtime",
-              "Total": "C3\u002BC4",
-              "Yield": "(C3\u002BC4 Total) / Workcenter Total"
+              "Rate": {
+                "Formula": "57-2 Total / Workcenter Runtime"
+              },
+              "Total": {
+                "Formula": "57-2C Total \u002B 57-2 Total"
+              },
+              "Yield": {
+                "Formula": "57-2 Total / Secondary Total"
+              }
             },
             "Rate": 40.8,
             "Total": 468.8,
@@ -116,9 +133,15 @@
             "Runtime": 10.9,
             "Description": "57-1",
             "Calcs": {
-              "Rate": "(C5\u002BC6 Total) / Runtime",
-              "Total": "C5\u002BC6",
-              "Yield": "(C5\u002BC6 Total) / Workcenter Total"
+              "Rate": {
+                "Formula": "57-1 Total / Workcenter Runtime"
+              },
+              "Total": {
+                "Formula": "57-1 Total \u002B 57-1C Total"
+              },
+              "Yield": {
+                "Formula": "57-1 Total / Secondary Total"
+              }
             },
             "Rate": 212.2,
             "Total": 2441.2,
@@ -128,9 +151,18 @@
         "Runtime": 21.7,
         "Description": "Main Circuit",
         "Calcs": {
-          "Rate": "(C3\u002BC4\u002BC5\u002BC6 Total) / Runtime",
-          "Total": "C3\u002BC4\u002BC5\u002BC6 Total",
-          "Yield": "(C3\u002BC4\u002BC5\u002BC6 Total) / Workcenter Total"
+          "Runtime": {
+            "Formula": "57-2 Runtime \u002B 57-1 Runtime"
+          },
+          "Rate": {
+            "Formula": "Main Circuit Total / Workcenter Runtime"
+          },
+          "Total": {
+            "Formula": "57-2 Total \u002B 57-1 Total"
+          },
+          "Yield": {
+            "Formula": "Main Circuit Total / Secondary Total"
+          }
         },
         "Rate": 253.0,
         "Total": 2910.0,
@@ -140,9 +172,18 @@
         "Runtime": null,
         "Description": "CR Circuit",
         "Calcs": {
-          "Rate": "C8 Total / Runtime",
-          "Total": "C8 Total",
-          "Yield": "C8 Total / Workcenter Total"
+          "Runtime": {
+            "Formula": "Crusher Run Runtime"
+          },
+          "Rate": {
+            "Formula": "CR Circuit Total / Workcenter Runtime"
+          },
+          "Total": {
+            "Formula": "Crusher Run Total"
+          },
+          "Yield": {
+            "Formula": "CR Circuit Total / Secondary Total"
+          }
         },
         "Rate": 0.0,
         "Total": 0.0,

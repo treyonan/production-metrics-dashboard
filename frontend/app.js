@@ -2092,6 +2092,10 @@
   // sharing a common left edge. Null when no entity surfaces a
   // formula.
   function _multiCalcsLine(items, metric) {
+    // Multi-entity calcs line (e.g. "by Line" charts). Each `item` is
+    // a per-line entity ({ label, buckets }). Prefix each formula with
+    // the entity's label and an "=" so a stacked footnote reads
+    // unambiguously even when the chart legend isn't in view.
     const parts = [];
     for (const item of items) {
       const f = _calcsLatest(item.buckets, metric);
