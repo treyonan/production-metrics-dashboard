@@ -302,6 +302,7 @@ def _to_rollup_entry(
         calcs_labels=_resolve_labels_for_calcs(         # Phase 25
             r.calcs, labels, site_id, dept_id, "Workcenter", "Workcenter",
         ),
+        calcs_verbose=r.calcs_verbose,                  # Phase 27
     )
 
 
@@ -430,6 +431,7 @@ def _to_pyd_circuit_entry(
         calcs_labels=_resolve_labels_for_calcs(         # Phase 25
             e.calcs, labels, site_id, dept_id, scope_class, asset,
         ),
+        calcs_verbose=e.calcs_verbose,                  # Phase 27
     )
 
 

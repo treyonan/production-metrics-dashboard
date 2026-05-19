@@ -319,6 +319,17 @@ class RollupEntry(BaseModel):
             "raw metric key. Null when ``calcs`` itself is null."
         ),
     )
+    calcs_verbose: dict[str, str] | None = Field(
+        default=None,
+        description=(
+            "Phase 27. Parallel dict to ``calcs`` carrying the verbose "
+            "(expanded) formula for each metric, sourced from each "
+            "Calcs entry's Formula_Verbose field. Same keys as ``calcs`` "
+            "when populated. The dashboard's formula-mode toggle picks "
+            "between ``calcs`` (simplified) and this dict (verbose); "
+            "missing entries here fall back to ``calcs``."
+        ),
+    )
 
 
 class RollupResponse(BaseModel):
@@ -383,6 +394,13 @@ class CircuitBucketEntry(BaseModel):
             "appropriate scope (Circuit or Circuit_Line_<L>). When a "
             "key is absent, the frontend falls back to the raw metric "
             "key. Null when ``calcs`` itself is null."
+        ),
+    )
+    calcs_verbose: dict[str, str] | None = Field(
+        default=None,
+        description=(
+            "Phase 27. Parallel dict to ``calcs`` carrying the verbose "
+            "(expanded) formula per metric. See RollupEntry.calcs_verbose."
         ),
     )
 

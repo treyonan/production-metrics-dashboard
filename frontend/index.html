@@ -181,6 +181,13 @@
           <select class="date-input" id="trends-to-year" aria-label="Trends to-year"></select>
         </div>
         <span class="trends-status muted" id="trends-status"></span>
+        <div class="trends-control-group trends-formula-group">
+          <label class="filter-label">Formula</label>
+          <div class="trends-bucket-toggle" id="trends-formula-toggle" role="tablist" aria-label="Formula mode">
+            <button type="button" class="bucket-btn on" data-formula="simplified" role="tab" aria-selected="true">Simplified</button>
+            <button type="button" class="bucket-btn"    data-formula="verbose"    role="tab" aria-selected="false">Verbose</button>
+          </div>
+        </div>
       </div>
 
       <div class="warn-bar err" id="trends-err-bar" style="display:none"></div>

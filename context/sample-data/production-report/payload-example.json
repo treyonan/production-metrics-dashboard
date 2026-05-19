@@ -15,8 +15,7 @@
       "Belt_Scale_Availability": 99.7,
       "Rate": 1.0,
       "Total": 11.0,
-      "Produced_Item_Code": "_",
-      "Performance": null
+      "Produced_Item_Code": "_"
     },
     "C4": {
       "Availability": 94.5,
@@ -41,25 +40,26 @@
       "Performance": 68.2
     },
     "Workcenter": {
-      "Availability": 100.0,
+      "Availability": 86.2,
       "Production_Mode": "2",
-      "Runtime": 11.5,
+      "Runtime": 9.9,
       "Description": "Secondary",
       "Calcs": {
         "Availability": {
-          "Formula": "Secondary Runtime / Workcenter Scheduled Runtime"
-        },
-        "Runtime": {
-          "Formula": "Workcenter Runtime"
+          "Formula": "(Main Circuit Availability*Main Circuit Capacity Weight)\u002B(CR Circuit Availability*CR Circuit Capacity Weight)",
+          "Formula_Verbose": "(((Main Screen 1 Runtime\u002BMain Screen 2 Runtime)/(Secondary Runtime*2))*Main Circuit Capacity Weight)\u002B((C8 Runtime/Secondary Runtime)*CR Circuit Capacity Weight)"
         },
         "Rate": {
-          "Formula": "Secondary Total / Secondary Runtime"
+          "Formula": "Secondary Total/Secondary Runtime",
+          "Formula_Verbose": "(C1\u002BC8-C7)/(((Main Screen 1 Runtime\u002BMain Screen 2 Runtime)*Main Circuit Capacity Weight/2)\u002B(C8 Runtime*CR Circuit Capacity Weight))"
         },
         "Total": {
-          "Formula": "Kleeman Feed Total \u002B Crusher Run Total - Rejects Total"
+          "Formula": "C1\u002BC8-C7",
+          "Formula_Verbose": "C1\u002BC8-C7"
         },
         "Performance": {
-          "Formula": "Secondary Total / Secondary Runtime / Workcenter Ideal Rate"
+          "Formula": "(Secondary Total/Secondary Runtime)/Secondary Ideal Rate",
+          "Formula_Verbose": "((C1\u002BC8-C7)/(((Main Screen 1 Runtime\u002BMain Screen 2 Runtime)*Main Circuit Capacity Weight/2)\u002B(C8 Runtime*CR Circuit Capacity Weight)))/Secondary Ideal Rate"
         }
       },
       "Start_Time": "06:15:00",
@@ -67,7 +67,7 @@
       "Rate": 468.6,
       "Total": 5390.2,
       "Scheduled_Status": "Scheduled",
-      "Performance": 44.6,
+      "Performance": 51.8,
       "Scheduled_Runtime": 11.5
     },
     "C6": {
@@ -78,8 +78,7 @@
       "Belt_Scale_Availability": 0.0,
       "Rate": 0.0,
       "Total": 0.0,
-      "Produced_Item_Code": "_",
-      "Performance": null
+      "Produced_Item_Code": "_"
     },
     "C7": {
       "Availability": 94.2,
@@ -100,8 +99,7 @@
       "Belt_Scale_Availability": 0.0,
       "Rate": 0.0,
       "Total": 0.0,
-      "Produced_Item_Code": "ST5450",
-      "Performance": null
+      "Produced_Item_Code": "ST5450"
     },
     "Crusher1": {
       "Runtime": 16.0,
@@ -113,16 +111,19 @@
         "Line": {
           "A": {
             "Runtime": 10.9,
-            "Description": "57-2",
+            "Description": "Main Screen 1",
             "Calcs": {
               "Rate": {
-                "Formula": "57-2 Total / Workcenter Runtime"
+                "Formula": "Main Screen 1 Total/Secondary Runtime",
+                "Formula_Verbose": "(C3\u002BC4)/Secondary Runtime"
               },
               "Total": {
-                "Formula": "57-2C Total \u002B 57-2 Total"
+                "Formula": "C3\u002BC4",
+                "Formula_Verbose": "C3\u002BC4"
               },
               "Yield": {
-                "Formula": "57-2 Total / Secondary Total"
+                "Formula": "Main Screen 1 Total/Secondary Total",
+                "Formula_Verbose": "(C3\u002BC4)/(C1\u002BC8-C7)"
               }
             },
             "Rate": 40.8,
@@ -131,16 +132,19 @@
           },
           "B": {
             "Runtime": 10.9,
-            "Description": "57-1",
+            "Description": "Main Screen 2",
             "Calcs": {
               "Rate": {
-                "Formula": "57-1 Total / Workcenter Runtime"
+                "Formula": "Main Screen 2 Total/Secondary Runtime",
+                "Formula_Verbose": "(C5\u002BC6)/Secondary Runtime"
               },
               "Total": {
-                "Formula": "57-1 Total \u002B 57-1C Total"
+                "Formula": "C5\u002BC6",
+                "Formula_Verbose": "C5\u002BC6"
               },
               "Yield": {
-                "Formula": "57-1 Total / Secondary Total"
+                "Formula": "Main Screen 2 Total/Secondary Total",
+                "Formula_Verbose": "(C5\u002BC6)/(C1\u002BC8-C7)"
               }
             },
             "Rate": 212.2,
@@ -151,38 +155,38 @@
         "Runtime": 21.7,
         "Description": "Main Circuit",
         "Calcs": {
-          "Runtime": {
-            "Formula": "57-2 Runtime \u002B 57-1 Runtime"
-          },
           "Rate": {
-            "Formula": "Main Circuit Total / Workcenter Runtime"
+            "Formula": "Main Circuit Total/Secondary Runtime",
+            "Formula_Verbose": "(C3\u002BC4\u002BC5\u002BC6)/Secondary Runtime"
           },
           "Total": {
-            "Formula": "57-2 Total \u002B 57-1 Total"
+            "Formula": "Main Screen 1 Total\u002BMain Screen 2 Total",
+            "Formula_Verbose": "C3\u002BC4\u002BC5\u002BC6"
           },
           "Yield": {
-            "Formula": "Main Circuit Total / Secondary Total"
+            "Formula": "Main Circuit Total/Secondary Total",
+            "Formula_Verbose": "(C3\u002BC4\u002BC5\u002BC6)/(C1\u002BC8-C7)"
           }
         },
-        "Rate": 253.0,
-        "Total": 2910.0,
+        "Rate": 252.9,
+        "Total": 2909.0,
         "Yield": 0.5
       },
       "B": {
-        "Runtime": null,
+        "Runtime": 0.0,
         "Description": "CR Circuit",
         "Calcs": {
-          "Runtime": {
-            "Formula": "Crusher Run Runtime"
-          },
           "Rate": {
-            "Formula": "CR Circuit Total / Workcenter Runtime"
+            "Formula": "CR Circuit Total/Secondary Runtime",
+            "Formula_Verbose": "C8 Total/Secondary Runtime"
           },
           "Total": {
-            "Formula": "Crusher Run Total"
+            "Formula": "C8 Total",
+            "Formula_Verbose": "C8 Total"
           },
           "Yield": {
-            "Formula": "CR Circuit Total / Secondary Total"
+            "Formula": "CR Circuit Total/Secondary Total",
+            "Formula_Verbose": "C8 Total/(C1\u002BC8-C7)"
           }
         },
         "Rate": 0.0,
@@ -204,7 +208,7 @@
       "Rate": 544.4,
       "Total": 6262.3,
       "Produced_Item_Code": "_",
-      "Performance": 60.2
+      "Performance": 60.0
     }
   }
 }

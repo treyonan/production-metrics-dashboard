@@ -466,7 +466,16 @@ body {
   letter-spacing: .02em;
 }
 .date-input {
-  width: 100%;
+  /* Fixed width so the monthly month-picker and the yearly year-select
+     occupy the same horizontal space -- prevents the Formula toggle
+     and other right-side controls from shifting when the View toggle
+     switches between Monthly and Yearly. */
+  width: 140px;
+  /* Match the 28px height of .trends-bucket-toggle so date entry
+     boxes line up vertically with the toggle buttons, which in turn
+     makes the per-group labels above them all sit on the same baseline. */
+  height: 28px;
+  box-sizing: border-box;
   padding: 4px 6px;
   font-size: 11px;
   font-family: inherit;

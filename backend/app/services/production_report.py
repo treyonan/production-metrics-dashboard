@@ -312,6 +312,10 @@ class Rollup:
     # Phase 22: latest report's Workcenter.Calcs in this bucket
     # (verbatim pass-through). None when absent.
     calcs: dict[str, str] | None
+    # Phase 27: parallel dict of verbose formulas, sourced from the
+    # same Calcs entries' Formula_Verbose field. Same keys as `calcs`
+    # when populated. None when no entry has a Formula_Verbose value.
+    calcs_verbose: dict[str, str] | None
     # Phase 14a: simple-average per-report metrics for the
     # manager-style bar charts (Total TPH Fed, Runtime %). None when
     # no report in the bucket contributed a non-null value (after
@@ -355,23 +359,31 @@ def _coerce_finite_float(v: Any) -> float | None:
     return f if math.isfinite(f) else None
 
 
-def _extract_calcs_formulas(c: Any) -> dict[str, str] | None:
+def _extract_calcs_formulas(
+    c: Any, *, field: str = "Formula"
+) -> dict[str, str] | None:
     """Pull ``{metric -> formula-string}`` out of a payload Calcs block.
 
     Supports two payload shapes:
 
-      * Current (2026-05): each entry is an object with a ``Formula``
-        field, e.g. ``{"Total": {"Formula": "C1+C8-C7"}}``. Future
-        entries may carry other sibling fields beyond ``Formula``;
-        anything else is ignored here.
+      * Current (2026-05): each entry is an object with both a
+        ``Formula`` field (simplified, default) and a ``Formula_Verbose``
+        field (the expanded form), e.g.
+        ``{"Total": {"Formula": "C1+C8-C7", "Formula_Verbose": "..."}}``.
+        Pass ``field="Formula_Verbose"`` to extract the verbose form.
+        Future entries may carry additional sibling fields; everything
+        outside the requested ``field`` is ignored here.
       * Legacy: each entry is a plain string formula, e.g.
         ``{"Total": "C1+C8-C7"}``. Older reports may still be in this
-        shape; the dashboard renders them identically.
+        shape; treated as the simplified ``Formula`` only (the
+        ``Formula_Verbose`` extract returns None for legacy entries,
+        which is correct -- the consumer falls back to the simplified
+        dict).
 
     Returns ``None`` when the block is missing/empty or when no entry
-    has a usable formula string. The downstream Pydantic model on the
-    wire stays ``dict[str, str]`` either way -- the consumer never
-    sees the nested object shape.
+    has a usable formula string for the requested ``field``. The
+    downstream Pydantic model on the wire stays ``dict[str, str]``
+    either way -- the consumer never sees the nested object shape.
     """
     if not isinstance(c, dict) or not c:
         return None
@@ -379,10 +391,11 @@ def _extract_calcs_formulas(c: Any) -> dict[str, str] | None:
     for k, v in c.items():
         key = str(k)
         if isinstance(v, dict):
-            f = v.get("Formula")
+            f = v.get(field)
             if isinstance(f, str) and f:
                 out[key] = f
-        elif isinstance(v, str) and v:
+        elif isinstance(v, str) and v and field == "Formula":
+            # Legacy plain-string entries only carry the simplified form.
             out[key] = v
     return out or None
 
@@ -572,8 +585,13 @@ async def get_rollup(
         latest_report = max(group, key=lambda r: r.prod_date)
         latest_wc = (latest_report.payload or {}).get("Metrics", {}).get("Workcenter")
         latest_calcs: dict[str, str] | None = None
+        latest_calcs_verbose: dict[str, str] | None = None
         if isinstance(latest_wc, dict):
-            latest_calcs = _extract_calcs_formulas(latest_wc.get("Calcs"))
+            wc_calcs_block = latest_wc.get("Calcs")
+            latest_calcs = _extract_calcs_formulas(wc_calcs_block)
+            latest_calcs_verbose = _extract_calcs_formulas(
+                wc_calcs_block, field="Formula_Verbose",
+            )
 
         out.append(
             Rollup(
@@ -587,6 +605,7 @@ async def get_rollup(
                 avg_runtime_pct=avg_runtime_pct,
                 avg_performance_pct=avg_performance_pct,
                 calcs=latest_calcs,
+                calcs_verbose=latest_calcs_verbose,
             )
         )
 
@@ -614,6 +633,8 @@ class CircuitBucketEntry:
     report_count: int
     # Phase 22: latest report's node.Calcs in this bucket. None if absent.
     calcs: dict[str, str] | None
+    # Phase 27: parallel dict of verbose formulas (Formula_Verbose).
+    calcs_verbose: dict[str, str] | None
 
 
 @dataclass(frozen=True)
@@ -698,8 +719,12 @@ def _circuit_node_aggregate(
 
         # Phase 22: latest node's Calcs (latest by prod_date).
         latest_node, _ = max(pairs, key=lambda p: p[1])
+        latest_calcs_block = latest_node.get("Calcs")
         latest_calcs: dict[str, str] | None = _extract_calcs_formulas(
-            latest_node.get("Calcs"),
+            latest_calcs_block,
+        )
+        latest_calcs_verbose: dict[str, str] | None = _extract_calcs_formulas(
+            latest_calcs_block, field="Formula_Verbose",
         )
 
         out.append(
@@ -711,6 +736,7 @@ def _circuit_node_aggregate(
                 avg_yield=avg_yield,
                 report_count=len(nodes),
                 calcs=latest_calcs,
+                calcs_verbose=latest_calcs_verbose,
             )
         )
     return out

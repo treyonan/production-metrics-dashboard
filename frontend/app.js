@@ -90,6 +90,18 @@
     }
   } catch (_e) { /* localStorage unavailable in some embeds */ }
 
+  // Phase 27: Formula mode for the calcs footnote on the Trends page.
+  // "simplified" reads from each bucket's `calcs[metric]`; "verbose"
+  // reads from `calcs_verbose[metric]` (falling back to `calcs[metric]`
+  // when a metric has no Formula_Verbose). Default: simplified.
+  let _activeFormulaMode = "simplified";
+  try {
+    const _storedFormula = localStorage.getItem("pmd-trends-formula");
+    if (_storedFormula === "simplified" || _storedFormula === "verbose") {
+      _activeFormulaMode = _storedFormula;
+    }
+  } catch (_e) { /* localStorage unavailable in some embeds */ }
+
   // Phase 19/20: Production ID prefix filter for the dashboard's
   // per-workcenter tables and Excel export. Three states:
   //   "all" -- show all rows (default)
@@ -1891,6 +1903,7 @@
 
     // Sync the toggle button + picker visibility to the saved bucket.
     _applyBucketUi(_activeTrendsBucket);
+    _applyFormulaUi(_activeFormulaMode);
   }
 
   function wireTrendsControls() {
@@ -1911,6 +1924,18 @@
         const btn = ev.target.closest(".bucket-btn");
         if (!btn) return;
         _setActiveTrendsBucket(btn.dataset.bucket);
+      });
+    }
+
+    // Phase 27: formula mode toggle (Simplified/Verbose). Re-renders
+    // in place using the cached payloads -- no refetch, since switching
+    // formulas only swaps which dict the calcs footnote reads from.
+    const formulaToggle = $("trends-formula-toggle");
+    if (formulaToggle) {
+      formulaToggle.addEventListener("click", (ev) => {
+        const btn = ev.target.closest(".bucket-btn");
+        if (!btn) return;
+        _setActiveFormulaMode(btn.dataset.formula);
       });
     }
   }
@@ -1947,6 +1972,29 @@
     }
     for (const elx of document.querySelectorAll(".trends-yearly-only")) {
       elx.style.display = bucket === "yearly" ? "" : "none";
+    }
+  }
+
+  // Phase 27: switch the calcs footnote between the simplified and
+  // verbose formula dicts. No refetch -- the data is already on hand;
+  // we just need _calcsLatestEntry to pick from the other dict and the
+  // trend panels to re-render with the new strings.
+  function _setActiveFormulaMode(mode) {
+    if (mode !== "simplified" && mode !== "verbose") return;
+    if (mode === _activeFormulaMode) return;
+    _activeFormulaMode = mode;
+    try { localStorage.setItem("pmd-trends-formula", mode); } catch (_e) {}
+    _applyFormulaUi(mode);
+    if (currentView === "trends" && _lastTrendsPayload) {
+      renderTrends(_lastTrendsPayload, _lastTrendsCircuitPayload);
+    }
+  }
+
+  function _applyFormulaUi(mode) {
+    for (const btn of document.querySelectorAll("#trends-formula-toggle .bucket-btn")) {
+      const on = btn.dataset.formula === mode;
+      btn.classList.toggle("on", on);
+      btn.setAttribute("aria-selected", on ? "true" : "false");
     }
   }
 
@@ -2044,11 +2092,22 @@
       const b = list[i];
       const c = b && b.calcs;
       if (c && typeof c === "object" && typeof c[metric] === "string" && c[metric]) {
+        // Phase 27: pick simplified vs verbose formula. Verbose mode
+        // prefers calcs_verbose[metric] but falls back to the simplified
+        // form when a metric has no Formula_Verbose value.
+        let formula = c[metric];
+        if (_activeFormulaMode === "verbose") {
+          const cv = b.calcs_verbose;
+          if (cv && typeof cv === "object"
+              && typeof cv[metric] === "string" && cv[metric]) {
+            formula = cv[metric];
+          }
+        }
         const cl = b.calcs_labels;
         const label = (cl && typeof cl === "object"
                           && typeof cl[metric] === "string" && cl[metric])
                       ? cl[metric] : null;
-        return { formula: c[metric], label };
+        return { formula, label };
       }
     }
     return null;
