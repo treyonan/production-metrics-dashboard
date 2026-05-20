@@ -78,22 +78,29 @@
     line-height: 1.4;
     min-height: 100vh;
   }
+  /* Topbar -- mirrors frontend/app.css's .topbar so navigating between
+     this page and the main dashboard doesn't visually shift anything.
+     Same 40px height, same dark-shell background, same 2px brand-yellow
+     border at the bottom. */
   header.topbar {
+    height: 40px;
     background: var(--bg-shell);
     color: var(--shell-text);
-    padding: 10px 24px;
+    padding: 0 10px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    border-bottom: 1px solid var(--border-strong);
+    border-bottom: 2px solid #ffde74;
   }
   .brand-row {
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 7px;
   }
+  /* Match the main dashboard's .tlogo-img height so the logo lands in
+     the same vertical band. */
   .brand-logo {
-    height: 36px;
+    height: 28px;
     width: auto;
     display: block;
     flex-shrink: 0;
@@ -111,19 +118,49 @@
     font-size: 11px;
   }
   .topbar-actions { display: flex; gap: 8px; align-items: center; }
-  .theme-toggle, .home-link {
+  /* Dashboard back-link styled exactly like the main dashboard's
+     .nav-link (which links the other direction to /flow-interval-metrics).
+     Same 26px height, padding, font, and pill-button look. */
+  .home-link {
+    height: 26px;
+    padding: 0 12px;
+    margin-right: 10px;
+    display: inline-flex;
+    align-items: center;
+    border-radius: 2px;
     background: var(--shell-button-bg);
-    border: none;
+    color: var(--shell-text);
+    text-decoration: none;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .home-link:hover { background: var(--shell-hover-bg); }
+  .home-link:active { transform: translateY(1px); }
+  /* Theme toggle: small square icon button, same style as the main
+     dashboard's .theme-toggle in app.css. JS swaps a sun/moon SVG
+     in based on the active theme. */
+  .theme-toggle {
+    height: 26px;
+    width: 26px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--shell-button-bg);
+    border: 1px solid var(--border-strong);
     border-radius: 2px;
     color: var(--shell-text);
-    padding: 6px 14px;
     cursor: pointer;
-    font: inherit;
-    font-size: 13px;
-    text-decoration: none;
-    display: inline-block;
+    transition: background .15s, color .15s, transform .1s;
   }
-  .theme-toggle:hover, .home-link:hover { background: var(--shell-hover-bg); }
+  .theme-toggle:hover { background: var(--shell-hover-bg); }
+  .theme-toggle:active { transform: translateY(1px); }
+  .theme-toggle svg { display: block; width: 14px; height: 14px; }
   main {
     max-width: 1400px;
     margin: 0 auto;
@@ -307,7 +344,7 @@
   </div>
   <div class="topbar-actions">
     <a class="home-link" href="/">Dashboard</a>
-    <button class="theme-toggle" id="theme_toggle" aria-label="Toggle light/dark theme">Theme</button>
+    <button class="theme-toggle" id="theme_toggle" type="button" aria-label="Toggle light/dark theme" title="Toggle theme"></button>
   </div>
 </header>
 
@@ -316,10 +353,10 @@
     <div class="form-group">
       <div class="form-group-label">Context</div>
       <div class="row">
-        <label class="field">site_id
+        <label class="field">Site ID
           <input type="number" id="site_id" value="101">
         </label>
-        <label class="field">subject_type
+        <label class="field">Subject Type
           <select id="subject_type">
             <option>workcenter</option>
             <option>conveyor</option>
@@ -329,7 +366,7 @@
             <option>site</option>
           </select>
         </label>
-        <label class="field">interval
+        <label class="field">Interval
           <select id="interval">
             <option>shiftly</option>
             <option>hourly</option>
@@ -339,27 +376,27 @@
     </div>
 
     <div class="form-group">
-      <div class="form-group-label">Filters (optional)</div>
+      <div class="form-group-label">Filters (Optional)</div>
       <div class="row">
-        <label class="field">subject_id
+        <label class="field">Subject ID
           <input type="text" id="subject_id" placeholder="e.g. Secondary">
         </label>
-        <label class="field">department_id
+        <label class="field">Department ID
           <input type="text" id="department_id" placeholder="e.g. 127">
         </label>
-        <label class="field">metric
+        <label class="field">Metric
           <input type="text" id="metric" placeholder="e.g. Total or Rate">
         </label>
       </div>
     </div>
 
     <div class="form-group">
-      <div class="form-group-label">Date range</div>
+      <div class="form-group-label">Date Range</div>
       <div class="row">
-        <label class="field">from_date
+        <label class="field">From Date
           <input type="date" id="from_date">
         </label>
-        <label class="field">to_date
+        <label class="field">To Date
           <input type="date" id="to_date">
         </label>
       </div>
@@ -401,9 +438,38 @@ const $ = (id) => document.getElementById(id);
 
 // Theme: shares the localStorage key with the main dashboard so a
 // preference set in one place carries to the other.
+// Sun / moon SVGs lifted verbatim from frontend/app.js so the icon
+// looks identical to the main dashboard's theme toggle.
+const SUN_SVG = `
+  <svg viewBox="0 0 14 14" aria-hidden="true">
+    <circle cx="7" cy="7" r="2.4" fill="currentColor"/>
+    <g stroke="currentColor" stroke-width="1.2" stroke-linecap="round">
+      <line x1="7" y1="1"    x2="7"  y2="2.6"/>
+      <line x1="7" y1="11.4" x2="7"  y2="13"/>
+      <line x1="1" y1="7"    x2="2.6" y2="7"/>
+      <line x1="11.4" y1="7" x2="13" y2="7"/>
+      <line x1="2.8" y1="2.8"  x2="3.9" y2="3.9"/>
+      <line x1="10.1" y1="10.1" x2="11.2" y2="11.2"/>
+      <line x1="11.2" y1="2.8" x2="10.1" y2="3.9"/>
+      <line x1="3.9"  y1="10.1" x2="2.8" y2="11.2"/>
+    </g>
+  </svg>`;
+const MOON_SVG = `
+  <svg viewBox="0 0 14 14" aria-hidden="true">
+    <path fill="currentColor"
+          d="M11.2 8.8a4.6 4.6 0 0 1-5.9-5.9.4.4 0 0 0-.54-.5 5.6 5.6 0 1 0 6.94 6.94.4.4 0 0 0-.5-.54z"/>
+  </svg>`;
+
 function applyTheme(theme) {
   document.documentElement.setAttribute("data-theme", theme);
   localStorage.setItem("pmd-theme", theme);
+  const btn = $("theme_toggle");
+  if (btn) {
+    btn.innerHTML = theme === "dark" ? SUN_SVG : MOON_SVG;
+    const label = theme === "dark" ? "Switch to light theme" : "Switch to dark theme";
+    btn.setAttribute("aria-label", label);
+    btn.setAttribute("title", label);
+  }
 }
 function initTheme() {
   const stored = localStorage.getItem("pmd-theme");
