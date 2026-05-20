@@ -855,6 +855,19 @@ body {
   line-height: 1;
   opacity: 0.8;
 }
+/* Flow logo glyph that sits inline-left of the "Forms" dropdown and
+   "Flow Metrics" nav-link labels in the topbar. Scaled small enough
+   to fit inside the existing 26px / 40px button heights without
+   changing them; vertical-align centers it on the text baseline.
+   The <img> is decorative (alt=""), so screen readers skip it. */
+.btn-flow-logo {
+  height: 14px;
+  width: auto;
+  margin-right: 6px;
+  vertical-align: middle;
+  display: inline-block;
+  flex-shrink: 0;
+}
 /* Container for the Charts tab + its dropdown menu. Positioned
    relative so the menu can absolute-position itself just below the
    button. */
