@@ -62,6 +62,29 @@
   //   no hash / #dashboard -> 'dashboard'
   //   #trends              -> 'trends'
   let currentView = 'dashboard';
+
+  // External chart links shown in the "Charts" dropdown next to the
+  // Dashboard / Trends tabs. Each entry is:
+  //   { label, urls: { "<site_id>": "<url>", ... } }
+  // Items open in a new browser tab so the dashboard's filter / view
+  // state is preserved. The URL is resolved at click time from the
+  // currently selected site. Sites without an entry render the menu
+  // item in a disabled state ("not configured for this site").
+  //
+  // To add a new link type, push a new object here.
+  // To add a new site's URL for an existing link, add an entry under
+  // its `urls` map.
+  const EXTERNAL_CHART_LINKS = [
+    {
+      label: "Belt Scale Entry",
+      urls: {
+        // Big Canyon Quarry
+        "101": "http://dbp-bcq:4501/flow-software/flow/instances/80D1092C-EFBF-4592-9425-C85ABE2EC7FB/server/charts/55",
+        // Add other sites here, e.g.:
+        // "100": "http://dbp-ard:4501/flow-software/...",
+      },
+    },
+  ];
   // Chart.js instances for the trends view (Total Tons + TPH charts).
   // Tracked separately from _chartInstances so a poll-cycle wipe of
   // the dashboard doesn't kill them.
@@ -446,6 +469,7 @@
             renderSiteToggle();
             renderSiteStrip();
             renderChips();
+            if (_chartsMenuRefresh) _chartsMenuRefresh();
             // Refresh whichever view is currently active. Dashboard
             // and Trends both need the new site's data; polling only
             // ever drives the dashboard.
@@ -1745,6 +1769,7 @@
 
     // Phase 10b: view tabs + hash routing + trends month-range inputs.
     wireViewTabs();
+    wireChartsDropdown();
     populateTrendsRangeDefaults();
     wireTrendsControls();
     window.addEventListener("hashchange", () => applyViewFromHash());
@@ -1829,6 +1854,105 @@
         location.hash = "#" + next;
       });
     }
+  }
+
+  // Charts dropdown next to the view tabs. Renders one menu item per
+  // EXTERNAL_CHART_LINKS entry. Each item's URL is resolved per-site
+  // from the entry's `urls` map; items without a URL for the current
+  // site render disabled. Closes the menu on outside-click, Escape,
+  // or after the user picks a link. Items open in a new browser tab.
+  let _chartsMenuRefresh = null;
+  function wireChartsDropdown() {
+    const trigger = $("charts-tab");
+    const menu = $("charts-menu");
+    if (!trigger || !menu) return;
+
+    // Render menu items once. Each item is an <a> whose href we update
+    // on every site change; sites without a configured URL render
+    // disabled. Storing one DOM element per link entry lets us swap
+    // href values in-place rather than rebuilding the menu.
+    const itemEls = [];
+    if (EXTERNAL_CHART_LINKS.length === 0) {
+      menu.appendChild(el("div", { class: "vtab-menu-empty" },
+        "No chart links configured yet."));
+    } else {
+      for (const link of EXTERNAL_CHART_LINKS) {
+        const a = el("a", {
+          class: "vtab-menu-item",
+          href: "#",
+          target: "_blank",
+          rel: "noopener noreferrer",
+          role: "menuitem",
+          onclick: (ev) => {
+            // Block the click when no URL is configured for the
+            // current site. Otherwise let the browser handle it
+            // (new-tab open, middle-click, etc.).
+            if (a.getAttribute("aria-disabled") === "true") {
+              ev.preventDefault();
+              return;
+            }
+            closeChartsMenu();
+          },
+        }, link.label);
+        itemEls.push({ el: a, link });
+        menu.appendChild(a);
+      }
+    }
+
+    // Resolve hrefs from the currently selected site. Called once at
+    // bootstrap (after the site list loads) and again whenever the
+    // user picks a different site.
+    function refreshChartsMenu() {
+      const siteKey = currentSiteId == null ? null : String(currentSiteId);
+      for (const { el: a, link } of itemEls) {
+        const url = siteKey && link.urls ? link.urls[siteKey] : null;
+        if (url) {
+          a.setAttribute("href", url);
+          a.removeAttribute("aria-disabled");
+          a.style.opacity = "";
+          a.style.cursor = "";
+          a.title = link.label;
+        } else {
+          a.setAttribute("href", "#");
+          a.setAttribute("aria-disabled", "true");
+          a.style.opacity = "0.45";
+          a.style.cursor = "not-allowed";
+          a.title = "Not configured for this site";
+        }
+      }
+    }
+    _chartsMenuRefresh = refreshChartsMenu;
+    refreshChartsMenu();
+
+    const openChartsMenu = () => {
+      menu.hidden = false;
+      trigger.setAttribute("aria-expanded", "true");
+    };
+    const closeChartsMenu = () => {
+      menu.hidden = true;
+      trigger.setAttribute("aria-expanded", "false");
+    };
+
+    trigger.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      // Make sure hrefs reflect the current site even if the site
+      // changed since the menu was last opened.
+      refreshChartsMenu();
+      if (menu.hidden) openChartsMenu(); else closeChartsMenu();
+    });
+
+    // Outside-click close.
+    document.addEventListener("click", (ev) => {
+      if (menu.hidden) return;
+      if (ev.target === trigger || trigger.contains(ev.target)) return;
+      if (menu.contains(ev.target)) return;
+      closeChartsMenu();
+    });
+
+    // Escape closes too.
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape" && !menu.hidden) closeChartsMenu();
+    });
   }
 
   function applyViewFromHash() {

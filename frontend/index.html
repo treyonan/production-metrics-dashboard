@@ -32,6 +32,17 @@
     <div class="view-tabs" id="view-tabs" role="tablist" aria-label="View selector">
       <button class="vtab on" data-view="dashboard" role="tab" aria-selected="true">Dashboard</button>
       <button class="vtab"    data-view="trends"    role="tab" aria-selected="false">Trends</button>
+      <!-- Forms dropdown: opens a menu of external page URLs (Belt
+           Scale Entry and similar operator-facing forms). Items render
+           from EXTERNAL_CHART_LINKS in app.js (edit there to add new
+           URLs). Each item opens in a new tab. -->
+      <div class="vtab-dropdown">
+        <button class="vtab vtab-trigger" id="charts-tab" type="button"
+                aria-haspopup="menu" aria-expanded="false" aria-controls="charts-menu">
+          Forms <span class="vtab-caret" aria-hidden="true">&#9662;</span>
+        </button>
+        <div class="vtab-menu" id="charts-menu" role="menu" hidden></div>
+      </div>
     </div>
     <div style="flex:1"></div>
     <a class="nav-link" id="flow-metrics-link"
