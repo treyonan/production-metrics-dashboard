@@ -32,10 +32,19 @@
     <div class="view-tabs" id="view-tabs" role="tablist" aria-label="View selector">
       <button class="vtab on" data-view="dashboard" role="tab" aria-selected="true">Dashboard</button>
       <button class="vtab"    data-view="trends"    role="tab" aria-selected="false">Trends</button>
+      <!-- Charts dropdown: opens a menu of external chart URLs (OEE
+           and similar Flow-server charts). Items render from
+           EXTERNAL_LINKS_CHARTS in app.js. Each item opens in a new tab. -->
+      <div class="vtab-dropdown">
+        <button class="vtab vtab-trigger" id="extcharts-tab" type="button"
+                aria-haspopup="menu" aria-expanded="false" aria-controls="extcharts-menu">
+          <img class="btn-flow-logo" src="/content/flow-logo.png" alt="">Charts <span class="vtab-caret" aria-hidden="true">&#9662;</span>
+        </button>
+        <div class="vtab-menu" id="extcharts-menu" role="menu" hidden></div>
+      </div>
       <!-- Forms dropdown: opens a menu of external page URLs (Belt
            Scale Entry and similar operator-facing forms). Items render
-           from EXTERNAL_CHART_LINKS in app.js (edit there to add new
-           URLs). Each item opens in a new tab. -->
+           from EXTERNAL_LINKS_FORMS in app.js. Each item opens in a new tab. -->
       <div class="vtab-dropdown">
         <button class="vtab vtab-trigger" id="charts-tab" type="button"
                 aria-haspopup="menu" aria-expanded="false" aria-controls="charts-menu">
@@ -43,12 +52,15 @@
         </button>
         <div class="vtab-menu" id="charts-menu" role="menu" hidden></div>
       </div>
+      <!-- Metrics: styled like a vtab so it visually matches the
+           Charts / Forms dropdowns next to it, but it's a plain link
+           (no dropdown) that navigates to /flow-interval-metrics.html. -->
+      <a class="vtab" id="flow-metrics-link"
+         href="/flow-interval-metrics.html"
+         title="Open the Flow Interval Metrics page (secondary data source)"
+         aria-label="Flow Interval Metrics page"><img class="btn-flow-logo" src="/content/flow-logo.png" alt="">Metrics</a>
     </div>
     <div style="flex:1"></div>
-    <a class="nav-link" id="flow-metrics-link"
-       href="/flow-interval-metrics.html"
-       title="Open the Flow Interval Metrics page (secondary data source)"
-       aria-label="Flow Interval Metrics page"><img class="btn-flow-logo" src="/content/flow-logo.png" alt="">Flow Metrics</a>
     <button class="export-btn" id="export-btn" type="button" disabled
             aria-label="Download current view as Excel (.xlsx)" title="Download as Excel">
       <svg viewBox="0 0 14 14" aria-hidden="true">
@@ -231,3 +243,4 @@
 <script src="app.js"></script>
 </body>
 </html>
+     

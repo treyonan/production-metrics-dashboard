@@ -63,18 +63,20 @@
   //   #trends              -> 'trends'
   let currentView = 'dashboard';
 
-  // External chart links shown in the "Charts" dropdown next to the
-  // Dashboard / Trends tabs. Each entry is:
+  // External link config for the topbar dropdowns next to the Dashboard /
+  // Trends tabs. Each entry shape is:
   //   { label, urls: { "<site_id>": "<url>", ... } }
   // Items open in a new browser tab so the dashboard's filter / view
   // state is preserved. The URL is resolved at click time from the
   // currently selected site. Sites without an entry render the menu
   // item in a disabled state ("not configured for this site").
   //
-  // To add a new link type, push a new object here.
-  // To add a new site's URL for an existing link, add an entry under
-  // its `urls` map.
-  const EXTERNAL_CHART_LINKS = [
+  // To add a new link, push a new object into the relevant array.
+  // To add a new site's URL for an existing link, add an entry to its
+  // `urls` map.
+
+  // Forms dropdown: operator-facing entry forms.
+  const EXTERNAL_LINKS_FORMS = [
     {
       label: "Belt Scale Entry",
       urls: {
@@ -82,6 +84,18 @@
         "101": "http://dbp-bcq:4501/flow-software/flow/instances/80D1092C-EFBF-4592-9425-C85ABE2EC7FB/server/charts/55",
         // Add other sites here, e.g.:
         // "100": "http://dbp-ard:4501/flow-software/...",
+      },
+    },
+  ];
+
+  // Charts dropdown: read-only Flow-server chart pages.
+  const EXTERNAL_LINKS_CHARTS = [
+    {
+      label: "OEE",
+      urls: {
+        // Big Canyon Quarry
+        "101": "http://dbp-bcq:4501/flow-software/flow/instances/80D1092C-EFBF-4592-9425-C85ABE2EC7FB/server/dashboards/10",
+        // "100": "http://dbp-ard:4501/...",
       },
     },
   ];
@@ -469,7 +483,7 @@
             renderSiteToggle();
             renderSiteStrip();
             renderChips();
-            if (_chartsMenuRefresh) _chartsMenuRefresh();
+            for (const fn of _extLinkRefreshers) fn();
             // Refresh whichever view is currently active. Dashboard
             // and Trends both need the new site's data; polling only
             // ever drives the dashboard.
@@ -1769,7 +1783,16 @@
 
     // Phase 10b: view tabs + hash routing + trends month-range inputs.
     wireViewTabs();
-    wireChartsDropdown();
+    wireExternalLinksDropdown({
+      triggerId: "extcharts-tab",
+      menuId: "extcharts-menu",
+      links: EXTERNAL_LINKS_CHARTS,
+    });
+    wireExternalLinksDropdown({
+      triggerId: "charts-tab",
+      menuId: "charts-menu",
+      links: EXTERNAL_LINKS_FORMS,
+    });
     populateTrendsRangeDefaults();
     wireTrendsControls();
     window.addEventListener("hashchange", () => applyViewFromHash());
@@ -1856,27 +1879,31 @@
     }
   }
 
-  // Charts dropdown next to the view tabs. Renders one menu item per
-  // EXTERNAL_CHART_LINKS entry. Each item's URL is resolved per-site
-  // from the entry's `urls` map; items without a URL for the current
-  // site render disabled. Closes the menu on outside-click, Escape,
-  // or after the user picks a link. Items open in a new browser tab.
-  let _chartsMenuRefresh = null;
-  function wireChartsDropdown() {
-    const trigger = $("charts-tab");
-    const menu = $("charts-menu");
+  // Topbar external-links dropdown. Renders one menu item per entry
+  // in `links`. Each item's URL is resolved per-site from the entry's
+  // `urls` map; items without a URL for the current site render
+  // disabled. Menu closes on outside-click, Escape, or item pick.
+  // Items open in a new browser tab. The function is called once per
+  // dropdown (Charts and Forms today); each call registers its own
+  // refresh callback in `_extLinkRefreshers` so site changes update
+  // every dropdown in lockstep.
+  const _extLinkRefreshers = [];
+  function wireExternalLinksDropdown(opts) {
+    const trigger = $(opts.triggerId);
+    const menu = $(opts.menuId);
+    const links = opts.links;
     if (!trigger || !menu) return;
 
-    // Render menu items once. Each item is an <a> whose href we update
-    // on every site change; sites without a configured URL render
-    // disabled. Storing one DOM element per link entry lets us swap
-    // href values in-place rather than rebuilding the menu.
+    // Render menu items once. Each item is an <a> whose href we
+    // update on every site change; sites without a configured URL
+    // render disabled. Storing one DOM element per link entry lets
+    // us swap href values in-place rather than rebuilding the menu.
     const itemEls = [];
-    if (EXTERNAL_CHART_LINKS.length === 0) {
+    if (links.length === 0) {
       menu.appendChild(el("div", { class: "vtab-menu-empty" },
-        "No chart links configured yet."));
+        "Nothing configured yet."));
     } else {
-      for (const link of EXTERNAL_CHART_LINKS) {
+      for (const link of links) {
         const a = el("a", {
           class: "vtab-menu-item",
           href: "#",
@@ -1891,7 +1918,7 @@
               ev.preventDefault();
               return;
             }
-            closeChartsMenu();
+            closeMenu();
           },
         }, link.label);
         itemEls.push({ el: a, link });
@@ -1902,7 +1929,7 @@
     // Resolve hrefs from the currently selected site. Called once at
     // bootstrap (after the site list loads) and again whenever the
     // user picks a different site.
-    function refreshChartsMenu() {
+    function refreshMenu() {
       const siteKey = currentSiteId == null ? null : String(currentSiteId);
       for (const { el: a, link } of itemEls) {
         const url = siteKey && link.urls ? link.urls[siteKey] : null;
@@ -1921,14 +1948,14 @@
         }
       }
     }
-    _chartsMenuRefresh = refreshChartsMenu;
-    refreshChartsMenu();
+    _extLinkRefreshers.push(refreshMenu);
+    refreshMenu();
 
-    const openChartsMenu = () => {
+    const openMenu = () => {
       menu.hidden = false;
       trigger.setAttribute("aria-expanded", "true");
     };
-    const closeChartsMenu = () => {
+    const closeMenu = () => {
       menu.hidden = true;
       trigger.setAttribute("aria-expanded", "false");
     };
@@ -1937,8 +1964,8 @@
       ev.stopPropagation();
       // Make sure hrefs reflect the current site even if the site
       // changed since the menu was last opened.
-      refreshChartsMenu();
-      if (menu.hidden) openChartsMenu(); else closeChartsMenu();
+      refreshMenu();
+      if (menu.hidden) openMenu(); else closeMenu();
     });
 
     // Outside-click close.
@@ -1946,12 +1973,12 @@
       if (menu.hidden) return;
       if (ev.target === trigger || trigger.contains(ev.target)) return;
       if (menu.contains(ev.target)) return;
-      closeChartsMenu();
+      closeMenu();
     });
 
     // Escape closes too.
     document.addEventListener("keydown", (ev) => {
-      if (ev.key === "Escape" && !menu.hidden) closeChartsMenu();
+      if (ev.key === "Escape" && !menu.hidden) closeMenu();
     });
   }
 
