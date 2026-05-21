@@ -55,6 +55,7 @@
     statCache:   $("stat_cache"),
     statFetched: $("stat_fetched"),
     themeToggle: $("theme_toggle"),
+    exportBtn:   $("export_btn"),
   };
 
   // ============================================================
@@ -560,11 +561,23 @@
 
       const data = await resp.json();
       const samples = (data[tag] && data[tag].data) || [];
+      // Snapshot the dropdown selection AT FETCH TIME so the export
+      // header / filename describe what was actually fetched, even
+      // if the user changes dropdowns afterwards but before exporting.
+      const siteRow = state.catalog
+        ? state.catalog.sites.find((s) => s.site_id === state.siteId)
+        : null;
       renderChart(samples, {
         tag,
-        metric: currentSelectedMetric(),
+        metric:   currentSelectedMetric(),
         start, end,
         elapsedMs,
+        siteId:   state.siteId,
+        siteCode: siteRow ? siteRow.code : (state.siteId || ""),
+        siteName: siteRow ? siteRow.display_name : "",
+        deptName: state.deptName,
+        className: state.className,
+        assetName: state.assetName,
       });
     } catch (err) {
       showError("Fetch error: " + (err && err.message ? err.message : String(err)));
@@ -593,10 +606,12 @@
     // sub-50ms fetch + same window strongly suggests one.
     els.statCache.textContent = (meta && meta.elapsedMs < 80) ? "(probable cache hit)" : "";
 
-    // Title
+    // Title -- reads from `meta` (fetched-window snapshot) rather than
+    // live state so the title and chart never disagree if the user
+    // changes dropdowns after the fetch.
     if (meta && meta.metric) {
       els.chartTitle.textContent =
-        state.assetName + " — " + meta.metric.display_name
+        (meta.assetName || state.assetName) + " — " + meta.metric.display_name
         + " (" + formatHHMM(meta.start) + " – " + formatHHMM(meta.end) + ")";
     } else {
       els.chartTitle.textContent = "Trend";
@@ -606,10 +621,27 @@
       els.chartCanvas.style.display = "none";
       els.emptyState.style.display = "block";
       destroyChart();
+      // Export gating: even if the chart is empty, allow export
+      // when SOME samples came back (so non-GOOD-only windows are
+      // still inspectable in Excel). Disable only when nothing
+      // came back at all from the fetch.
+      setExportEnabled(!!(samples && samples.length));
+      // The export reads from state.chart.__lastSamples; since we
+      // skipped chart creation, stash the samples on the canvas's
+      // dataset instead so exportToExcel can find them.
+      if (samples && samples.length) {
+        // Synthesize a chart-like holder so exportToExcel's lookup works.
+        state.chart = {
+          __lastSamples: samples,
+          __lastMeta: meta,
+          destroy() {},
+        };
+      }
       return;
     }
     els.chartCanvas.style.display = "block";
     els.emptyState.style.display = "none";
+    setExportEnabled(true);
 
     // Cumulative metric handling: belt_scale_total is monotonic, so
     // for charts subtract the first value to show delta-from-start
@@ -734,6 +766,157 @@
   }
 
   // ============================================================
+  // Excel export
+  //
+  // Mirrors the main dashboard's pattern: SheetJS (loaded via
+  // vendor/xlsx.full.min.js) builds a single-sheet workbook from
+  // the same samples the chart just rendered. Per the project's
+  // "export mirrors displayed data" rule the row set includes
+  // every sample returned for the window (GOOD and non-GOOD) so
+  // operators can also diagnose quality drops in Excel; the
+  // Quality column makes the filter trivial. The value column's
+  // header encodes the dropdown selection so a stack of exported
+  // files is self-describing without needing to also export the
+  // filter context.
+  //
+  // For cumulative metrics (metric_key ending in "_total") an
+  // extra "Δ from window start" column is included, matching the
+  // chart's delta-from-baseline display. The raw column is also
+  // present so the underlying odometer reading is preserved.
+  // ============================================================
+  function _truncateSheetName(name) {
+    // Excel rules: <= 31 chars, no [ ] : * ? / \\.
+    const cleaned = String(name || "Sheet").replace(/[:\\/?*\[\]]/g, "_");
+    return cleaned.length > 31 ? cleaned.slice(0, 31) : cleaned;
+  }
+  function _slug(s) {
+    return String(s || "")
+      .replace(/[^a-zA-Z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  }
+  function _formatColumnHeader(meta) {
+    // Site code -- Dept -- Class -- Asset -- Metric (unit). All
+    // fields are read from `meta` (captured at fetch time) so the
+    // header reflects what was fetched even if the user changed
+    // dropdowns after the fetch.
+    const parts = [
+      meta && meta.siteCode,
+      meta && meta.deptName,
+      meta && meta.className,
+      meta && meta.assetName,
+      meta && meta.metric ? meta.metric.display_name : "value",
+    ].filter(Boolean);
+    const unit = meta && meta.metric ? meta.metric.unit : "";
+    return parts.join(" – ") + (unit ? " (" + unit + ")" : "");
+  }
+  function _exportFilename(meta) {
+    const siteCode  = (meta && meta.siteCode)  || "site";
+    const assetName = (meta && meta.assetName) || "asset";
+    const metricKey = meta && meta.metric ? meta.metric.metric_key : "metric";
+    // Use the fetched window's start date in the filename so files
+    // sort sensibly when stacked in a directory.
+    const day = (function () {
+      const d = (meta && meta.start) ? meta.start : state.dayDate;
+      return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());
+    })();
+    const now = new Date();
+    const stamp = now.getFullYear()
+      + pad2(now.getMonth() + 1)
+      + pad2(now.getDate())
+      + "-" + pad2(now.getHours()) + pad2(now.getMinutes());
+    return [
+      "timebase-timeseries",
+      _slug(siteCode),
+      _slug(assetName),
+      _slug(metricKey),
+      day,
+      stamp,
+    ].join("_") + ".xlsx";
+  }
+  function exportToExcel() {
+    if (typeof XLSX === "undefined") {
+      showError("Export unavailable: XLSX library failed to load.");
+      return;
+    }
+    const samples = state.chart && state.chart.__lastSamples;
+    const meta    = state.chart && state.chart.__lastMeta;
+    if (!samples || !samples.length || !meta) {
+      // Should be unreachable -- the button is disabled in this case --
+      // but defend against a hand-enabled click anyway.
+      showError("Nothing to export -- fetch some data first.");
+      return;
+    }
+    try {
+      const isCumulative = !!(meta.metric && /_total$/i.test(meta.metric.metric_key));
+      const valueHeader  = _formatColumnHeader(meta);
+      const deltaHeader  = isCumulative
+        ? "Δ from window start" + (meta.metric.unit ? " (" + meta.metric.unit + ")" : "")
+        : null;
+      // Baseline for the delta column == first sample's value
+      // (matches what the chart plots). Walks GOOD samples only
+      // to pick the baseline so a leading non-GOOD doesn't anchor
+      // the series at a garbage value.
+      let baseline = null;
+      if (isCumulative) {
+        for (const s of samples) {
+          if (s.quality === "GOOD") { baseline = Number(s.value); break; }
+        }
+      }
+      const rows = samples.map((s) => {
+        const ts = new Date(s.timestamp);
+        const v = Number(s.value);
+        const row = {
+          "Timestamp":   ts,
+          "Quality":     s.quality,
+          [valueHeader]: Number.isFinite(v) ? v : null,
+        };
+        if (deltaHeader) {
+          row[deltaHeader] = (baseline !== null && Number.isFinite(v))
+            ? (v - baseline)
+            : null;
+        }
+        return row;
+      });
+      const ws = XLSX.utils.json_to_sheet(rows, {
+        // Cell types are inferred per-row; Date objects become date
+        // cells automatically with a default format -- the explicit
+        // format below makes the timestamp easier to read in Excel.
+        cellDates: true,
+      });
+      // Apply a readable timestamp format to column A (Timestamp).
+      // Iterate the column instead of !ref'ing so we don't depend
+      // on json_to_sheet's internal row count.
+      const range = XLSX.utils.decode_range(ws["!ref"]);
+      for (let r = range.s.r + 1; r <= range.e.r; r++) {
+        const addr = XLSX.utils.encode_cell({ r, c: 0 });
+        const cell = ws[addr];
+        if (cell && cell.t === "d") cell.z = "yyyy-mm-dd hh:mm:ss";
+      }
+      // Column widths -- generous, since the value column header
+      // can be ~50 chars and the timestamp wants the full datetime.
+      ws["!cols"] = [
+        { wch: 20 },                       // Timestamp
+        { wch: 9  },                       // Quality
+        { wch: Math.max(20, valueHeader.length + 2) },  // Value
+        ...(deltaHeader ? [{ wch: Math.max(20, deltaHeader.length + 2) }] : []),
+      ];
+
+      const sheetName = _truncateSheetName(
+        (meta.assetName || "Asset") + " " + (meta.metric ? meta.metric.display_name : "")
+      );
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
+      XLSX.writeFile(wb, _exportFilename(meta));
+    } catch (err) {
+      console.error("timebase export failed", err);
+      showError("Export failed: " + (err && err.message ? err.message : String(err)));
+    }
+  }
+  function setExportEnabled(enabled) {
+    if (els.exportBtn) els.exportBtn.disabled = !enabled;
+  }
+
+  // ============================================================
   // Event wiring
   // ============================================================
   els.site.addEventListener("change", () => {
@@ -806,6 +989,7 @@
     fetchAndRender();
   });
   els.fetchBtn.addEventListener("click", fetchAndRender);
+  if (els.exportBtn) els.exportBtn.addEventListener("click", exportToExcel);
 
   // ============================================================
   // Init
