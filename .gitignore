@@ -74,3 +74,9 @@ tasks/scratch/*
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json
+
+# ---- Timebase i3X catalog ----
+# Real historian URLs live in catalog.yaml (gitignored). The
+# committed catalog.example.yaml ships the structure + placeholder
+# URLs. Copy example -> real and fill in actual base_urls per site.
+backend/app/integrations/timebase/catalog.yaml

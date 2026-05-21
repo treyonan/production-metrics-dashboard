@@ -135,6 +135,39 @@ class Settings(BaseSettings):
         description="Maximum window span in days for shiftly metrics requests.",
     )
 
+    # ---- Phase 26: Timebase i3X wrapper ----
+    #
+    # Each site's historian URL lives in the catalog YAML
+    # (backend/app/integrations/timebase/catalog.yaml) under
+    # sites.<id>.base_url, NOT in env vars -- each plant has its own
+    # historian on its own network, and the URLs aren't secrets.
+    # Tuning knobs below apply globally to all sites.
+
+    timebase_timeout_seconds: float = Field(
+        default=15.0,
+        description=(
+            "Per-request timeout for Timebase HTTP calls. Multi-day "
+            "history pulls can return MBs of data so this is a hair "
+            "shorter than Flow's 30s but still generous."
+        ),
+    )
+    timebase_cache_ttl_seconds: int = Field(
+        default=45,
+        description=(
+            "TTL for the in-process /api/timebase/history cache. "
+            "45s comfortably covers a 1-5 min dashboard polling "
+            "cadence without serving uselessly stale data."
+        ),
+    )
+    timebase_cache_max_entries: int = Field(
+        default=128,
+        description=(
+            "LRU entry-count cap on the Timebase history cache. "
+            "Entries can be MB-sized for multi-day windows, so the "
+            "cap is on count rather than bytes."
+        ),
+    )
+
 
 @lru_cache
 def get_settings() -> Settings:

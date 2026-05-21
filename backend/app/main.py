@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.routing import Mount
 
-from app.api.routes import health, metrics, production_report, sites
+from app.api.routes import health, metrics, production_report, sites, timebase
 from app.core.config import get_settings
 from app.core.correlation import CorrelationIdMiddleware
 from app.core.logging import configure_logging, get_logger
@@ -28,8 +28,11 @@ from app.integrations.production_report.labels import (
     SqlChartLabelSource,
 )
 from app.integrations.sql.pool import create_pool
+from app.integrations.timebase.cache import TimebaseHistoryCache
+from app.integrations.timebase.catalog import load_catalog as load_timebase_catalog
+from app.integrations.timebase.client import TimebaseClient, TimebaseClientRegistry
 
-BUILD_TAG = "2026-05-13-phase25-chart-labels"
+BUILD_TAG = "2026-05-21-phase26-timebase-i3x-unified"
 
 
 @asynccontextmanager
@@ -118,10 +121,81 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             reason="FLOW_API_KEY not set; /api/metrics/* will 503",
         )
 
+    # Phase 26: Timebase i3X integration. Each site has its own
+    # historian on its own plant network; the URL lives in the
+    # catalog YAML (sites.<id>.base_url). We build one client per
+    # configured site at startup, holding them in a registry keyed
+    # by site_id. Catalog and clients are independent: catalog can
+    # load when every historian is unreachable, and /history works
+    # for sites whose clients opened even if the catalog failed.
+    app.state.timebase_catalog = None
+    app.state.timebase_clients = TimebaseClientRegistry()
+    app.state.timebase_history_cache = TimebaseHistoryCache(
+        ttl_seconds=settings.timebase_cache_ttl_seconds,
+        max_entries=settings.timebase_cache_max_entries,
+    )
+    try:
+        app.state.timebase_catalog = load_timebase_catalog()
+        log.info(
+            "timebase.catalog_loaded",
+            site_count=len(app.state.timebase_catalog.sites),
+            asset_class_count=len(app.state.timebase_catalog.asset_classes),
+        )
+    except Exception as exc:  # noqa: BLE001 -- degrade gracefully
+        log.error(
+            "timebase.catalog_load_failed",
+            error_type=type(exc).__name__,
+            error_message=str(exc),
+        )
+
+    if app.state.timebase_catalog is None:
+        log.info(
+            "timebase.registry_not_populated",
+            reason="catalog failed to load; /api/timebase/* will 503/404",
+        )
+    else:
+        for site in app.state.timebase_catalog.sites.values():
+            try:
+                tb_client = TimebaseClient(
+                    site_id=site.site_id,
+                    base_url=site.base_url,
+                    dataset=site.dataset,
+                    timeout_seconds=settings.timebase_timeout_seconds,
+                )
+                await tb_client.aopen()
+                app.state.timebase_clients.add(tb_client)
+                log.info(
+                    "timebase.client_created",
+                    site_id=site.site_id,
+                    code=site.code,
+                    base_url=site.base_url,
+                )
+            except Exception as exc:  # noqa: BLE001 -- per-site degrade
+                log.error(
+                    "timebase.client_create_failed",
+                    site_id=site.site_id,
+                    code=site.code,
+                    error_type=type(exc).__name__,
+                    error_message=str(exc),
+                )
+
     try:
         yield
     finally:
-        # Close the Flow client first (HTTP), then the SQL pool.
+        # Close all per-site Timebase clients first, then Flow, then SQL pool.
+        registry = getattr(app.state, "timebase_clients", None)
+        if registry is not None:
+            try:
+                closed = registry.site_ids()
+                await registry.aclose_all()
+                if closed:
+                    log.info("timebase.clients_closed", site_ids=closed)
+            except Exception as exc:  # noqa: BLE001
+                log.error(
+                    "timebase.clients_close_failed",
+                    error_type=type(exc).__name__,
+                    error_message=str(exc),
+                )
         flow_client = getattr(app.state, "flow_client", None)
         if flow_client is not None:
             try:
@@ -163,7 +237,17 @@ def create_app() -> FastAPI:
             {"name": "Health", "description": "Per-source reachability checks."},
             {"name": "Sites", "description": "Enumeration of sites present in the data source."},
             {"name": "Production Report", "description": "Workcenter production KPIs."},
-            {"name": "Interval Metrics", "description": "Time-series telemetry from Flow (hourly/shiftly)."},
+            {
+                "name": "Interval Metrics",
+                "description": "Time-series telemetry from Flow (hourly/shiftly).",
+            },
+            {
+                "name": "Timebase",
+                "description": (
+                    "Raw historian samples + tag catalog from the "
+                    "Timebase Historian i3X API."
+                ),
+            },
         ],
         lifespan=lifespan,
     )
@@ -178,6 +262,7 @@ def create_app() -> FastAPI:
         tags=["Production Report"],
     )
     app.include_router(metrics.router, prefix="/api/metrics", tags=["Interval Metrics"])
+    app.include_router(timebase.router, prefix="/api/timebase", tags=["Timebase"])
 
     # Debug ping (under /api/ so it's not shadowed by any static mount).
     @app.get("/api/__ping", include_in_schema=False)

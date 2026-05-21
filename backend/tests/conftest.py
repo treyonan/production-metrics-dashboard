@@ -41,10 +41,20 @@ def client(sample_csv_path: Path) -> Iterator[TestClient]:
 
     The fixture is a CSV reader (test-only, lives under tests/_fixtures/)
     that returns deterministic rows. Production never sees CSV.
+
+    Timebase state is cleared post-lifespan so /api/health doesn't try
+    to ping a (likely unreachable from dev) historian during the test
+    run. Tests that exercise Timebase directly use the dedicated
+    ``wire_timebase`` fixture in ``tests/api/test_timebase.py``.
     """
     app.dependency_overrides[get_production_report_source] = lambda: CsvProductionReportSource(
         sample_csv_path
     )
     with TestClient(app) as c:
+        # Lifespan has run; nuke timebase state so health doesn't
+        # ping the real historian. Tests that need timebase override
+        # these explicitly.
+        app.state.timebase_clients = None
+        app.state.timebase_catalog = None
         yield c
     app.dependency_overrides.clear()

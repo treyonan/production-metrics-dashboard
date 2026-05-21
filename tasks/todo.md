@@ -3210,3 +3210,226 @@ Next candidates (ordered by load-bearing first):
    time-series-shaped data ready to render.
 4. Windows Integrated Auth / deployment hardening — needed before
    wider access 
+## Phase 26 -- Timebase i3X wrapper, Phase 1 (IN PROGRESS 2026-05-21)
+
+Spec: `tasks/specs/003-timebase-i3x-wrapper.md`.
+
+Backend-only. Adds a wrapper around the Timebase Historian's i3X
+REST API. Two endpoints in this phase: `/history` (pass-through to
+`/i3x/objects/history`) and `/catalog` (resolved per-site tag
+catalog so the Phase 2 frontend can build asset/metric dropdowns
+without hard-coded elementIds). YAML-backed catalog with per-site
+prefix + shared asset_classes block; convention path is viable
+because the suffix `Conveyor/Cn/Process_Data/Belt_Scale/TPH` is
+identical across sites (confirmed 2026-05-21).
+
+Phase 1 scope: Conveyor C1-C8 + `belt_scale_tph` only. Verification
+is `/docs` Swagger interactively + pytest with httpx mock transport.
+Phase 2 (chart page) is a separate spec.
+
+### Plan
+
+- [ ] `backend/app/schemas/timebase.py`
+  - HistoryRequest (aliases: elementIds, startTime, endTime, maxDepth)
+  - VQT (value/quality/timestamp)
+  - ElementHistory + HistoryResponse (RootModel[dict[str, ElementHistory]])
+  - CatalogMetric / CatalogAsset / CatalogAssetClass /
+    CatalogDepartment / CatalogSite / CatalogResponse
+- [ ] `backend/app/integrations/timebase/catalog.py` +
+      `catalog.yaml`
+  - Load YAML once at module import / lifespan
+  - resolve(site_id, dept, asset_class, asset, metric_key) -> elementId
+  - resolve_catalog(site_id=None) -> CatalogResponse-like dataclass
+  - Tests: known site resolves correctly; unknown site/asset/metric
+    is reported, not crashed
+- [ ] `backend/app/integrations/timebase/client.py`
+  - httpx.AsyncClient wrapper; aopen / aclose
+  - `get_history(element_ids, start, end, max_depth)`
+  - `get_namespaces()` for health ping
+  - Tests via httpx.MockTransport: happy path, 4xx upstream, 5xx
+    upstream, timeout
+- [ ] `backend/app/integrations/timebase/cache.py`
+  - TTL + LRU on entry count
+  - Key: (sorted_element_ids_tuple, normalized_start, normalized_end,
+    max_depth)
+  - Time normalization: floor to 10s boundary, UTC
+  - Tests: hit / miss / TTL eviction / LRU eviction / time
+    normalization edges
+- [ ] `backend/app/api/routes/timebase.py`
+  - `POST /api/timebase/history` (pass-through, cache wrapped)
+  - `GET /api/timebase/catalog`
+  - `GET /api/timebase/catalog/{site_id}`
+  - DI providers for client + catalog
+  - Upstream error mapping: 5xx -> 502, timeout/connect -> 504,
+    missing dependency -> 503
+  - Route tests with FastAPI TestClient + dependency overrides
+- [ ] `backend/app/core/config.py`
+  - `timebase_base_url: str | None`
+  - `timebase_timeout_seconds: float = 15.0`
+  - `timebase_cache_ttl_seconds: int = 45`
+  - `timebase_cache_max_entries: int = 128`
+- [ ] `backend/app/main.py` lifespan
+  - Load catalog at startup; on failure log and leave catalog None
+    (history still works for callers who know elementIds)
+  - Open TimebaseClient if `timebase_base_url` set; close on
+    shutdown
+  - Wire `/api/health` to include a timebase entry
+- [ ] `backend/app/api/routes/health.py`
+  - Add timebase source ping
+- [ ] `.env.example`
+  - `PMD_TIMEBASE_BASE_URL=`, plus the three numeric defaults as
+    commented-out lines so ops sees the knobs
+- [ ] Tests pass: `cd backend && pytest`
+- [ ] Lint clean: `cd backend && ruff check app/`
+- [ ] No commits run by me. Provide commit message text only when
+      the user asks.
+
+### Verification
+
+1. pytest passes (new + existing).
+2. ruff check clean on new files.
+3. With `PMD_TIMEBASE_BASE_URL=http://10.44.135.12:8080` set,
+   uvicorn starts and `/api/health` reports timebase status.
+4. Swagger `/docs` shows the three new endpoints with the i3X-shaped
+   request/response models.
+5. Manually call `POST /api/timebase/history` from `/docs` with the
+   example elementId
+   (`IAP_BCQ_Controls:Big_Canyon/Secondary/Conveyor/C1/Process_Data/Belt_Scale/TPH`)
+   over a small window. Real samples come back.
+
+### Out of scope (Phase 2+ work)
+
+- Trends page (`timebase-trends.html`) and Chart.js wiring
+- Quality filtering UI
+- Subscriptions / SSE streaming
+- Write endpoints (i3X update_value / update_history) -- read-only API
+- `/objects/value` (last-known-value) pass-through
+- Freeform tag picker / namespace browser
+
+
+## Phase 26.1 -- Multi-site Timebase refactor (DONE 2026-05-21)
+
+Trey flagged during initial Phase 26 review: each site has its own
+Timebase historian on its own plant network. The original spec
+assumed a single global URL; that was wrong.
+
+### Changes from Phase 26 v1
+
+- `catalog.yaml`: each site declares `base_url` next to its dataset
+  and department prefixes. Internal historian IPs live here, source-
+  controlled.
+- `SiteDef` (catalog dataclass) gets `base_url: str`.
+- `CatalogSite` Pydantic model does **NOT** include `base_url` --
+  defense in depth, don't leak internal IPs through the public
+  /catalog response.
+- `site_id` is `str` throughout for consistency with
+  /api/metrics + /api/production-report (was `int` in the v1 draft).
+- New `TimebaseClientRegistry` (in `client.py`): map of
+  `site_id -> TimebaseClient`. Lifespan iterates the catalog and
+  builds one client per site at startup; closes all on shutdown via
+  `aclose_all()`.
+- `POST /api/timebase/history` takes a required query parameter
+  `?site_id=<id>` matching the existing endpoint convention.
+  Body stays exactly i3X-shaped.
+- Status code mapping for history: 404 when site_id unknown,
+  503 when site is configured but its client failed to open,
+  502/504 on upstream errors (unchanged).
+- `/api/health` pings each configured site in parallel
+  (`asyncio.gather`) and emits one SourceHealth row per site
+  (e.g. `timebase:i3x:101`). Deployments with no Timebase sites
+  contribute no rows.
+- Dropped `PMD_TIMEBASE_BASE_URL` env var; documented in
+  `.env.example` that URLs live in catalog.yaml.
+- `TimebaseClient` constructor now requires `site_id` (used in
+  `name` property for /api/health attribution).
+
+### Verification
+
+- ruff check clean on every Phase 26 file.
+- 59 unit tests pass (catalog, cache, client, registry).
+- Real catalog.yaml resolves site 101 -> BCQ historian, builds
+  registry, /catalog response omits base_url.
+- Route tests in tests/api/test_timebase.py rewritten for the new
+  shape (require Python 3.12 to load app.main; will run on the
+  user's dev machine).
+
+### Lesson re-recorded
+
+Edit-tool truncation on the Windows mount bit again on main.py and
+config.py. Per tasks/lessons.md: prefer bash + Python atomic
+rewrites for files on the Windows mount. Re-applying.
+
+
+## Phase 26.2 -- Standalone /history-by-tag + URL safety (DONE 2026-05-21)
+
+Two follow-ups from Trey's review of Phase 26.1:
+
+### Standalone usage
+
+New endpoint `POST /api/timebase/history-by-tag` takes everything in
+the request body -- `base_url`, `dataset`, `tagPaths`, `startTime`,
+`endTime`, `maxDepth` -- and composes `<dataset>:<tag_path>` server-
+side. No catalog or registry dependency; works as a generic i3X proxy
+for ad-hoc tools and SCADA scripts.
+
+- SSRF guardrail: base_url must start with `http://` or `https://`
+  (422 otherwise). No host whitelist in Phase 1; deploy only behind a
+  trusted network boundary.
+- Shares the same cache and error-mapping as `/history`.
+- Cleanup: ephemeral client opened + closed per request.
+
+### URL safety (gitignored catalog)
+
+- `catalog.yaml` (with real historian URLs) is now in `.gitignore`.
+- `catalog.example.yaml` is committed with placeholder URLs
+  (`http://historian.example.invalid:8080`) + full structure.
+- Loader: tries catalog.yaml first; falls back to catalog.example.yaml
+  if missing (so fresh checkouts + tests work without manual setup).
+- Deployment workflow: `cp catalog.example.yaml catalog.yaml` then edit.
+
+### Verification
+
+- 61 unit tests pass (catalog 25, cache 20, client 16).
+- Route tests in `tests/api/test_timebase.py` updated (require Python
+  3.12 on dev machine).
+- ruff check clean.
+- `git ls-files backend/app/integrations/timebase/catalog.yaml`
+  returns empty -- the real URL has never been committed to git.
+
+
+## Phase 26.3 -- Unify /history (DONE 2026-05-21)
+
+Trey's call: one endpoint, server-side YAML lookup for URL + dataset,
+same shape for any caller (dashboard, Ignition, ad-hoc).
+
+### Changes
+
+- Dropped `POST /api/timebase/history-by-tag`. One endpoint only.
+- `POST /api/timebase/history?site_id=X` is the unified history call.
+- Body shape: snake_case `tag_paths` + `start_time` + `end_time` +
+  optional `max_depth`. No i3X aliases. No `elementIds`. No `base_url`.
+- `TimebaseClient` gained `dataset: str` (populated by lifespan from
+  the catalog). Route reads it via `client.dataset` to compose
+  `<dataset>:<tag_path>` server-side.
+- Response keys rewritten back to caller's `tag_path` -- dataset
+  prefix never leaks to consumers (`_rekey_to_tag_paths`).
+- Server-side composition strips stray slashes from `tag_paths`.
+
+### Why no SQL lookup for URLs
+
+The Flow comparison doesn't hold up under scrutiny:
+- Flow uses SQL because each tag has its own URL template (high-cardinality).
+- Timebase URLs are per-site (low-cardinality, ~2-5 rows total, rare changes).
+- YAML keeps it simple, source-controlled, no SQL dependency for
+  Timebase to start. Real URLs in gitignored catalog.yaml.
+
+### Verification
+
+- 62 unit tests pass.
+- ruff clean.
+- BUILD_TAG bumped to `2026-05-21-phase26-timebase-i3x-unified`.
+- Final endpoint surface:
+    POST /api/timebase/history?site_id=<id>
+    GET  /api/timebase/catalog
+    GET  /api/timebase/catalog/{site_id}
+

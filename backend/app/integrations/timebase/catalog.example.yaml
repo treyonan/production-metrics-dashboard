@@ -1,0 +1,73 @@
+# ============================================================================
+# Timebase i3X tag catalog -- TEMPLATE (catalog.example.yaml).
+#
+# This file is committed and intentionally contains NO real historian URLs.
+# To deploy:
+#   1. Copy this file to catalog.yaml (gitignored).
+#   2. Replace every `historian.example.invalid` placeholder with the real
+#      base_url for that site's historian.
+#
+# The loader prefers catalog.yaml; if missing, falls back to this file
+# (useful for tests + CI). In production catalog.yaml MUST exist with
+# real base_urls or every site's historian will be unreachable.
+#
+# Two layers below:
+#   - sites:         per-site config (base_url + dataset + departments).
+#                    Each plant has its own historian on its own network,
+#                    so the URL is part of the site's identity. Everything
+#                    below the asset folder is shared (see asset_classes).
+#   - asset_classes: which assets exist per class, and the stable tag
+#                    suffix for each metric. Identical across every site
+#                    by SCADA-tree convention.
+#
+# Full elementId resolved as:
+#
+#   <dataset>:<departments[D]>/<asset_class>/<asset>/<metrics[K].suffix>
+#
+# Example resolution (site '101', Secondary, Conveyor, C1, belt_scale_tph):
+#
+#   IAP_BCQ_Controls:Big_Canyon/Secondary/Conveyor/C1/Process_Data/Belt_Scale/TPH
+#
+# Adding a new site: add a top-level entry under `sites:`.
+# Adding a new metric on an existing asset class: add one entry under
+# `asset_classes.<class>.metrics:` -- applies to every site at once.
+# ============================================================================
+
+sites:
+  "101":
+    code: BCQ
+    display_name: Big Canyon Quarry
+    base_url: http://historian.example.invalid:8080  # REPLACE in catalog.yaml
+    dataset: IAP_BCQ_Controls
+    departments:
+      Secondary: Big_Canyon/Secondary
+      # future: Wash_Plant, Primary, etc.
+
+  # Sketch for additional sites -- uncomment + fill in catalog.yaml:
+  #
+  # "100":
+  #   code: ARP
+  #   display_name: Ardmore Quarry
+  #   base_url: http://historian.example.invalid:8080
+  #   dataset: IAP_ARP_Controls
+  #   departments:
+  #     Secondary: Ardmore/Secondary
+
+asset_classes:
+  Conveyor:
+    # Conveyors C1-C8 exist at every site by SCADA convention.
+    # Phase 1 catalog response surfaces all eight at any site that
+    # has a `Secondary` (or future) department configured. If a site
+    # doesn't physically have one of these conveyors, /history calls
+    # for it will return empty `data` arrays -- not an error.
+    assets: [C1, C2, C3, C4, C5, C6, C7, C8]
+    metrics:
+      belt_scale_tph:
+        display_name: Belt Scale TPH
+        unit: tph
+        suffix: Process_Data/Belt_Scale/TPH
+      # future Phase 1+ entries (one line each, applies to all sites):
+      # belt_scale_odometer:
+      #   display_name: Belt Scale Odometer (Total)
+      #   unit: tons
+      #   suffix: Process_Data/Belt_Scale/Odometer
