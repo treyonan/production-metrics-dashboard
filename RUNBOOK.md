@@ -459,64 +459,22 @@ Button is disabled until the first Trends fetch returns at least one
 rollup for the current site + window.
 
 
-## Adding a new site to /api/metrics
+## Adding a new site
 
-When a new plant comes online and starts publishing interval metrics
-to the enterprise MQTT broker via Flow, two things have to happen
-before `/api/metrics/conveyor/*` will work for that site's tags:
+Full checklist + procedure + troubleshooting: **[`docs/adding-a-new-site.md`](docs/adding-a-new-site.md)**.
 
-1. **Ignition trigger writes rows to `[FLOW].[INTERVAL_METRIC_TAGS]`.**
-   This is automatic if your Ignition deployment subscribes to the
-   new site's MQTT topics and runs the upsert script in
-   `scada/ignition/upsert_interval_metric_tag.py`. The first publish
-   from each tag inserts a row -- no manual SQL needed. Verify by
-   hitting `/api/metrics/conveyor/subjects?site_id=<new_site>` -- you
-   should see the new tags in the response.
+Short version — three files plus one external dependency:
 
-2. **Add the new Flow server's hostname to `docker-compose.yml`.**
-   The container's DNS resolver doesn't see corporate DNS, so each
-   Flow server needs an explicit static-host entry under
-   `services.api.extra_hosts`. Procedure:
+| File | What changes |
+|---|---|
+| `docker-compose.yml` | New `extra_hosts` entry mapping the plant box's hostname → IP. |
+| `backend/app/integrations/timebase/catalog.yaml` (gitignored, per-env) | New `sites."<id>"` entry with code, display_name, hostname-based `base_url`, dataset, departments, and asset placement. |
+| `backend/app/core/config.py` | New `<site_id>: "<Display Name>"` in `_DEFAULT_SITE_NAMES`. |
+| `[FLOW].[INTERVAL_METRIC_TAGS]` (SQL) | Auto-populated by the Ignition upsert script at the new site — nothing for the dashboard to do, just verify the rows show up. |
 
-   1. From a Windows host that can resolve the new hostname, run
-      `ping <new_flow_hostname>` (e.g. `ping dbp-otherquarry`). Note
-      the IP it returns.
-   2. Edit `docker-compose.yml` and add a line under `extra_hosts:`:
-
-      ```yaml
-      extra_hosts:
-        - "dbp-bcq:10.44.135.12"             # site 101 (Big Canyon)
-        - "dbp-otherquarry:10.44.x.x"        # site 102 (new site)
-      ```
-
-   3. Restart the container so the new entry lands in `/etc/hosts`:
-
-      ```
-      docker compose down
-      docker compose up --build
-      ```
-
-   4. Smoke-test:
-
-      ```
-      curl "http://localhost:8001/api/metrics/conveyor/shiftly?site_id=<new_site>&from_date=YYYY-MM-DD&to_date=YYYY-MM-DD"
-      ```
-
-      A 200 with populated `entries` confirms the chain.
-      A 504 with "Cannot reach Flow API: ConnectError" means the
-      hostname resolved but port 4501 is unreachable -- check that
-      the new Flow server is up and that the corporate firewall
-      permits the WSL2 NAT IP to reach it.
-
-The SQL table itself needs no changes -- it already stores the
-full URL per row, including the site-specific hostname. Adding a
-new site is purely an operational task at the Docker boundary.
-
-If we ever migrate to corporate DNS resolution inside the container
-(via `dns: [<corp_dns_ip>]` in the compose service), this whole
-section goes away -- new sites Just Work as long as their Flow
-server has a DNS A-record. Until then, the `extra_hosts` list is
-the single source of truth.
+Then `docker compose down && docker compose up --build -d` (a plain
+`restart` does NOT pick up `extra_hosts` changes) and walk the six-layer
+smoke test in the linked doc.
 
 ## Where things live
 
@@ -525,6 +483,7 @@ the single source of truth.
 | Big-picture architecture | `ARCHITECTURE.md` |
 | Backend FastAPI internals | `backend/ARCHITECTURE.md` |
 | Project conventions | `CLAUDE.md` |
+| **Commissioning a new plant site** | **`docs/adding-a-new-site.md`** |
 | Current plan / progress | `tasks/todo.md` |
 | Prior session lessons | `tasks/lessons.md` |
 | Architecture decisions | `tasks/decisions/` 

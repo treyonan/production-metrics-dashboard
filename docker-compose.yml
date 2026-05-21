@@ -65,11 +65,13 @@ services:
     # here lets `httpx` reach both services from inside the container.
     #
     # ADDING A NEW SITE: append one line per new plant server. See
-    # `RUNBOOK.md` § "Adding a new site to /api/metrics" for the full
-    # procedure (find the IP, add the line, `docker compose down` +
-    # `up --build`, verify via /api/metrics/conveyor/subjects). The
-    # same hostname is then used in `backend/app/integrations/timebase/
-    # catalog.yaml` under `sites.<id>.base_url`.
+    # `docs/adding-a-new-site.md` for the full end-to-end checklist
+    # (files to update, smoke tests, troubleshooting). The hostname
+    # listed here MUST also be the hostname used in
+    # `backend/app/integrations/timebase/catalog.yaml` under
+    # `sites.<id>.base_url` -- one point of truth for the box's IP
+    # so both Flow (port 4501) and Timebase (port 4511) resolve
+    # together.
     extra_hosts:
       - "dbp-bcq:10.44.135.12"      # site 101 (Big Canyon Quarry) -- Flow:4501, Timebase:4511
       # - "dbp-otherquarry:10.x.x.x"  # site 102 -- add when commissioned
