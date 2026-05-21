@@ -52,19 +52,26 @@ services:
       - ./frontend:/app/frontend:ro
 
     # Static /etc/hosts entries so the container can resolve internal
-    # hostnames that aren't in the WSL2 NAT's DNS view. Flow's MQTT
-    # payloads embed history URLs pointing at LAN hostnames like
-    # `http://dbp-bcq:4501/...`, and those names are resolved on the
-    # Windows host via corporate DNS / the hosts file -- neither of
-    # which the container's resolver sees. Mapping each Flow server
-    # explicitly here lets `httpx` reach it from inside the container.
+    # hostnames that aren't in the WSL2 NAT's DNS view. Two upstream
+    # services on each plant box use the hostname form:
     #
-    # ADDING A NEW SITE: append one line per new Flow server. See
+    #   Flow REST + MQTT history URLs:  http://<sitehost>:4501/...
+    #   Timebase i3X (Phase 26):        http://<sitehost>:4511/...
+    #
+    # Both share the same physical box per site, so one extra_hosts
+    # line covers both. The hostnames are resolved on the Windows
+    # host via corporate DNS / hosts file -- neither of which the
+    # container's resolver sees. Mapping each plant server explicitly
+    # here lets `httpx` reach both services from inside the container.
+    #
+    # ADDING A NEW SITE: append one line per new plant server. See
     # `RUNBOOK.md` § "Adding a new site to /api/metrics" for the full
     # procedure (find the IP, add the line, `docker compose down` +
-    # `up --build`, verify via /api/metrics/conveyor/subjects).
+    # `up --build`, verify via /api/metrics/conveyor/subjects). The
+    # same hostname is then used in `backend/app/integrations/timebase/
+    # catalog.yaml` under `sites.<id>.base_url`.
     extra_hosts:
-      - "dbp-bcq:10.44.135.12"      # site 101 (Big Canyon Quarry)
+      - "dbp-bcq:10.44.135.12"      # site 101 (Big Canyon Quarry) -- Flow:4501, Timebase:4511
       # - "dbp-otherquarry:10.x.x.x"  # site 102 -- add when commissioned
 
     # Orchestrator-level healthcheck. Hits /api/health inside the
