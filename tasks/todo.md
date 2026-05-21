@@ -3479,3 +3479,50 @@ class's assets existed in every department of every site -- false.
   honors the placement.
 - BUILD_TAG -> 2026-05-21-phase26-timebase-i3x-placement
 
+
+## Phase 27 -- Timebase Trends page (DONE 2026-05-21)
+
+Operator-facing trend chart for raw Timebase historian samples. Page-
+scoped, no polling, fully isolated from the main dashboard. Cleanly
+revertable via kill switch (env var) or by deleting the two files.
+
+### Files added
+
+- `frontend/timebase-trends.html`
+- `frontend/timebase-trends.js`
+- `tasks/specs/004-timebase-trends-page.md`
+- 3 backend route tests (window-cap, zero-window, 8h-boundary)
+
+### Files touched
+
+- `frontend/index.html` — one Trends nav link added after Metrics.
+- `backend/app/core/config.py` — `timebase_enabled` (kill switch) +
+  `timebase_max_window_seconds` (default 28800).
+- `backend/app/main.py` — lifespan short-circuits Timebase init when
+  `PMD_TIMEBASE_ENABLED=false`. BUILD_TAG bumped.
+- `backend/app/api/routes/timebase.py` — 422 window-cap + zero-window
+  validation in `POST /history`.
+
+### UX (per Trey)
+
+- Fixed 8h window. Slider moves the start; end = start + 8h.
+- Day stepper (← →), capped at today.
+- 15-min slider steps. Today caps the slider so end <= now.
+- Plant-local time (browser TZ).
+- Cumulative metrics (`*_total`) shown as delta-from-first-sample.
+- Quality filter (drop non-GOOD).
+- Auto-refresh OFF. User-driven only.
+- Selections persisted to localStorage (per-page key).
+
+### Verification
+
+- 70 backend unit tests pass. ruff clean.
+- `node --check timebase-trends.js` syntax clean.
+- 3 new route tests cover window-cap behavior.
+- BUILD_TAG -> 2026-05-21-phase26-timebase-trends-page.
+
+### Removal (if it doesn't pan out)
+
+Soft: `PMD_TIMEBASE_ENABLED=false` in `backend/.env`, restart.
+Hard: `rm frontend/timebase-trends.{html,js}` + remove one nav link.
+

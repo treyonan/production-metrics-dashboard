@@ -30,8 +30,42 @@
     </div>
     <div class="site-tog" id="site-tog" role="tablist" aria-label="Site selector"></div>
     <div class="view-tabs" id="view-tabs" role="tablist" aria-label="View selector">
-      <button class="vtab on" data-view="dashboard" role="tab" aria-selected="true">Dashboard</button>
-      <button class="vtab"    data-view="trends"    role="tab" aria-selected="false">Trends</button>
+      <!-- Order is deliberate (left-to-right):
+           1. In-app views        : Production Dashboard, Production Charts
+                                    (in-page vtabs swapped by app.js -- the
+                                    data-view attribute is the internal key,
+                                    NOT the visible label, so do not rename
+                                    "dashboard"/"trends" here).
+           2. Sibling-page nav    : Interval, Time Series
+                                    (full page navigations to other routes
+                                    served by the same backend).
+           3. External Flow popouts: Charts, Forms
+                                    (open Flow's web UI in a new tab; users
+                                    are leaving the dashboard, so they sit
+                                    after the in-app nav).
+           4. API docs            : Swagger -- engineer-only, far right. -->
+      <button class="vtab on" data-view="dashboard" role="tab" aria-selected="true">Production Dashboard</button>
+      <button class="vtab"    data-view="trends"    role="tab" aria-selected="false">Production Charts</button>
+      <!-- Interval: styled like a vtab so it visually matches the
+           Charts / Forms dropdowns next to it, but it's a plain link
+           (no dropdown) that navigates to /flow-interval-metrics.html.
+           Label is "Interval" (the data shape -- hourly/shiftly buckets
+           from Flow) rather than the source name "Metrics", which was
+           ambiguous against the other nav entries. -->
+      <a class="vtab" id="flow-metrics-link"
+         href="/flow-interval-metrics.html"
+         title="Open the Flow Interval Metrics page (hourly / shiftly buckets)"
+         aria-label="Flow Interval Metrics page"><img class="btn-flow-logo" src="/content/flow-logo.png" alt="">Interval</a>
+      <!-- Timebase Time Series (Phase 27): page-scoped JS, no
+           polling. Delete this link + the two files in frontend/
+           (timebase-trends.html / .js) to fully remove.
+           Label is "Time Series" (the data shape -- raw, dense,
+           timestamped samples) to distinguish from the bucketed
+           "Interval" view next to it. -->
+      <a class="vtab" id="timebase-trends-link"
+         href="/timebase-trends.html"
+         title="Open the Timebase Time Series page (raw historian samples, adjustable 2-12h window)"
+         aria-label="Timebase Time Series page"><img class="btn-timebase-logo" src="/content/timebase-logo.png" alt="">Time Series</a>
       <!-- Charts dropdown: opens a menu of external chart URLs (OEE
            and similar Flow-server charts). Items render from
            EXTERNAL_LINKS_CHARTS in app.js. Each item opens in a new tab. -->
@@ -52,13 +86,6 @@
         </button>
         <div class="vtab-menu" id="charts-menu" role="menu" hidden></div>
       </div>
-      <!-- Metrics: styled like a vtab so it visually matches the
-           Charts / Forms dropdowns next to it, but it's a plain link
-           (no dropdown) that navigates to /flow-interval-metrics.html. -->
-      <a class="vtab" id="flow-metrics-link"
-         href="/flow-interval-metrics.html"
-         title="Open the Flow Interval Metrics page (secondary data source)"
-         aria-label="Flow Interval Metrics page"><img class="btn-flow-logo" src="/content/flow-logo.png" alt="">Metrics</a>
       <!-- API docs: opens FastAPI's auto-generated Swagger UI in a
            new tab so the dashboard's filter / view state is preserved
            while operators browse the API reference. -->

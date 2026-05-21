@@ -207,7 +207,7 @@ async def test_history_composes_element_ids_and_rekeys_response(
                 json={
                     "tag_paths": [_TAG_PATH],
                     "start_time": "2026-05-01T06:06:00.796Z",
-                    "end_time": "2026-05-02T07:06:00.796Z",
+                    "end_time": "2026-05-01T07:06:00.796Z",
                     "max_depth": 1,
                 },
             )
@@ -452,3 +452,80 @@ def test_history_validates_empty_tag_paths(wire_timebase) -> None:
             },
         )
     assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_history_rejects_window_over_cap(wire_timebase, make_mock_client) -> None:
+    """Server-side window cap: > 8h window must 422 without hitting upstream."""
+    upstream_called = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal upstream_called
+        upstream_called += 1
+        return httpx.Response(200, json=_UPSTREAM_RESPONSE)
+
+    client = await make_mock_client("101", handler, dataset=_DATASET)
+    try:
+        with wire_timebase(clients={"101": client}) as tc:
+            resp = tc.post(
+                "/api/timebase/history?site_id=101",
+                json={
+                    "tag_paths": [_TAG_PATH],
+                    # 13-hour window -- one hour over the 12h cap.
+                    "start_time": "2026-05-01T06:00:00Z",
+                    "end_time": "2026-05-01T19:00:00Z",
+                },
+            )
+        assert resp.status_code == 422
+        assert "limit" in resp.json()["detail"].lower()
+        # Upstream must not have been called.
+        assert upstream_called == 0
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_history_rejects_zero_or_negative_window(
+    wire_timebase, make_mock_client
+) -> None:
+    """end_time <= start_time is a 422."""
+    client = await make_mock_client(
+        "101",
+        lambda r: httpx.Response(200, json=_UPSTREAM_RESPONSE),
+        dataset=_DATASET,
+    )
+    try:
+        with wire_timebase(clients={"101": client}) as tc:
+            resp = tc.post(
+                "/api/timebase/history?site_id=101",
+                json={
+                    "tag_paths": [_TAG_PATH],
+                    "start_time": "2026-05-01T10:00:00Z",
+                    "end_time": "2026-05-01T10:00:00Z",   # zero window
+                },
+            )
+        assert resp.status_code == 422
+        assert "after start_time" in resp.json()["detail"]
+    finally:
+        await client.aclose()
+
+
+def test_history_allows_window_inside_cap(wire_timebase) -> None:
+    """A window inside the cap is not rejected by the validator."""
+    # We don't need a mock client here -- if it gets past validation,
+    # the actual fetch will be tested elsewhere. This just verifies
+    # the boundary doesn't trip the 422.
+    with wire_timebase() as tc:
+        resp = tc.post(
+            "/api/timebase/history?site_id=101",
+            json={
+                "tag_paths": [_TAG_PATH],
+                "start_time": "2026-05-01T06:00:00Z",
+                "end_time": "2026-05-01T14:00:00Z",  # exactly 8h
+            },
+        )
+    # 503 because no client is configured for site 101 in this test (the
+    # wire_timebase context with no `clients=` arg). What we're confirming
+    # is that we got past the window-cap validation -- otherwise it'd be 422.
+    assert resp.status_code != 422
+

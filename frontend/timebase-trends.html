@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<!--
+  Timebase Trends -- Phase 27 (Phase 2 of the i3X feature track).
+
+  Standalone page, page-scoped JS. NO global state, NO polling, NO
+  timers. Only fires HTTP calls when the user changes a control.
+
+  Linked from index.html topbar via a single nav element so deleting
+  this file + that one nav line cleanly removes the feature with no
+  remnants in other pages.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Timebase Trends</title>
+<link rel="icon" href="data:,">
+<script>
+  // FOUC-prevention: apply persisted theme before CSS variables resolve.
+  // Shares the localStorage key with the main dashboard so a theme set
+  // anywhere carries here.
+  (function() {
+    try {
+      var t = localStorage.getItem("pmd-theme");
+      if (!t) t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.setAttribute("data-theme", t);
+    } catch (e) { /* localStorage may be blocked; default to light */ }
+  })();
+</script>
+<style>
+  :root,
+  :root[data-theme="light"] {
+    --bg-shell: #2d2926;
+    --bg-canvas: #fafaf6;
+    --bg-card: #ffffff;
+    --bg-subtle: #f5f4ef;
+    --border: #e1dfdd;
+    --border-strong: #c8c6c4;
+    --text: #2d2926;
+    --text-muted: #605e5c;
+    --text-faint: #a19f9d;
+    --accent: #00502f;
+    --accent-tint: #e6efe9;
+    --primary-bg: #00502f;
+    --primary-bg-hover: #003d23;
+    --primary-border: #002a18;
+    --shell-text: #fafaf6;
+    --shell-text-muted: #c8c6c4;
+    --shell-button-bg: #45545f;
+    --shell-hover-bg: #586673;
+    --error-bg: #fde7e9;
+    --error-fg: #a4262c;
+    --error-border: #f3b3b8;
+    --slider-track: #c8c6c4;
+    --slider-fill: #00502f;
+  }
+  :root[data-theme="dark"] {
+    --bg-shell: #1b1a19;
+    --bg-canvas: #252423;
+    --bg-card: #323130;
+    --bg-subtle: #2d2c2b;
+    --border: #484644;
+    --border-strong: #605e5c;
+    --text: #f3f2f1;
+    --text-muted: #c8c6c4;
+    --text-faint: #a19f9d;
+    --accent: #66877a;
+    --accent-tint: #1a3326;
+    --primary-bg: #00502f;
+    --primary-bg-hover: #003d23;
+    --primary-border: #002a18;
+    --shell-text: #f3f2f1;
+    --shell-text-muted: #c8c6c4;
+    --shell-button-bg: #3b3a39;
+    --shell-hover-bg: #484644;
+    --error-bg: #442726;
+    --error-fg: #f1707b;
+    --error-border: #6b3a3d;
+    --slider-track: #484644;
+    --slider-fill: #66877a;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    font-family: Arial, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg-canvas);
+    color: var(--text);
+  }
+  /* Topbar -- mirrors the main dashboard pixel-for-pixel: 40px tall,
+     2px yellow stripe under, dark slate background, off-white text. */
+  .topbar {
+    height: 40px;
+    border-bottom: 2px solid #ffde74;
+    background: var(--bg-shell);
+    color: var(--shell-text);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .brand-text {
+    font-weight: 600;
+    font-size: 14px;
+    letter-spacing: 0.3px;
+    color: var(--shell-text);
+  }
+  .brand small {
+    font-weight: 400;
+    color: var(--shell-text-muted);
+    font-size: 11px;
+    margin-left: 6px;
+  }
+  .topbar-actions { display: flex; gap: 8px; align-items: center; }
+  .home-link {
+    height: 28px;
+    padding: 0 12px;
+    display: inline-flex;
+    align-items: center;
+    border-radius: 2px;
+    background: var(--shell-button-bg);
+    color: var(--shell-text);
+    text-decoration: none;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+  }
+  .home-link:hover { background: var(--shell-hover-bg); }
+  .theme-toggle {
+    height: 28px;
+    width: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--shell-button-bg);
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+    color: var(--shell-text);
+    cursor: pointer;
+  }
+  .theme-toggle:hover { background: var(--shell-hover-bg); }
+  .theme-toggle svg { width: 14px; height: 14px; display: block; }
+  /* Main layout */
+  main {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 16px 24px;
+  }
+  .panel {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 16px 20px;
+    margin-bottom: 16px;
+  }
+  .panel h2 {
+    margin: 0 0 12px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
+  label.field {
+    display: flex;
+    flex-direction: column;
+    font-size: 12px;
+    gap: 4px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    font-weight: 600;
+    min-width: 140px;
+  }
+  label.field select,
+  label.field input {
+    height: 30px;
+    padding: 0 8px;
+    background: var(--bg-card);
+    color: var(--text);
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+    font: inherit;
+    text-transform: none;
+    font-weight: 400;
+    letter-spacing: 0;
+  }
+  label.field select:focus,
+  label.field input:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+  /* Day stepper */
+  .day-stepper {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+    padding: 4px 6px;
+    background: var(--bg-card);
+    height: 30px;
+  }
+  .day-arrow {
+    width: 24px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-subtle);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 14px;
+  }
+  .day-arrow:hover:not(:disabled) { background: var(--accent-tint); }
+  .day-arrow:disabled { opacity: 0.4; cursor: not-allowed; }
+  .day-label {
+    min-width: 180px;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  /* Time slider */
+  .time-slider-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1 1 400px;
+    min-width: 320px;
+  }
+  .time-slider-wrap .field-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    font-weight: 600;
+  }
+  .time-slider-wrap .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  /* Custom dual-handle slider -- built from divs (NOT <input type="range">)
+     so the fill bar between the handles is itself draggable to translate
+     the whole window while preserving its length. All snapping to 2h
+     increments is done in JS via pointer events.
+
+     Domain: 24h, snapped to 2h. Window length: 2h min, 12h max. */
+  .range-slider {
+    position: relative;
+    flex: 1;
+    height: 28px;
+    touch-action: none;             /* let pointer events drive scroll, not the browser */
+    user-select: none;
+  }
+  .range-track {
+    position: absolute;
+    top: 11px;
+    left: 0;
+    right: 0;
+    height: 6px;
+    background: var(--slider-track);
+    border-radius: 3px;
+    pointer-events: none;
+  }
+  .range-fill {
+    position: absolute;
+    top: 8px;
+    height: 12px;                   /* fat enough to grab comfortably */
+    background: var(--slider-fill);
+    border-radius: 6px;
+    cursor: grab;
+    z-index: 1;
+  }
+  .range-fill:active,
+  .range-fill.dragging { cursor: grabbing; }
+  .range-handle {
+    position: absolute;
+    top: 5px;
+    width: 18px;
+    height: 18px;
+    margin-left: -9px;              /* center on its position */
+    background: var(--slider-fill);
+    border: 2px solid var(--bg-card);
+    border-radius: 50%;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+    cursor: ew-resize;
+    z-index: 2;
+  }
+  .range-handle:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .range-handle.dragging { cursor: grabbing; }
+  .range-ticks {
+    position: absolute;
+    top: 21px;
+    left: 0;
+    right: 0;
+    height: 6px;
+    pointer-events: none;
+  }
+  .range-tick {
+    position: absolute;
+    top: 0;
+    width: 1px;
+    height: 4px;
+    background: var(--border-strong);
+    margin-left: -0.5px;
+  }
+  .window-label {
+    font-family: "Consolas", "Menlo", monospace;
+    font-size: 13px;
+    color: var(--text);
+    min-width: 180px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  /* Action buttons */
+  .actions-row { display: flex; gap: 8px; margin-top: 12px; }
+  button.action {
+    height: 32px;
+    padding: 0 16px;
+    background: var(--primary-bg);
+    color: #fff;
+    border: 1px solid var(--primary-border);
+    border-radius: 2px;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+  }
+  button.action:hover:not(:disabled) { background: var(--primary-bg-hover); }
+  button.action:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.action.secondary {
+    background: var(--bg-subtle);
+    color: var(--text);
+    border-color: var(--border-strong);
+  }
+  button.action.secondary:hover:not(:disabled) { background: var(--accent-tint); }
+  /* Status */
+  .status {
+    padding: 8px 12px;
+    margin: 8px 0;
+    border-radius: 2px;
+    font-size: 12px;
+    display: none;
+  }
+  .status.show { display: block; }
+  .status.error {
+    background: var(--error-bg);
+    color: var(--error-fg);
+    border: 1px solid var(--error-border);
+  }
+  .status.info {
+    background: var(--accent-tint);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  /* Chart area */
+  .chart-panel { padding: 16px; }
+  .chart-wrap {
+    position: relative;
+    width: 100%;
+    height: 520px;
+  }
+  #trend-chart { width: 100% !important; height: 100% !important; }
+  .empty-state {
+    text-align: center;
+    padding: 80px 20px;
+    color: var(--text-faint);
+    font-size: 14px;
+  }
+  .footer-stats {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 8px 0 0;
+    border-top: 1px solid var(--border);
+    margin-top: 12px;
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+  .footer-stats strong { color: var(--text); font-weight: 600; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-text">PRODUCTION METRICS<small>Timebase Trends</small></span>
+  </div>
+  <div class="topbar-actions">
+    <a class="home-link" href="/">&lsaquo; Dashboard</a>
+    <button class="theme-toggle" id="theme_toggle" aria-label="Toggle theme">
+      <!-- icon swapped by JS -->
+    </button>
+  </div>
+</header>
+
+<main>
+  <div class="panel">
+    <h2>Tag selection</h2>
+    <div class="row">
+      <label class="field">Site
+        <select id="site_select"></select>
+      </label>
+      <label class="field">Department
+        <select id="dept_select"></select>
+      </label>
+      <label class="field">Asset Class
+        <select id="class_select"></select>
+      </label>
+      <label class="field">Asset
+        <select id="asset_select"></select>
+      </label>
+      <label class="field">Metric
+        <select id="metric_select"></select>
+      </label>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Time window (2 – 12 hours)</h2>
+    <div class="row" style="align-items: center;">
+      <div class="day-stepper" aria-label="Day stepper">
+        <button class="day-arrow" id="day_prev" aria-label="Previous day">&lsaquo;</button>
+        <div class="day-label" id="day_label">&mdash;</div>
+        <button class="day-arrow" id="day_next" aria-label="Next day">&rsaquo;</button>
+      </div>
+      <div class="time-slider-wrap">
+        <span class="field-label">Window (drag handles to resize, drag bar to translate — 2h to 12h)</span>
+        <div class="slider-row">
+          <div class="range-slider" id="range_slider">
+            <div class="range-track"></div>
+            <div class="range-fill" id="range_fill"
+                 role="presentation" aria-label="Drag to translate window"></div>
+            <div class="range-handle" id="range_handle_start"
+                 role="slider" tabindex="0"
+                 aria-label="Window start" aria-valuemin="0" aria-valuemax="24"></div>
+            <div class="range-handle" id="range_handle_end"
+                 role="slider" tabindex="0"
+                 aria-label="Window end" aria-valuemin="0" aria-valuemax="24"></div>
+            <div class="range-ticks" id="range_ticks" aria-hidden="true"></div>
+          </div>
+          <span class="window-label" id="window_label">&mdash;</span>
+        </div>
+      </div>
+    </div>
+    <div class="actions-row">
+      <button class="action" id="fetch_btn">Fetch</button>
+      <button class="action secondary" id="now_btn">Reset to last 8h ending now</button>
+    </div>
+  </div>
+
+  <div id="status" class="status"></div>
+
+  <div class="panel chart-panel">
+    <h2 id="chart_title">Trend</h2>
+    <div class="chart-wrap">
+      <canvas id="trend_chart"></canvas>
+      <div id="empty_state" class="empty-state" style="display:none;">
+        No samples in this window.
+      </div>
+    </div>
+    <div class="footer-stats">
+      <span><strong id="stat_count">0</strong> points plotted</span>
+      <span><strong id="stat_dropped">0</strong> non-GOOD dropped</span>
+      <span id="stat_cache"></span>
+      <span id="stat_fetched"></span>
+    </div>
+  </div>
+</main>
+
+<script src="vendor/chart.umd.js"></script>
+<script src="timebase-trends.js" defer></script>
+</body>
+</html>

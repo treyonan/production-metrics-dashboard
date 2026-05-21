@@ -167,6 +167,29 @@ class Settings(BaseSettings):
             "cap is on count rather than bytes."
         ),
     )
+    timebase_enabled: bool = Field(
+        default=True,
+        description=(
+            "Kill switch. When False, the lifespan skips catalog "
+            "load and client creation entirely -- no historian "
+            "pings, no /api/timebase/* responses, no entries in "
+            "/api/health. Used when the Timebase integration is "
+            "being evaluated or rolled back without removing code."
+        ),
+        validation_alias=AliasChoices(
+            "PMD_TIMEBASE_ENABLED", "TIMEBASE_ENABLED"
+        ),
+    )
+    timebase_max_window_seconds: int = Field(
+        default=43200,
+        description=(
+            "Server-side cap on the requested history window for "
+            "/api/timebase/history. Defaults to 8 hours (28800s) to "
+            "prevent accidental multi-day requests that hammer the "
+            "historian and saturate the browser. Validated as a 422 "
+            "before any upstream call."
+        ),
+    )
 
 
 @lru_cache

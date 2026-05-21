@@ -32,7 +32,7 @@ from app.integrations.timebase.cache import TimebaseHistoryCache
 from app.integrations.timebase.catalog import load_catalog as load_timebase_catalog
 from app.integrations.timebase.client import TimebaseClient, TimebaseClientRegistry
 
-BUILD_TAG = "2026-05-21-phase26-timebase-i3x-placement"
+BUILD_TAG = "2026-05-21-phase26-timebase-trends-page"
 
 
 @asynccontextmanager
@@ -123,61 +123,67 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Phase 26: Timebase i3X integration. Each site has its own
     # historian on its own plant network; the URL lives in the
-    # catalog YAML (sites.<id>.base_url). We build one client per
-    # configured site at startup, holding them in a registry keyed
-    # by site_id. Catalog and clients are independent: catalog can
-    # load when every historian is unreachable, and /history works
-    # for sites whose clients opened even if the catalog failed.
+    # catalog YAML (sites.<id>.base_url). When the kill switch is
+    # off (PMD_TIMEBASE_ENABLED=false), the entire block is skipped
+    # -- no catalog load, no clients, no /api/health pings.
     app.state.timebase_catalog = None
-    app.state.timebase_clients = TimebaseClientRegistry()
-    app.state.timebase_history_cache = TimebaseHistoryCache(
-        ttl_seconds=settings.timebase_cache_ttl_seconds,
-        max_entries=settings.timebase_cache_max_entries,
-    )
-    try:
-        app.state.timebase_catalog = load_timebase_catalog()
+    app.state.timebase_clients = None
+    app.state.timebase_history_cache = None
+    if not settings.timebase_enabled:
         log.info(
-            "timebase.catalog_loaded",
-            site_count=len(app.state.timebase_catalog.sites),
-            asset_class_count=len(app.state.timebase_catalog.asset_classes),
-        )
-    except Exception as exc:  # noqa: BLE001 -- degrade gracefully
-        log.error(
-            "timebase.catalog_load_failed",
-            error_type=type(exc).__name__,
-            error_message=str(exc),
-        )
-
-    if app.state.timebase_catalog is None:
-        log.info(
-            "timebase.registry_not_populated",
-            reason="catalog failed to load; /api/timebase/* will 503/404",
+            "timebase.disabled",
+            reason="PMD_TIMEBASE_ENABLED=false; skipping all Timebase init",
         )
     else:
-        for site in app.state.timebase_catalog.sites.values():
-            try:
-                tb_client = TimebaseClient(
-                    site_id=site.site_id,
-                    base_url=site.base_url,
-                    dataset=site.dataset,
-                    timeout_seconds=settings.timebase_timeout_seconds,
-                )
-                await tb_client.aopen()
-                app.state.timebase_clients.add(tb_client)
-                log.info(
-                    "timebase.client_created",
-                    site_id=site.site_id,
-                    code=site.code,
-                    base_url=site.base_url,
-                )
-            except Exception as exc:  # noqa: BLE001 -- per-site degrade
-                log.error(
-                    "timebase.client_create_failed",
-                    site_id=site.site_id,
-                    code=site.code,
-                    error_type=type(exc).__name__,
-                    error_message=str(exc),
-                )
+        app.state.timebase_clients = TimebaseClientRegistry()
+        app.state.timebase_history_cache = TimebaseHistoryCache(
+            ttl_seconds=settings.timebase_cache_ttl_seconds,
+            max_entries=settings.timebase_cache_max_entries,
+        )
+        try:
+            app.state.timebase_catalog = load_timebase_catalog()
+            log.info(
+                "timebase.catalog_loaded",
+                site_count=len(app.state.timebase_catalog.sites),
+                asset_class_count=len(app.state.timebase_catalog.asset_classes),
+            )
+        except Exception as exc:  # noqa: BLE001 -- degrade gracefully
+            log.error(
+                "timebase.catalog_load_failed",
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+            )
+
+        if app.state.timebase_catalog is None:
+            log.info(
+                "timebase.registry_not_populated",
+                reason="catalog failed to load; /api/timebase/* will 503/404",
+            )
+        else:
+            for site in app.state.timebase_catalog.sites.values():
+                try:
+                    tb_client = TimebaseClient(
+                        site_id=site.site_id,
+                        base_url=site.base_url,
+                        dataset=site.dataset,
+                        timeout_seconds=settings.timebase_timeout_seconds,
+                    )
+                    await tb_client.aopen()
+                    app.state.timebase_clients.add(tb_client)
+                    log.info(
+                        "timebase.client_created",
+                        site_id=site.site_id,
+                        code=site.code,
+                        base_url=site.base_url,
+                    )
+                except Exception as exc:  # noqa: BLE001 -- per-site degrade
+                    log.error(
+                        "timebase.client_create_failed",
+                        site_id=site.site_id,
+                        code=site.code,
+                        error_type=type(exc).__name__,
+                        error_message=str(exc),
+                    )
 
     try:
         yield

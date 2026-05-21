@@ -29,6 +29,12 @@
   --shell-text-faint: #a19f9d;
   --shell-hover-bg: #3b3a39;
   --shell-button-bg: #3b3a39;
+  /* Faint vertical rule used in the topbar between functional
+     groups of nav entries (site | in-app views | sibling pages |
+     external popouts). Tuned to be visible without competing with
+     the yellow stripe below or the tab labels. Same token name in
+     both themes so the topbar CSS doesn't have to branch. */
+  --shell-divider: rgba(255, 255, 255, 0.18);
 
   --accent: #00502f;
   --accent-tint: #e6efe9;
@@ -827,6 +833,42 @@ body {
   align-items: center;
   height: 40px;
   border-right: 1px solid var(--divider-dark);
+  /* Faint left rule separates the view-tabs cluster from the site
+     selector (.site-tog) to its left. Padding so the first tab label
+     ("Production Dashboard") doesn't crowd the divider. */
+  border-left: 1px solid var(--shell-divider);
+  padding-left: 6px;
+  margin-left: 6px;
+}
+/* Functional-group separators inside .view-tabs. Each rule puts a
+   short vertical rule on the element that *begins* a new tier, so
+   visually the bar reads:
+     [site] | Production Dashboard  Production Charts |
+            | Interval  Time Series                   |
+            | Charts ▾  Forms ▾  API                  |
+   The line is a ::before pseudo-element (not a background-image)
+   so it survives the .vtab:hover rule, which uses the `background`
+   shorthand and would wipe a background-image divider on hover.
+   The 14px vertical extent is intentionally shorter than the 40px
+   topbar height so the separators read as quiet dividers rather
+   than competing with the active-tab underline. */
+.view-tabs > #flow-metrics-link,
+.view-tabs > .vtab-dropdown:first-of-type {
+  position: relative;        /* anchor the ::before */
+  margin-left: 10px;         /* gap to the left of the divider */
+  padding-left: 16px;        /* breathing room to the right of the divider */
+}
+.view-tabs > #flow-metrics-link::before,
+.view-tabs > .vtab-dropdown:first-of-type::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 1px;
+  height: 14px;
+  margin-top: -7px;          /* vertical centering, no transform needed */
+  background: var(--shell-divider);
+  pointer-events: none;
 }
 .vtab {
   height: 40px;
@@ -862,12 +904,16 @@ body {
   line-height: 1;
   opacity: 0.8;
 }
-/* Flow logo glyph that sits inline-left of the "Forms" dropdown and
-   "Flow Metrics" nav-link labels in the topbar. Scaled small enough
-   to fit inside the existing 26px / 40px button heights without
-   changing them; vertical-align centers it on the text baseline.
-   The <img> is decorative (alt=""), so screen readers skip it. */
-.btn-flow-logo {
+/* Source-logo glyphs that sit inline-left of the topbar nav labels.
+   Two variants today -- .btn-flow-logo next to "Interval", and
+   .btn-timebase-logo next to "Time Series" -- both share the same
+   sizing so the two nav entries line up visually. Scaled small
+   enough to fit inside the existing 26px / 40px button heights
+   without changing them; vertical-align centers them on the text
+   baseline. The <img>s are decorative (alt=""), so screen readers
+   skip them. */
+.btn-flow-logo,
+.btn-timebase-logo {
   height: 14px;
   width: auto;
   margin-right: 6px;

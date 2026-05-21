@@ -80,4 +80,8 @@ asset_classes:
       belt_scale_total:
         display_name: Belt Scale Total
         unit: tons
-        suffix: Process_Data/Belt_Scale/Total
+        # Real SCADA leaf is 'Odometer' (cumulative tons since
+        # last reset). We keep the metric_key 'belt_scale_total'
+        # so the frontend's '*_total' detection still computes
+        # delta-from-start (== tons produced in window).
+        suffix: Process_Data/Belt_Scale/Odometer

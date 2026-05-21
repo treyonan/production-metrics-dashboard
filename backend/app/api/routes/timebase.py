@@ -50,6 +50,7 @@ import httpx
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 
+from app.core.config import get_settings
 from app.integrations.timebase.cache import TimebaseHistoryCache
 from app.integrations.timebase.catalog import CatalogError, TimebaseCatalog
 from app.integrations.timebase.client import TimebaseClient, TimebaseClientRegistry
@@ -213,6 +214,26 @@ async def post_history(
         ),
     ],
 ) -> HistoryResponse:
+    # Server-side window cap. Defense-in-depth -- the trend page UI
+    # also limits to 8h, but a direct API call could ask for arbitrary
+    # ranges and overload the historian. Return a 422 with the limit.
+    settings = get_settings()
+    window_s = (payload.end_time - payload.start_time).total_seconds()
+    if window_s > settings.timebase_max_window_seconds:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Requested window of {window_s:.0f}s exceeds the "
+                f"{settings.timebase_max_window_seconds}s limit. "
+                "Narrow the start_time/end_time range."
+            ),
+        )
+    if window_s <= 0:
+        raise HTTPException(
+            status_code=422,
+            detail="end_time must be after start_time.",
+        )
+
     client = _resolve_site_client(registry, site_id)
     if not client.dataset:
         # Should be unreachable in normal operation -- catalog enforces
