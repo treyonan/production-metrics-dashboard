@@ -32,7 +32,7 @@ from app.integrations.timebase.cache import TimebaseHistoryCache
 from app.integrations.timebase.catalog import load_catalog as load_timebase_catalog
 from app.integrations.timebase.client import TimebaseClient, TimebaseClientRegistry
 
-BUILD_TAG = "2026-05-21-phase26-timebase-i3x-unified"
+BUILD_TAG = "2026-05-21-phase26-timebase-i3x-placement"
 
 
 @asynccontextmanager

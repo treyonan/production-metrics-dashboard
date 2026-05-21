@@ -689,3 +689,83 @@ No code path takes a URL from a client. Every historian URL is loaded
 from `catalog.yaml` at startup, vetted by code review when added.
 The "untrusted base_url" concern from Revision 3 disappears entirely.
 
+
+## Revision 5 -- per-site asset placement (catalog schema v2, 2026-05-21)
+
+Trey flagged that conveyor placement varies by site: C1 lives in
+Secondary at BCQ but might live in Primary at another site. The
+schema-v1 catalog put `assets` under `asset_classes.<class>` globally,
+which meant `build_response()` duplicated every conveyor under every
+department at every site whether it physically existed there or not.
+
+### Schema v2 shape
+
+Per-site asset placement moves the assets list **out** of the shared
+asset_classes block and **into** each site's per-department block.
+`asset_classes` keeps only metric definitions.
+
+```yaml
+sites:
+  "101":
+    code: BCQ
+    base_url: http://10.44.135.12:4511
+    dataset: IAP_BCQ_Controls
+    departments:
+      Secondary:
+        prefix: Big_Canyon/Secondary
+        assets:
+          Conveyor: [C1, C2, C3, C4, C5, C6, C7, C8]
+
+  "100":                                 # future
+    code: ARP
+    ...
+    departments:
+      Primary:
+        prefix: Ardmore/Primary
+        assets:
+          Conveyor: [C1, C2]             # only these at ARP/Primary
+      Secondary:
+        prefix: Ardmore/Secondary
+        assets:
+          Conveyor: [C3, C4, C5, C6, C7, C8]
+
+asset_classes:
+  Conveyor:
+    metrics:                             # shared; no global assets list
+      belt_scale_tph: { ... }
+      belt_scale_total: { ... }
+```
+
+### Changes from Revision 4
+
+- New `DepartmentDef` dataclass: `name`, `prefix`, `assets: dict[str, tuple[str, ...]]`.
+- `SiteDef.departments` changes type from `dict[str, str]` to `dict[str, DepartmentDef]`.
+- `AssetClassDef` loses its `assets` field. Becomes a metric registry only.
+- `resolve_element_id` validates `asset` against the *department's*
+  asset list for the class, not a global per-class list. C1 at ARP
+  in Primary resolves; C1 at ARP in Secondary correctly errors.
+- `build_response._build_department` walks the department's own
+  asset map (`dept.assets`), only emitting classes the department
+  actually contains. No more phantom Conveyor blocks under empty
+  departments.
+- Loader cross-validates: every dept-referenced asset_class must exist
+  in the global `asset_classes` registry (catches typos at load time).
+- Loader rejects the legacy v1 `assets:` key under `asset_classes.<class>`
+  with a clear migration message.
+
+### Wire format unchanged
+
+`CatalogResponse` and its nested models (`CatalogSite`, `CatalogDepartment`,
+`CatalogAssetClass`, `CatalogAsset`, `CatalogMetric`) stay the same.
+The schema bump only changes internal dataclasses and YAML shape;
+external API consumers see no difference, just more-honest content.
+
+### Compatibility
+
+Anyone with a schema-v1 `catalog.yaml` gets a `CatalogError` at load
+time pointing at the migration:
+"asset_classes.<class>.assets is no longer supported (schema v2).
+Move per-class asset lists into sites.<id>.departments.<dept>.assets.<class>."
+Since the only live catalog is Trey's BCQ-only one and it was already
+restructured as part of this change, no migration step needed.
+

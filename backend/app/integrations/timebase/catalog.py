@@ -1,16 +1,20 @@
-"""Timebase i3X tag catalog -- YAML loader + resolver.
+"""Timebase i3X tag catalog -- YAML loader + resolver (schema v2).
 
 The catalog lives in ``catalog.yaml`` next to this module. Two layers:
 
-* **sites**: per-site config -- ``base_url`` (each historian lives on
-  its own plant network), ``dataset`` name, and the department-folder
-  prefix paths. Varies per site.
-* **asset_classes**: shared catalog mapping ``metric_key -> tag suffix``.
-  Identical across all sites by SCADA-tree convention.
+* **sites**: per-site config -- ``base_url``, ``dataset``, and a
+  ``departments`` map. **Each department now carries its own assets
+  list per class**, so the catalog can model conveyors that live in
+  Secondary at BCQ but in Primary at another site without lying about
+  what's where.
+
+* **asset_classes**: shared metric-definition registry per class
+  (``Conveyor`` -> which metrics exist + their tag suffixes). Identical
+  across every site by SCADA-tree convention.
 
 Resolution::
 
-    element_id = f"{dataset}:{dept_prefix}/{asset_class}/{asset}/{suffix}"
+    element_id = f"{dataset}:{dept.prefix}/{asset_class}/{asset}/{metric.suffix}"
 
 For example, ``(site_id='101', department='Secondary',
 asset_class='Conveyor', asset='C1', metric_key='belt_scale_tph')``
@@ -61,13 +65,7 @@ _DEFAULT_CATALOG_PATH = _CATALOG_REAL_PATH  # exported for tests
 
 
 class CatalogError(Exception):
-    """Raised on malformed catalog YAML or missing required fields.
-
-    Distinct exception type so the lifespan can log + continue rather
-    than crash the app on a typo. Catalog routes return 503 when the
-    catalog is unavailable; /history still works for sites whose
-    clients opened correctly.
-    """
+    """Raised on malformed catalog YAML or missing required fields."""
 
 
 @dataclass(frozen=True)
@@ -82,11 +80,33 @@ class MetricDef:
 
 @dataclass(frozen=True)
 class AssetClassDef:
-    """An asset class (e.g. 'Conveyor'): which assets exist + which metrics."""
+    """An asset class (e.g. 'Conveyor'): the metric registry for the class.
+
+    Schema v2: no longer holds an `assets` list. Asset placement is
+    per-site, in ``DepartmentDef.assets[asset_class]``.
+    """
 
     asset_class: str
-    assets: tuple[str, ...]
     metrics: tuple[MetricDef, ...]
+
+
+@dataclass(frozen=True)
+class DepartmentDef:
+    """One department within a site: prefix path + per-class asset lists.
+
+    `assets` is keyed by asset_class name. A department that doesn't
+    physically contain a class simply omits the key. Example::
+
+        DepartmentDef(
+            name='Secondary',
+            prefix='Big_Canyon/Secondary',
+            assets={'Conveyor': ('C1','C2','C3','C4','C5','C6','C7','C8')},
+        )
+    """
+
+    name: str
+    prefix: str
+    assets: dict[str, tuple[str, ...]]  # asset_class -> assets in this dept
 
 
 @dataclass(frozen=True)
@@ -98,7 +118,7 @@ class SiteDef:
     display_name: str
     dataset: str
     base_url: str  # NOT surfaced in CatalogSite response
-    departments: dict[str, str]  # name -> prefix (e.g. 'Big_Canyon/Secondary')
+    departments: dict[str, DepartmentDef]  # name -> DepartmentDef
 
 
 @dataclass(frozen=True)
@@ -125,23 +145,32 @@ class TimebaseCatalog:
         """Resolve a single (site, dept, asset, metric) tuple to an elementId.
 
         Raises ``CatalogError`` if any tuple component isn't configured.
-        Used by the catalog response builder and by tests; routes that
-        accept arbitrary elementIds don't go through here.
+        Asset is validated against the **department's** asset list for
+        the class, not a global per-class list -- so e.g. C1 at BCQ
+        (Secondary) and C1 at ARP (Primary) are distinct and each only
+        resolves under their actual home department.
         """
         site = self.sites.get(site_id)
         if site is None:
             raise CatalogError(f"Unknown site_id: {site_id!r}")
-        dept_prefix = site.departments.get(department)
-        if dept_prefix is None:
+        dept = site.departments.get(department)
+        if dept is None:
             raise CatalogError(
                 f"Unknown department {department!r} for site_id {site_id}"
             )
         class_def = self.asset_classes.get(asset_class)
         if class_def is None:
             raise CatalogError(f"Unknown asset_class: {asset_class!r}")
-        if asset not in class_def.assets:
+        dept_assets = dept.assets.get(asset_class)
+        if dept_assets is None:
             raise CatalogError(
-                f"Unknown asset {asset!r} in class {asset_class!r}"
+                f"asset_class {asset_class!r} not configured in "
+                f"site_id {site_id} department {department!r}"
+            )
+        if asset not in dept_assets:
+            raise CatalogError(
+                f"Unknown asset {asset!r} in class {asset_class!r} "
+                f"at site_id {site_id} department {department!r}"
             )
         metric = next(
             (m for m in class_def.metrics if m.metric_key == metric_key), None
@@ -150,15 +179,17 @@ class TimebaseCatalog:
             raise CatalogError(
                 f"Unknown metric_key {metric_key!r} on class {asset_class!r}"
             )
-        return f"{site.dataset}:{dept_prefix}/{asset_class}/{asset}/{metric.suffix}"
+        return f"{site.dataset}:{dept.prefix}/{asset_class}/{asset}/{metric.suffix}"
 
     def build_response(self, *, site_id: str | None = None) -> CatalogResponse:
         """Build the Pydantic catalog response, optionally filtered to one site.
 
-        Walks every (site, dept, class, asset, metric) combination and
-        pre-resolves the full elementId so the frontend doesn't need
-        to do path concatenation client-side. Unknown ``site_id``
-        raises ``CatalogError`` -- routes translate that to 404.
+        Walks every site, every department, every asset_class **declared
+        in that department** (not all asset_classes globally), every
+        asset in that department's list, and every metric defined for
+        the class. Pre-resolves the full elementId so the frontend
+        doesn't need to do path concatenation client-side. Unknown
+        ``site_id`` raises ``CatalogError`` -- routes translate that to 404.
         """
         if site_id is not None and site_id not in self.sites:
             raise CatalogError(f"Unknown site_id: {site_id!r}")
@@ -173,27 +204,32 @@ class TimebaseCatalog:
             display_name=site.display_name,
             dataset=site.dataset,
             departments=[
-                self._build_department(site, dept_name)
-                for dept_name in site.departments
+                self._build_department(site, dept)
+                for dept in site.departments.values()
             ],
         )
 
     def _build_department(
-        self, site: SiteDef, dept_name: str
+        self, site: SiteDef, dept: DepartmentDef
     ) -> CatalogDepartment:
+        # Only emit asset_classes that the department actually owns
+        # (i.e. that appear in dept.assets), not every class in the
+        # global registry. Order: as declared in dept.assets.
         return CatalogDepartment(
-            name=dept_name,
+            name=dept.name,
             asset_classes=[
-                self._build_asset_class(site, dept_name, class_def)
-                for class_def in self.asset_classes.values()
+                self._build_asset_class(site, dept, class_name)
+                for class_name in dept.assets
+                if class_name in self.asset_classes
             ],
         )
 
     def _build_asset_class(
-        self, site: SiteDef, dept_name: str, class_def: AssetClassDef
+        self, site: SiteDef, dept: DepartmentDef, class_name: str
     ) -> CatalogAssetClass:
+        class_def = self.asset_classes[class_name]
         return CatalogAssetClass(
-            asset_class=class_def.asset_class,
+            asset_class=class_name,
             assets=[
                 CatalogAsset(
                     asset=asset,
@@ -204,8 +240,8 @@ class TimebaseCatalog:
                             unit=m.unit,
                             element_id=self.resolve_element_id(
                                 site_id=site.site_id,
-                                department=dept_name,
-                                asset_class=class_def.asset_class,
+                                department=dept.name,
+                                asset_class=class_name,
                                 asset=asset,
                                 metric_key=m.metric_key,
                             ),
@@ -213,7 +249,7 @@ class TimebaseCatalog:
                         for m in class_def.metrics
                     ],
                 )
-                for asset in class_def.assets
+                for asset in dept.assets[class_name]
             ],
         )
 
@@ -228,9 +264,9 @@ def load_catalog(path: Path | None = None) -> TimebaseCatalog:
 
     When ``path`` is None, prefers ``catalog.yaml`` (gitignored, real
     URLs); falls back to ``catalog.example.yaml`` (committed,
-    placeholder URLs) so tests + fresh checkouts work without
-    manual setup. In production, ``catalog.yaml`` MUST exist for
-    routes to reach real historians.
+    placeholder URLs) so tests + fresh checkouts work without manual
+    setup. In production, ``catalog.yaml`` MUST exist for routes to
+    reach real historians.
 
     Raises ``CatalogError`` on missing file, malformed YAML, or
     required-field violations. The lifespan in ``main.py`` catches
@@ -278,14 +314,24 @@ def _build_catalog(data: dict[str, Any]) -> TimebaseCatalog:
     for class_name, class_data in asset_classes_raw.items():
         ac = _build_asset_class_def(class_name, class_data)
         asset_classes[ac.asset_class] = ac
+    # Cross-validate: every (site, dept) asset_class key must be defined
+    # in the global asset_classes registry. Catch typos at load time
+    # rather than 404 at request time.
+    for site in sites.values():
+        for dept in site.departments.values():
+            for class_name in dept.assets:
+                if class_name not in asset_classes:
+                    raise CatalogError(
+                        f"sites.{site.site_id}.departments.{dept.name}.assets: "
+                        f"unknown asset_class {class_name!r} (not in "
+                        f"asset_classes registry: {sorted(asset_classes)})"
+                    )
     return TimebaseCatalog(sites=sites, asset_classes=asset_classes)
 
 
 def _build_site_def(site_id_raw: Any, site_data: Any) -> SiteDef:
-    # Site IDs are strings throughout (config.site_names, Flow / SQL
-    # routes all treat site_id as a string identifier). YAML keys that
-    # look numeric (101) parse as int unless quoted; coerce to str so
-    # the catalog matches the rest of the codebase.
+    # Site IDs are strings throughout. YAML keys that look numeric
+    # (101) parse as int unless quoted; coerce to str.
     site_id = str(site_id_raw) if site_id_raw is not None else ""
     if not site_id:
         raise CatalogError(f"sites: key {site_id_raw!r} must be a non-empty site_id")
@@ -306,24 +352,15 @@ def _build_site_def(site_id_raw: Any, site_data: Any) -> SiteDef:
         raise CatalogError(f"sites.{site_id}.dataset: required non-empty string")
     if not isinstance(base_url, str) or not base_url:
         raise CatalogError(
-            f"sites.{site_id}.base_url: required non-empty string "
-            "(e.g. 'http://10.44.135.12:8080')"
+            f"sites.{site_id}.base_url: required non-empty string"
         )
     if not isinstance(departments_raw, dict) or not departments_raw:
         raise CatalogError(
             f"sites.{site_id}.departments: required non-empty mapping"
         )
-    departments: dict[str, str] = {}
-    for dept_name, prefix in departments_raw.items():
-        if not isinstance(dept_name, str) or not dept_name:
-            raise CatalogError(
-                f"sites.{site_id}.departments: keys must be non-empty strings"
-            )
-        if not isinstance(prefix, str) or not prefix:
-            raise CatalogError(
-                f"sites.{site_id}.departments.{dept_name}: must be a non-empty string"
-            )
-        departments[dept_name] = prefix.rstrip("/")
+    departments: dict[str, DepartmentDef] = {}
+    for dept_name, dept_body in departments_raw.items():
+        departments[dept_name] = _build_department_def(site_id, dept_name, dept_body)
     return SiteDef(
         site_id=site_id,
         code=code,
@@ -334,34 +371,75 @@ def _build_site_def(site_id_raw: Any, site_data: Any) -> SiteDef:
     )
 
 
+def _build_department_def(
+    site_id: str, dept_name: Any, dept_body: Any
+) -> DepartmentDef:
+    if not isinstance(dept_name, str) or not dept_name:
+        raise CatalogError(
+            f"sites.{site_id}.departments: keys must be non-empty strings"
+        )
+    if not isinstance(dept_body, dict):
+        raise CatalogError(
+            f"sites.{site_id}.departments.{dept_name}: must be a mapping "
+            "with `prefix` and `assets` keys"
+        )
+    prefix = dept_body.get("prefix")
+    assets_raw = dept_body.get("assets") or {}
+    if not isinstance(prefix, str) or not prefix:
+        raise CatalogError(
+            f"sites.{site_id}.departments.{dept_name}.prefix: required non-empty string"
+        )
+    if not isinstance(assets_raw, dict) or not assets_raw:
+        raise CatalogError(
+            f"sites.{site_id}.departments.{dept_name}.assets: required non-empty "
+            "mapping of asset_class -> [asset_id, ...]"
+        )
+    assets: dict[str, tuple[str, ...]] = {}
+    for class_name, asset_list in assets_raw.items():
+        if not isinstance(class_name, str) or not class_name:
+            raise CatalogError(
+                f"sites.{site_id}.departments.{dept_name}.assets: "
+                "keys must be non-empty asset_class names"
+            )
+        if not isinstance(asset_list, list) or not asset_list:
+            raise CatalogError(
+                f"sites.{site_id}.departments.{dept_name}.assets.{class_name}: "
+                "must be a non-empty list of asset ids"
+            )
+        for a in asset_list:
+            if not isinstance(a, str) or not a:
+                raise CatalogError(
+                    f"sites.{site_id}.departments.{dept_name}.assets.{class_name}: "
+                    "entries must be non-empty strings"
+                )
+        assets[class_name] = tuple(asset_list)
+    return DepartmentDef(
+        name=dept_name, prefix=prefix.rstrip("/"), assets=assets
+    )
+
+
 def _build_asset_class_def(class_name: Any, class_data: Any) -> AssetClassDef:
     if not isinstance(class_name, str) or not class_name:
         raise CatalogError("asset_classes keys must be non-empty strings")
     if not isinstance(class_data, dict):
         raise CatalogError(f"asset_classes.{class_name}: must be a mapping")
-    assets_raw = class_data.get("assets") or []
     metrics_raw = class_data.get("metrics") or {}
-    if not isinstance(assets_raw, list) or not assets_raw:
-        raise CatalogError(
-            f"asset_classes.{class_name}.assets: required non-empty list"
-        )
-    for a in assets_raw:
-        if not isinstance(a, str) or not a:
-            raise CatalogError(
-                f"asset_classes.{class_name}.assets: entries must be non-empty strings"
-            )
     if not isinstance(metrics_raw, dict) or not metrics_raw:
         raise CatalogError(
             f"asset_classes.{class_name}.metrics: required non-empty mapping"
         )
+    # Schema v2: 'assets' key under asset_classes is no longer used.
+    # Reject it with a clear error so anyone porting an old catalog
+    # knows where to move the list.
+    if "assets" in class_data:
+        raise CatalogError(
+            f"asset_classes.{class_name}.assets is no longer supported (schema v2). "
+            "Move per-class asset lists into sites.<id>.departments.<dept>.assets.<class>."
+        )
     metrics: list[MetricDef] = []
     for metric_key, metric_data in metrics_raw.items():
         metrics.append(_build_metric_def(class_name, metric_key, metric_data))
-    return AssetClassDef(
-        asset_class=class_name,
-        assets=tuple(assets_raw),
-        metrics=tuple(metrics),
-    )
+    return AssetClassDef(asset_class=class_name, metrics=tuple(metrics))
 
 
 def _build_metric_def(

@@ -11,63 +11,73 @@
 # (useful for tests + CI). In production catalog.yaml MUST exist with
 # real base_urls or every site's historian will be unreachable.
 #
-# Two layers below:
-#   - sites:         per-site config (base_url + dataset + departments).
-#                    Each plant has its own historian on its own network,
-#                    so the URL is part of the site's identity. Everything
-#                    below the asset folder is shared (see asset_classes).
-#   - asset_classes: which assets exist per class, and the stable tag
-#                    suffix for each metric. Identical across every site
-#                    by SCADA-tree convention.
+# Schema v2 (2026-05-21): per-site asset placement.
+#
+# Two layers:
+#   sites:         per-site config (base_url + dataset + departments).
+#                  Each department block holds its prefix path AND the
+#                  per-class asset list. A conveyor at BCQ may live in
+#                  Secondary while the same conveyor number at ARP lives
+#                  in Primary -- placement is intrinsically per-site.
+#   asset_classes: shared metric-definition registry per class. Same
+#                  TPH suffix for any conveyor anywhere. No global
+#                  asset list -- each site declares its own.
 #
 # Full elementId resolved as:
 #
-#   <dataset>:<departments[D]>/<asset_class>/<asset>/<metrics[K].suffix>
+#   <dataset>:<departments[D].prefix>/<asset_class>/<asset>/<metrics[K].suffix>
 #
-# Example resolution (site '101', Secondary, Conveyor, C1, belt_scale_tph):
-#
+# Example: (site_id='101', dept='Secondary', class='Conveyor', asset='C1',
+# metric='belt_scale_tph') ->
 #   IAP_BCQ_Controls:Big_Canyon/Secondary/Conveyor/C1/Process_Data/Belt_Scale/TPH
 #
-# Adding a new site: add a top-level entry under `sites:`.
-# Adding a new metric on an existing asset class: add one entry under
-# `asset_classes.<class>.metrics:` -- applies to every site at once.
+# Adding a new site:     add a top-level entry under `sites:`.
+# Adding a new metric:   add one entry under `asset_classes.<class>.metrics:`
+#                        -- applies to every site at once.
+# Moving an asset:       edit only that site's departments block.
 # ============================================================================
 
 sites:
   "101":
     code: BCQ
     display_name: Big Canyon Quarry
-    base_url: http://historian.example.invalid:8080  # REPLACE in catalog.yaml
+    base_url: http://historian.example.invalid:4511   # REPLACE in catalog.yaml
     dataset: IAP_BCQ_Controls
     departments:
-      Secondary: Big_Canyon/Secondary
-      # future: Wash_Plant, Primary, etc.
+      Secondary:
+        prefix: Big_Canyon/Secondary
+        assets:
+          Conveyor: [C1, C2, C3, C4, C5, C6, C7, C8]
 
-  # Sketch for additional sites -- uncomment + fill in catalog.yaml:
+  # Sketch demonstrating per-site placement -- enable in catalog.yaml
+  # when Ardmore's historian comes online. The conveyor numbers don't
+  # collide because the full elementId is dataset+prefix-scoped.
   #
   # "100":
   #   code: ARP
   #   display_name: Ardmore Quarry
-  #   base_url: http://historian.example.invalid:8080
+  #   base_url: http://historian.example.invalid:4511
   #   dataset: IAP_ARP_Controls
   #   departments:
-  #     Secondary: Ardmore/Secondary
+  #     Primary:
+  #       prefix: Ardmore/Primary
+  #       assets:
+  #         Conveyor: [C1, C2]
+  #     Secondary:
+  #       prefix: Ardmore/Secondary
+  #       assets:
+  #         Conveyor: [C3, C4, C5, C6, C7, C8]
 
 asset_classes:
   Conveyor:
-    # Conveyors C1-C8 exist at every site by SCADA convention.
-    # Phase 1 catalog response surfaces all eight at any site that
-    # has a `Secondary` (or future) department configured. If a site
-    # doesn't physically have one of these conveyors, /history calls
-    # for it will return empty `data` arrays -- not an error.
-    assets: [C1, C2, C3, C4, C5, C6, C7, C8]
+    # Metric registry only -- no global asset list. Each site/department
+    # declares which conveyors it owns; metrics here apply to all of them.
     metrics:
       belt_scale_tph:
         display_name: Belt Scale TPH
         unit: tph
         suffix: Process_Data/Belt_Scale/TPH
-      # future Phase 1+ entries (one line each, applies to all sites):
-      # belt_scale_odometer:
-      #   display_name: Belt Scale Odometer (Total)
-      #   unit: tons
-      #   suffix: Process_Data/Belt_Scale/Odometer
+      belt_scale_total:
+        display_name: Belt Scale Total
+        unit: tons
+        suffix: Process_Data/Belt_Scale/Total

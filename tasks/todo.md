@@ -3433,3 +3433,49 @@ The Flow comparison doesn't hold up under scrutiny:
     GET  /api/timebase/catalog
     GET  /api/timebase/catalog/{site_id}
 
+
+## Phase 26.4 -- Per-site asset placement (catalog schema v2, DONE 2026-05-21)
+
+Reality check: a conveyor numbered C1 at BCQ might live in a different
+department at Ardmore. v1 schema had a global per-class asset list
+under `asset_classes.<class>.assets`, so the catalog claimed every
+class's assets existed in every department of every site -- false.
+
+### Schema v2 changes
+
+- `assets` moves OUT of `asset_classes.<class>` (global)
+  and INTO `sites.<id>.departments.<dept>.assets.<class>` (per-site).
+- New `DepartmentDef` dataclass with `name`, `prefix`, and
+  per-class asset map.
+- `AssetClassDef` becomes a pure metric registry (no asset list).
+- Resolver validates `asset` against the *department's* asset list
+  for the class. Same C1 number at two sites resolves under different
+  departments; cross-department queries 404.
+- Response builder walks per-dept asset maps, only emits classes the
+  department actually owns. No phantom Conveyor blocks.
+- Loader cross-validates dept-referenced asset_classes against the
+  registry (catches typos at load).
+- Loader rejects v1 `assets:` under `asset_classes.<class>` with a
+  clear migration message.
+
+### Files touched
+
+- `backend/app/integrations/timebase/catalog.py` (full rewrite for v2)
+- `backend/app/integrations/timebase/catalog.yaml` (BCQ remains in
+  Secondary; same final elementIds)
+- `backend/app/integrations/timebase/catalog.example.yaml` (same +
+  ARP placement sketch in a comment)
+- `backend/tests/integrations/timebase/test_catalog.py` (33 tests now,
+  including 4 new ones for per-site placement scenarios)
+- `tasks/specs/003-timebase-i3x-wrapper.md` (Revision 5)
+
+### Verification
+
+- 70 unit tests pass (cache 20, catalog 33, client 17).
+- ruff check clean.
+- Manually exercised a two-site catalog with non-uniform conveyor
+  placement (ARP C1-C2 in Primary, C3-C8 in Secondary) -- elementIds
+  resolve correctly, cross-dept queries reject cleanly, response shape
+  honors the placement.
+- BUILD_TAG -> 2026-05-21-phase26-timebase-i3x-placement
+

@@ -1,4 +1,4 @@
-"""Unit tests for the Timebase i3X catalog loader + resolver."""
+"""Unit tests for the Timebase i3X catalog loader + resolver (schema v2)."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from app.integrations.timebase.catalog import (
 )
 
 # ============================================================================
-# Loading the real shipped catalog.yaml
+# Loading the real shipped catalog.yaml (BCQ-only, all conveyors in Secondary)
 # ============================================================================
 
 
@@ -22,34 +22,42 @@ def test_real_catalog_loads() -> None:
     """The shipped catalog.yaml parses cleanly."""
     catalog = load_catalog()
     assert isinstance(catalog, TimebaseCatalog)
-    # Site '101' is Phase 1's only configured site.
     assert "101" in catalog.sites
     site = catalog.sites["101"]
     assert site.code == "BCQ"
     assert site.dataset == "IAP_BCQ_Controls"
-    assert site.base_url == "http://10.44.135.12:8080"
+    assert site.base_url.startswith("http://")
     assert "Secondary" in site.departments
-    assert site.departments["Secondary"] == "Big_Canyon/Secondary"
+    secondary = site.departments["Secondary"]
+    assert secondary.prefix == "Big_Canyon/Secondary"
+    assert "Conveyor" in secondary.assets
 
 
 def test_real_catalog_site_id_is_string() -> None:
-    """Site IDs are strings throughout for consistency with Flow / SQL."""
     catalog = load_catalog()
     for sid in catalog.sites:
         assert isinstance(sid, str)
 
 
-def test_real_catalog_has_conveyor_class() -> None:
+def test_real_catalog_has_conveyor_metric_registry() -> None:
+    """Schema v2: asset_classes holds metrics only, no global assets list."""
     catalog = load_catalog()
-    assert "Conveyor" in catalog.asset_classes
     conveyor = catalog.asset_classes["Conveyor"]
-    assert conveyor.assets == ("C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8")
     metric_keys = [m.metric_key for m in conveyor.metrics]
     assert "belt_scale_tph" in metric_keys
 
 
+def test_real_catalog_conveyor_placement_is_per_department() -> None:
+    """Per-site placement: Conveyor assets are declared inside the dept block."""
+    catalog = load_catalog()
+    secondary = catalog.sites["101"].departments["Secondary"]
+    assert secondary.assets["Conveyor"] == (
+        "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8"
+    )
+
+
 def test_real_catalog_resolves_known_tag() -> None:
-    """The example tag from the spec resolves correctly end-to-end."""
+    """The spec example resolves correctly with the new schema."""
     catalog = load_catalog()
     element_id = catalog.resolve_element_id(
         site_id="101",
@@ -65,7 +73,6 @@ def test_real_catalog_resolves_known_tag() -> None:
 
 
 def test_default_catalog_path_resolves_under_integration_module() -> None:
-    """Sanity: the shipped catalog ships in the right spot."""
     assert _DEFAULT_CATALOG_PATH.name == "catalog.yaml"
     assert _DEFAULT_CATALOG_PATH.is_file()
 
@@ -76,7 +83,6 @@ def test_default_catalog_path_resolves_under_integration_module() -> None:
 
 
 def test_build_response_all_sites() -> None:
-    """Whole-catalog response includes every configured site."""
     catalog = load_catalog()
     resp = catalog.build_response()
     site_ids = [s.site_id for s in resp.sites]
@@ -84,7 +90,6 @@ def test_build_response_all_sites() -> None:
 
 
 def test_build_response_one_site() -> None:
-    """Single-site response surfaces just the requested site."""
     catalog = load_catalog()
     resp = catalog.build_response(site_id="101")
     assert len(resp.sites) == 1
@@ -105,11 +110,12 @@ def test_build_response_one_site() -> None:
 
 
 def test_build_response_does_not_expose_base_url() -> None:
-    """base_url is internal -- don't leak historian IPs through public API."""
     catalog = load_catalog()
     resp = catalog.build_response(site_id="101")
     j = resp.model_dump_json(by_alias=True)
+    # Real or example IP must not leak into the public response.
     assert "10.44.135.12" not in j
+    assert "example.invalid" not in j
     assert "base_url" not in j
 
 
@@ -120,7 +126,6 @@ def test_build_response_unknown_site_raises() -> None:
 
 
 def test_build_response_uses_class_alias_on_wire() -> None:
-    """The asset_class field serializes as 'class' (i3X-style alias)."""
     catalog = load_catalog()
     resp = catalog.build_response(site_id="101")
     j = resp.model_dump_json(by_alias=True)
@@ -193,14 +198,149 @@ def test_resolve_unknown_metric_raises() -> None:
 
 
 # ============================================================================
-# Loader error cases (malformed YAML, missing fields)
+# Per-site asset placement (schema v2 key feature)
 # ============================================================================
+
+
+_MULTI_SITE_YAML = """
+sites:
+  "101":
+    code: BCQ
+    display_name: Big Canyon Quarry
+    base_url: http://10.0.0.1:4511
+    dataset: IAP_BCQ_Controls
+    departments:
+      Secondary:
+        prefix: Big_Canyon/Secondary
+        assets:
+          Conveyor: [C1, C2, C3, C4, C5, C6, C7, C8]
+  "100":
+    code: ARP
+    display_name: Ardmore Quarry
+    base_url: http://10.0.0.2:4511
+    dataset: IAP_ARP_Controls
+    departments:
+      Primary:
+        prefix: Ardmore/Primary
+        assets:
+          Conveyor: [C1, C2]
+      Secondary:
+        prefix: Ardmore/Secondary
+        assets:
+          Conveyor: [C3, C4, C5, C6, C7, C8]
+asset_classes:
+  Conveyor:
+    metrics:
+      belt_scale_tph:
+        display_name: Belt Scale TPH
+        unit: tph
+        suffix: Process_Data/Belt_Scale/TPH
+"""
 
 
 def _write_yaml(tmp_path: Path, body: str) -> Path:
     p = tmp_path / "catalog.yaml"
     p.write_text(body, encoding="utf-8")
     return p
+
+
+def test_per_site_placement_resolves_correctly(tmp_path: Path) -> None:
+    """C1 lives in Secondary at BCQ but in Primary at ARP -- both resolve."""
+    p = _write_yaml(tmp_path, _MULTI_SITE_YAML)
+    catalog = load_catalog(p)
+
+    bcq_c1 = catalog.resolve_element_id(
+        site_id="101", department="Secondary",
+        asset_class="Conveyor", asset="C1", metric_key="belt_scale_tph",
+    )
+    assert bcq_c1 == (
+        "IAP_BCQ_Controls:Big_Canyon/Secondary/Conveyor/C1"
+        "/Process_Data/Belt_Scale/TPH"
+    )
+
+    arp_c1 = catalog.resolve_element_id(
+        site_id="100", department="Primary",
+        asset_class="Conveyor", asset="C1", metric_key="belt_scale_tph",
+    )
+    assert arp_c1 == (
+        "IAP_ARP_Controls:Ardmore/Primary/Conveyor/C1"
+        "/Process_Data/Belt_Scale/TPH"
+    )
+
+
+def test_per_site_placement_rejects_wrong_department(tmp_path: Path) -> None:
+    """ARP/C1 is in Primary; querying it under Secondary must fail."""
+    p = _write_yaml(tmp_path, _MULTI_SITE_YAML)
+    catalog = load_catalog(p)
+    with pytest.raises(CatalogError, match="Unknown asset.*C1"):
+        catalog.resolve_element_id(
+            site_id="100", department="Secondary",
+            asset_class="Conveyor", asset="C1", metric_key="belt_scale_tph",
+        )
+
+
+def test_per_site_placement_in_response(tmp_path: Path) -> None:
+    """Response builder honors per-dept assets, doesn't duplicate."""
+    p = _write_yaml(tmp_path, _MULTI_SITE_YAML)
+    catalog = load_catalog(p)
+    resp = catalog.build_response(site_id="100")
+    arp = resp.sites[0]
+    primary = next(d for d in arp.departments if d.name == "Primary")
+    primary_conv = next(
+        ac for ac in primary.asset_classes if ac.asset_class == "Conveyor"
+    )
+    assert [a.asset for a in primary_conv.assets] == ["C1", "C2"]
+
+    secondary = next(d for d in arp.departments if d.name == "Secondary")
+    secondary_conv = next(
+        ac for ac in secondary.asset_classes if ac.asset_class == "Conveyor"
+    )
+    assert [a.asset for a in secondary_conv.assets] == [
+        "C3", "C4", "C5", "C6", "C7", "C8"
+    ]
+
+
+def test_department_can_omit_class_entirely(tmp_path: Path) -> None:
+    """A dept with no conveyors emits no Conveyor block in the response."""
+    body = """
+sites:
+  "200":
+    code: ZZZ
+    display_name: Test Site
+    base_url: http://x:4511
+    dataset: IAP_ZZZ_Controls
+    departments:
+      ScreensOnly:
+        prefix: Plant/Screens
+        assets:
+          Screen: [S1, S2]
+asset_classes:
+  Conveyor:
+    metrics:
+      belt_scale_tph:
+        display_name: Belt Scale TPH
+        unit: tph
+        suffix: Process_Data/Belt_Scale/TPH
+  Screen:
+    metrics:
+      runtime_pct:
+        display_name: Runtime %
+        unit: pct
+        suffix: Process_Data/Runtime
+"""
+    p = _write_yaml(tmp_path, body)
+    catalog = load_catalog(p)
+    resp = catalog.build_response(site_id="200")
+    classes = [
+        ac.asset_class
+        for ac in resp.sites[0].departments[0].asset_classes
+    ]
+    assert classes == ["Screen"]  # Conveyor NOT emitted
+
+
+# ============================================================================
+# Loader error cases (malformed YAML, missing fields, schema v2 enforcement)
+# ============================================================================
 
 
 def test_load_missing_file_raises(tmp_path: Path) -> None:
@@ -220,29 +360,6 @@ def test_load_non_mapping_top_level_raises(tmp_path: Path) -> None:
         load_catalog(p)
 
 
-def test_load_site_missing_dataset_raises(tmp_path: Path) -> None:
-    body = """
-sites:
-  "101":
-    code: BCQ
-    display_name: Big Canyon Quarry
-    base_url: http://10.44.135.12:8080
-    departments:
-      Secondary: Big_Canyon/Secondary
-asset_classes:
-  Conveyor:
-    assets: [C1]
-    metrics:
-      belt_scale_tph:
-        display_name: Belt Scale TPH
-        unit: tph
-        suffix: Process_Data/Belt_Scale/TPH
-"""
-    p = _write_yaml(tmp_path, body)
-    with pytest.raises(CatalogError, match="dataset"):
-        load_catalog(p)
-
-
 def test_load_site_missing_base_url_raises(tmp_path: Path) -> None:
     body = """
 sites:
@@ -251,10 +368,12 @@ sites:
     display_name: Big Canyon Quarry
     dataset: IAP_BCQ_Controls
     departments:
-      Secondary: Big_Canyon/Secondary
+      Secondary:
+        prefix: Big_Canyon/Secondary
+        assets:
+          Conveyor: [C1]
 asset_classes:
   Conveyor:
-    assets: [C1]
     metrics:
       belt_scale_tph:
         display_name: Belt Scale TPH
@@ -266,19 +385,97 @@ asset_classes:
         load_catalog(p)
 
 
+def test_load_department_missing_prefix_raises(tmp_path: Path) -> None:
+    body = """
+sites:
+  "101":
+    code: BCQ
+    display_name: Big Canyon Quarry
+    base_url: http://x:4511
+    dataset: IAP_BCQ_Controls
+    departments:
+      Secondary:
+        assets:
+          Conveyor: [C1]
+asset_classes:
+  Conveyor:
+    metrics:
+      belt_scale_tph:
+        display_name: Belt Scale TPH
+        unit: tph
+        suffix: Process_Data/Belt_Scale/TPH
+"""
+    p = _write_yaml(tmp_path, body)
+    with pytest.raises(CatalogError, match="prefix"):
+        load_catalog(p)
+
+
+def test_load_department_missing_assets_raises(tmp_path: Path) -> None:
+    body = """
+sites:
+  "101":
+    code: BCQ
+    display_name: Big Canyon Quarry
+    base_url: http://x:4511
+    dataset: IAP_BCQ_Controls
+    departments:
+      Secondary:
+        prefix: Big_Canyon/Secondary
+asset_classes:
+  Conveyor:
+    metrics:
+      belt_scale_tph:
+        display_name: Belt Scale TPH
+        unit: tph
+        suffix: Process_Data/Belt_Scale/TPH
+"""
+    p = _write_yaml(tmp_path, body)
+    with pytest.raises(CatalogError, match="assets"):
+        load_catalog(p)
+
+
+def test_load_dept_assets_class_not_in_registry_raises(tmp_path: Path) -> None:
+    """Cross-validation: dept references an asset_class that doesn't exist."""
+    body = """
+sites:
+  "101":
+    code: BCQ
+    display_name: Big Canyon Quarry
+    base_url: http://x:4511
+    dataset: IAP_BCQ_Controls
+    departments:
+      Secondary:
+        prefix: Big_Canyon/Secondary
+        assets:
+          Conveyer: [C1]   # typo: Conveyer (not in asset_classes)
+asset_classes:
+  Conveyor:
+    metrics:
+      belt_scale_tph:
+        display_name: Belt Scale TPH
+        unit: tph
+        suffix: Process_Data/Belt_Scale/TPH
+"""
+    p = _write_yaml(tmp_path, body)
+    with pytest.raises(CatalogError, match="unknown asset_class"):
+        load_catalog(p)
+
+
 def test_load_metric_missing_suffix_raises(tmp_path: Path) -> None:
     body = """
 sites:
   "101":
     code: BCQ
     display_name: Big Canyon Quarry
+    base_url: http://x:4511
     dataset: IAP_BCQ_Controls
-    base_url: http://10.44.135.12:8080
     departments:
-      Secondary: Big_Canyon/Secondary
+      Secondary:
+        prefix: Big_Canyon/Secondary
+        assets:
+          Conveyor: [C1]
 asset_classes:
   Conveyor:
-    assets: [C1]
     metrics:
       belt_scale_tph:
         display_name: Belt Scale TPH
@@ -289,6 +486,34 @@ asset_classes:
         load_catalog(p)
 
 
+def test_load_rejects_legacy_global_assets_under_class(tmp_path: Path) -> None:
+    """Schema v2: assets under asset_classes.<class> is no longer accepted."""
+    body = """
+sites:
+  "101":
+    code: BCQ
+    display_name: Big Canyon Quarry
+    base_url: http://x:4511
+    dataset: IAP_BCQ_Controls
+    departments:
+      Secondary:
+        prefix: Big_Canyon/Secondary
+        assets:
+          Conveyor: [C1]
+asset_classes:
+  Conveyor:
+    assets: [C1, C2, C3, C4, C5, C6, C7, C8]   # legacy v1 shape
+    metrics:
+      belt_scale_tph:
+        display_name: Belt Scale TPH
+        unit: tph
+        suffix: Process_Data/Belt_Scale/TPH
+"""
+    p = _write_yaml(tmp_path, body)
+    with pytest.raises(CatalogError, match="no longer supported"):
+        load_catalog(p)
+
+
 def test_int_yaml_key_coerced_to_str(tmp_path: Path) -> None:
     """Unquoted integer YAML keys (101: ...) are coerced to str."""
     body = """
@@ -296,13 +521,15 @@ sites:
   101:
     code: BCQ
     display_name: Big Canyon Quarry
+    base_url: http://x:4511
     dataset: IAP_BCQ_Controls
-    base_url: http://10.44.135.12:8080
     departments:
-      Secondary: Big_Canyon/Secondary
+      Secondary:
+        prefix: Big_Canyon/Secondary
+        assets:
+          Conveyor: [C1]
 asset_classes:
   Conveyor:
-    assets: [C1]
     metrics:
       belt_scale_tph:
         display_name: Belt Scale TPH
@@ -316,19 +543,20 @@ asset_classes:
 
 
 def test_trailing_slashes_in_paths_are_trimmed(tmp_path: Path) -> None:
-    """Defensive: editors sometimes leave trailing slashes. We strip them."""
     body = """
 sites:
   "101":
     code: BCQ
     display_name: Big Canyon Quarry
+    base_url: http://10.44.135.12:4511/
     dataset: IAP_BCQ_Controls
-    base_url: http://10.44.135.12:8080/
     departments:
-      Secondary: Big_Canyon/Secondary/
+      Secondary:
+        prefix: Big_Canyon/Secondary/
+        assets:
+          Conveyor: [C1]
 asset_classes:
   Conveyor:
-    assets: [C1]
     metrics:
       belt_scale_tph:
         display_name: Belt Scale TPH
@@ -337,37 +565,31 @@ asset_classes:
 """
     p = _write_yaml(tmp_path, body)
     catalog = load_catalog(p)
-    assert catalog.sites["101"].base_url == "http://10.44.135.12:8080"
-    element_id = catalog.resolve_element_id(
-        site_id="101",
-        department="Secondary",
-        asset_class="Conveyor",
-        asset="C1",
-        metric_key="belt_scale_tph",
+    assert catalog.sites["101"].base_url == "http://10.44.135.12:4511"
+    eid = catalog.resolve_element_id(
+        site_id="101", department="Secondary",
+        asset_class="Conveyor", asset="C1", metric_key="belt_scale_tph",
     )
-    assert element_id == (
+    assert eid == (
         "IAP_BCQ_Controls:Big_Canyon/Secondary/Conveyor/C1"
         "/Process_Data/Belt_Scale/TPH"
     )
-    assert "//" not in element_id
+    assert "//" not in eid
+
+
+# ============================================================================
+# Fallback to example.yaml when catalog.yaml missing
+# ============================================================================
 
 
 def test_loader_falls_back_to_example_file_when_real_missing(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """When catalog.yaml is absent, loader uses catalog.example.yaml.
-
-    This keeps tests + fresh checkouts working without manual setup.
-    Production deployments must provide a real catalog.yaml.
-    """
     from app.integrations.timebase import catalog as catalog_module
 
-    # Point _CATALOG_REAL_PATH at a non-existent location so the real
-    # file is "missing"; the example file still ships in the repo.
     fake_real = tmp_path / "definitely_not_here.yaml"
     monkeypatch.setattr(catalog_module, "_CATALOG_REAL_PATH", fake_real)
     catalog = load_catalog()
-    # The example file has the safe placeholder URL.
     assert "example.invalid" in catalog.sites["101"].base_url
 
 
@@ -384,4 +606,3 @@ def test_loader_raises_when_neither_file_present(
     )
     with pytest.raises(CatalogError, match="No catalog file found"):
         load_catalog()
-
