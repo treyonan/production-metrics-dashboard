@@ -89,7 +89,17 @@
   ];
 
   // Charts dropdown: read-only Flow-server chart pages.
+  // Order is alphabetical by label so operators can find items by
+  // spelling rather than recall of insertion order.
   const EXTERNAL_LINKS_CHARTS = [
+    {
+      label: "Daily Totals",
+      urls: {
+        // Big Canyon Quarry
+        "101": "http://dbp-bcq:4501/flow-software/flow/instances/80D1092C-EFBF-4592-9425-C85ABE2EC7FB/server/dashboards/12",
+        // "100": "http://dbp-ard:4501/...",
+      },
+    },
     {
       label: "OEE",
       urls: {
