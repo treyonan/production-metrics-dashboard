@@ -103,6 +103,7 @@ class IntervalMetricSource(Protocol):
         department_id: str | None = None,
         subject_id: str | None = None,
         metric: str | None = None,
+        include_all_qualities: bool = False,
     ) -> "FetchPointsResult": ...
 
     async def list_subjects(

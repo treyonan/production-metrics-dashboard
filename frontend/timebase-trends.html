@@ -511,9 +511,13 @@
         No samples in this window.
       </div>
     </div>
+    <!-- Footer stats. The "non-GOOD dropped" counter that used to
+         live here is gone: the backend now filters quality != "GOOD"
+         server-side by default (see /api/timebase/history's
+         include_all_qualities param), so this page never sees BAD
+         samples to count. -->
     <div class="footer-stats">
       <span><strong id="stat_count">0</strong> points plotted</span>
-      <span><strong id="stat_dropped">0</strong> non-GOOD dropped</span>
       <span id="stat_cache"></span>
       <span id="stat_fetched"></span>
     </div>

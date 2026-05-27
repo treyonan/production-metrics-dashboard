@@ -228,6 +228,93 @@ async def test_fetch_points_truncated_when_any_fetch_hits_limit() -> None:
 
 
 @pytest.mark.asyncio
+async def test_fetch_points_drops_non_good_quality_by_default() -> None:
+    """Default (include_all_qualities=False) drops buckets whose quality
+    is not exactly 192. Buckets with null quality_code are also dropped.
+
+    Why null is dropped: Flow's contract guarantees a quality field on
+    every bucket. A null is itself a signal that something went sideways
+    upstream -- we treat it as not-good rather than guessing.
+    """
+    pool = FakePool(FakeCursor(rows_per_query=[[_tag_row()]]))
+    good = {
+        "start": "2026-04-01T00:00:00.000Z",
+        "end": "2026-04-01T01:00:00.000Z",
+        "value": 1.0,
+        "detail": {"quality": {"value": 192}},
+    }
+    bad = {
+        "start": "2026-04-01T01:00:00.000Z",
+        "end": "2026-04-01T02:00:00.000Z",
+        "value": 2.0,
+        "detail": {"quality": {"value": 0}},
+    }
+    uncertain = {
+        "start": "2026-04-01T02:00:00.000Z",
+        "end": "2026-04-01T03:00:00.000Z",
+        "value": 3.0,
+        "detail": {"quality": {"value": 64}},
+    }
+    missing_quality = {
+        "start": "2026-04-01T03:00:00.000Z",
+        "end": "2026-04-01T04:00:00.000Z",
+        "value": 4.0,
+        # No "detail" -- so quality_code resolves to None.
+    }
+    flow = FakeFlowClient(
+        default=FlowFetchResult(
+            raw_data=[good, bad, uncertain, missing_quality], hit_limit=False
+        )
+    )
+    src = SqlIntervalMetricSource(pool=pool, flow_client=flow)
+    result = await src.fetch_points(
+        site_id="101",
+        from_date=date(2026, 4, 1),
+        to_date=date(2026, 4, 1),
+        subject_type="conveyor",
+        interval="shiftly",
+    )
+    assert len(result.points) == 1
+    assert result.points[0].value == 1.0
+    assert result.points[0].quality_code == 192
+
+
+@pytest.mark.asyncio
+async def test_fetch_points_includes_all_qualities_when_flag_set() -> None:
+    """include_all_qualities=True is the diagnostic escape hatch: every
+    bucket comes through with its raw quality code preserved."""
+    pool = FakePool(FakeCursor(rows_per_query=[[_tag_row()]]))
+    buckets = [
+        {
+            "start": "2026-04-01T00:00:00.000Z",
+            "end": "2026-04-01T01:00:00.000Z",
+            "value": 1.0,
+            "detail": {"quality": {"value": 192}},
+        },
+        {
+            "start": "2026-04-01T01:00:00.000Z",
+            "end": "2026-04-01T02:00:00.000Z",
+            "value": 2.0,
+            "detail": {"quality": {"value": 0}},
+        },
+    ]
+    flow = FakeFlowClient(
+        default=FlowFetchResult(raw_data=buckets, hit_limit=False)
+    )
+    src = SqlIntervalMetricSource(pool=pool, flow_client=flow)
+    result = await src.fetch_points(
+        site_id="101",
+        from_date=date(2026, 4, 1),
+        to_date=date(2026, 4, 1),
+        subject_type="conveyor",
+        interval="shiftly",
+        include_all_qualities=True,
+    )
+    assert len(result.points) == 2
+    assert {p.quality_code for p in result.points} == {0, 192}
+
+
+@pytest.mark.asyncio
 async def test_fetch_points_no_tags_short_circuits() -> None:
     """When no tags match the filter, no Flow calls and no points."""
     pool = FakePool(FakeCursor(rows_per_query=[[]]))  # empty rows

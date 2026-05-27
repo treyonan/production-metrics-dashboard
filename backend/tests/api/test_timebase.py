@@ -232,6 +232,131 @@ async def test_history_composes_element_ids_and_rekeys_response(
         await client.aclose()
 
 
+_MIXED_QUALITY_UPSTREAM = {
+    _COMPOSED_ELEMENT_ID: {
+        "data": [
+            {"value": 10, "quality": "GOOD", "timestamp": "2026-05-01T00:00:00Z"},
+            {"value": 11, "quality": "BAD", "timestamp": "2026-05-01T00:05:00Z"},
+            {"value": 12, "quality": "UNCERTAIN", "timestamp": "2026-05-01T00:10:00Z"},
+            {"value": 13, "quality": "GOOD", "timestamp": "2026-05-01T00:15:00Z"},
+        ]
+    }
+}
+
+
+@pytest.mark.asyncio
+async def test_history_filters_non_good_quality_by_default(
+    wire_timebase, make_mock_client
+) -> None:
+    """By default, /history drops samples whose quality != 'GOOD'.
+
+    Filter happens AFTER the cache + rekey -- the upstream response
+    has 4 samples (2 GOOD + 1 BAD + 1 UNCERTAIN); the client sees 2.
+    """
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_MIXED_QUALITY_UPSTREAM)
+
+    client = await make_mock_client("101", handler, dataset=_DATASET)
+    try:
+        with wire_timebase(clients={"101": client}) as tc:
+            resp = tc.post(
+                "/api/timebase/history?site_id=101",
+                json={
+                    "tag_paths": [_TAG_PATH],
+                    "start_time": "2026-05-01T00:00:00Z",
+                    "end_time": "2026-05-01T01:00:00Z",
+                },
+            )
+        assert resp.status_code == 200, resp.text
+        data = resp.json()[_TAG_PATH]["data"]
+        assert len(data) == 2
+        assert {s["value"] for s in data} == {10, 13}
+        assert all(s["quality"] == "GOOD" for s in data)
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_history_include_all_qualities_passes_through(
+    wire_timebase, make_mock_client
+) -> None:
+    """include_all_qualities=true bypasses the filter -- every sample
+    comes through with its original quality preserved."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_MIXED_QUALITY_UPSTREAM)
+
+    client = await make_mock_client("101", handler, dataset=_DATASET)
+    try:
+        with wire_timebase(clients={"101": client}) as tc:
+            resp = tc.post(
+                "/api/timebase/history?site_id=101&include_all_qualities=true",
+                json={
+                    "tag_paths": [_TAG_PATH],
+                    "start_time": "2026-05-01T00:00:00Z",
+                    "end_time": "2026-05-01T01:00:00Z",
+                },
+            )
+        assert resp.status_code == 200, resp.text
+        data = resp.json()[_TAG_PATH]["data"]
+        assert len(data) == 4
+        assert {s["quality"] for s in data} == {"GOOD", "BAD", "UNCERTAIN"}
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_history_filter_does_not_corrupt_cached_payload(
+    wire_timebase, make_mock_client
+) -> None:
+    """Regression guard: the filter must be non-mutating.
+
+    The cache holds the raw upstream response and `_rekey_to_tag_paths`
+    reuses payload references. If `_filter_quality` mutated payload['data']
+    in place, the cache would be corrupted -- a subsequent
+    include_all_qualities=true request would still see filtered data.
+    Verify both modes work back-to-back against the same cached entry.
+    """
+    call_count = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        call_count["n"] += 1
+        return httpx.Response(200, json=_MIXED_QUALITY_UPSTREAM)
+
+    client = await make_mock_client("101", handler, dataset=_DATASET)
+    try:
+        with wire_timebase(clients={"101": client}) as tc:
+            # First request: default (filtered). Caches the upstream.
+            r1 = tc.post(
+                "/api/timebase/history?site_id=101",
+                json={
+                    "tag_paths": [_TAG_PATH],
+                    "start_time": "2026-05-01T00:00:00Z",
+                    "end_time": "2026-05-01T01:00:00Z",
+                },
+            )
+            assert r1.status_code == 200
+            assert len(r1.json()[_TAG_PATH]["data"]) == 2  # filtered
+
+            # Second request: same window, include_all_qualities=true.
+            # Should serve from cache (same upstream) but see all 4
+            # samples -- only possible if the cached copy is intact.
+            r2 = tc.post(
+                "/api/timebase/history?site_id=101&include_all_qualities=true",
+                json={
+                    "tag_paths": [_TAG_PATH],
+                    "start_time": "2026-05-01T00:00:00Z",
+                    "end_time": "2026-05-01T01:00:00Z",
+                },
+            )
+            assert r2.status_code == 200
+            assert len(r2.json()[_TAG_PATH]["data"]) == 4  # unfiltered
+
+            # Both requests should have hit ONE upstream fetch (cached).
+            assert call_count["n"] == 1
+    finally:
+        await client.aclose()
+
+
 @pytest.mark.asyncio
 async def test_history_strips_stray_slashes_from_tag_paths(
     wire_timebase, make_mock_client

@@ -51,7 +51,8 @@
     chartCanvas: $("trend_chart"),
     emptyState:  $("empty_state"),
     statCount:   $("stat_count"),
-    statDropped: $("stat_dropped"),
+    // statDropped removed: backend filters non-GOOD samples server-side
+    // now, so there is no client-side dropped count to display.
     statCache:   $("stat_cache"),
     statFetched: $("stat_fetched"),
     themeToggle: $("theme_toggle"),
@@ -589,16 +590,18 @@
   }
 
   function renderChart(samples, meta) {
-    // Quality filter
+    // Quality filter -- defensive only. The backend
+    // (/api/timebase/history) drops quality != "GOOD" server-side by
+    // default; this loop is now effectively a no-op for production
+    // traffic. Kept so the page degrades gracefully if anyone hits
+    // the endpoint with ?include_all_qualities=true (e.g. during
+    // diagnostics) without retrofitting the chart code.
     const goodSamples = [];
-    let droppedCount = 0;
     for (const s of samples) {
       if (s.quality === "GOOD") goodSamples.push(s);
-      else droppedCount++;
     }
 
     els.statCount.textContent = String(goodSamples.length);
-    els.statDropped.textContent = String(droppedCount);
     els.statFetched.textContent = meta
       ? "Fetched in " + meta.elapsedMs + " ms"
       : "";
@@ -621,16 +624,18 @@
       els.chartCanvas.style.display = "none";
       els.emptyState.style.display = "block";
       destroyChart();
-      // Export gating: even if the chart is empty, allow export
-      // when SOME samples came back (so non-GOOD-only windows are
-      // still inspectable in Excel). Disable only when nothing
-      // came back at all from the fetch.
+      // Export gating: enable export when ANY samples came back,
+      // even if none are GOOD. In normal traffic this is the same
+      // as `goodSamples.length > 0` because the backend already
+      // filters; the difference only matters when something hits
+      // the API with ?include_all_qualities=true and gets a window
+      // that's all-BAD/UNCERTAIN -- in that diagnostic flow the
+      // operator still wants the raw samples in Excel.
       setExportEnabled(!!(samples && samples.length));
-      // The export reads from state.chart.__lastSamples; since we
-      // skipped chart creation, stash the samples on the canvas's
-      // dataset instead so exportToExcel can find them.
       if (samples && samples.length) {
-        // Synthesize a chart-like holder so exportToExcel's lookup works.
+        // Synthesize a chart-like holder so exportToExcel's lookup
+        // (state.chart.__lastSamples / __lastMeta) still resolves
+        // when we deliberately skipped chart creation.
         state.chart = {
           __lastSamples: samples,
           __lastMeta: meta,
@@ -770,14 +775,19 @@
   //
   // Mirrors the main dashboard's pattern: SheetJS (loaded via
   // vendor/xlsx.full.min.js) builds a single-sheet workbook from
-  // the same samples the chart just rendered. Per the project's
-  // "export mirrors displayed data" rule the row set includes
-  // every sample returned for the window (GOOD and non-GOOD) so
-  // operators can also diagnose quality drops in Excel; the
-  // Quality column makes the filter trivial. The value column's
-  // header encodes the dropdown selection so a stack of exported
-  // files is self-describing without needing to also export the
-  // filter context.
+  // the same samples the chart just rendered.
+  //
+  // The backend (/api/timebase/history) drops non-GOOD samples
+  // server-side by default, so the row set in the export is the
+  // same set the chart plots -- no GOOD vs non-GOOD divergence
+  // between chart and export, satisfying the "export mirrors
+  // displayed data" project rule. The Quality column is still
+  // included for auditability (every value will read "GOOD" in
+  // normal traffic; if anyone hits the API with
+  // ?include_all_qualities=true the column would surface BAD /
+  // UNCERTAIN rows). The value column's header encodes the
+  // dropdown selection so a stack of exported files is self-
+  // describing without needing to also export the filter context.
   //
   // For cumulative metrics (metric_key ending in "_total") an
   // extra "Δ from window start" column is included, matching the

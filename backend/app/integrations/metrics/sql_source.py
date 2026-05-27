@@ -90,9 +90,8 @@ class SqlIntervalMetricSource:
         self._select_subjects_sql = load_query(_QUERIES_DIR, "select_subjects")
         # Reuse production-report's ping query; it's just SELECT 1.
         from app.integrations.production_report import sql_source as _pr_sql
-        self._ping_sql = load_query(
-            Path(_pr_sql.__file__).parent / "queries", "ping"
-        )
+
+        self._ping_sql = load_query(Path(_pr_sql.__file__).parent / "queries", "ping")
 
     async def ping(self) -> SourceStatus:
         """Check the SQL pool. Never raises."""
@@ -106,13 +105,9 @@ class SqlIntervalMetricSource:
                 row = await cur.fetchone()
             if row is not None and row[0] == 1:
                 return SourceStatus(ok=True, detail="SELECT 1 returned 1", checked_at=now)
-            return SourceStatus(
-                ok=False, detail=f"Unexpected ping result: {row!r}", checked_at=now
-            )
+            return SourceStatus(ok=False, detail=f"Unexpected ping result: {row!r}", checked_at=now)
         except Exception as exc:  # noqa: BLE001 -- diagnostic on any error
-            return SourceStatus(
-                ok=False, detail=f"{type(exc).__name__}: {exc}", checked_at=now
-            )
+            return SourceStatus(ok=False, detail=f"{type(exc).__name__}: {exc}", checked_at=now)
 
     async def fetch_points(
         self,
@@ -125,6 +120,7 @@ class SqlIntervalMetricSource:
         department_id: str | None = None,
         subject_id: str | None = None,
         metric: str | None = None,
+        include_all_qualities: bool = False,
     ) -> FetchPointsResult:
         """Look up matching tags, fan out to Flow, return parsed points.
 
@@ -135,6 +131,16 @@ class SqlIntervalMetricSource:
         Window bounds (from_date, to_date) become inclusive midnight-
         UTC ISO-8601 strings substituted into each tag's
         ``history_url`` template.
+
+        Quality filtering: by default, buckets whose quality_code is
+        not exactly 192 ("GOOD" in Flow's vendor encoding) are
+        dropped before returning. Set ``include_all_qualities=True``
+        to pass through every bucket -- intended for diagnostics and
+        the rare consumer that wants to surface bad-quality readings
+        visually. Buckets with a null quality_code are treated as
+        non-good (Flow's contract guarantees a quality field on
+        every bucket, so a null is itself a signal something went
+        sideways upstream).
         """
         tags = await self._select_tags(
             site_id=site_id,
@@ -153,15 +159,20 @@ class SqlIntervalMetricSource:
         end_dt = datetime(to_date.year, to_date.month, to_date.day, tzinfo=UTC)
         # Add a day to make to_date inclusive.
         from datetime import timedelta as _td
+
         end_dt = end_dt + _td(days=1)
 
         # Fan out concurrently. asyncio.gather preserves order; each
         # task returns (tag_row, FlowFetchResult) pairs we then walk.
         tasks = [
-            self._flow.fetch_history(tag["history_url"], start=start_dt, end=end_dt)
-            for tag in tags
+            self._flow.fetch_history(tag["history_url"], start=start_dt, end=end_dt) for tag in tags
         ]
         results = await asyncio.gather(*tasks)
+
+        # Flow's GOOD quality code -- OPC UA's 0xC0 in decimal. Anything
+        # else (BAD=0, UNCERTAIN=64, or vendor-specific sub-codes) is
+        # dropped by default.
+        GOOD_QUALITY = 192
 
         points: list[IntervalMetricPoint] = []
         truncated = False
@@ -169,6 +180,14 @@ class SqlIntervalMetricSource:
             if result.hit_limit:
                 truncated = True
             for bucket in result.raw_data:
+                quality_code = bucket.get("detail", {}).get("quality", {}).get("value")
+                if not include_all_qualities and quality_code != GOOD_QUALITY:
+                    # Drop non-GOOD buckets. We could log a count for
+                    # operators -- skipping for now since the typical
+                    # ratio is small and structlog every call would
+                    # be noisy. Easy to add via a counter dataclass
+                    # if it becomes interesting.
+                    continue
                 points.append(
                     IntervalMetricPoint(
                         subject_type=tag["subject_type"],
@@ -179,9 +198,7 @@ class SqlIntervalMetricSource:
                         bucket_end=_parse_flow_timestamp(bucket["end"]),
                         value=float(bucket.get("value") or 0),
                         unit=None,  # Tag table doesn't carry unit yet (Phase 9.x)
-                        quality_code=(
-                            bucket.get("detail", {}).get("quality", {}).get("value")
-                        ),
+                        quality_code=quality_code,
                     )
                 )
         return FetchPointsResult(points=points, truncated=truncated)
@@ -265,10 +282,14 @@ class SqlIntervalMetricSource:
         params = (
             site_id,
             subject_type,
-            department_id, department_id,
-            subject_id, subject_id,
-            metric, metric,
-            interval, interval,
+            department_id,
+            department_id,
+            subject_id,
+            subject_id,
+            metric,
+            metric,
+            interval,
+            interval,
         )
         async with (
             self._pool.acquire() as conn,

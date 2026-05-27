@@ -42,13 +42,9 @@ from app.services.metrics import get_interval_metrics, list_metric_subjects
 router = APIRouter()
 log = structlog.get_logger("api.routes.metrics")
 
-IntervalMetricSourceDep = Annotated[
-    IntervalMetricSource, Depends(get_interval_metric_source)
-]
+IntervalMetricSourceDep = Annotated[IntervalMetricSource, Depends(get_interval_metric_source)]
 
-SubjectTypeLiteral = Literal[
-    "conveyor", "workcenter", "circuit", "line", "equipment", "site"
-]
+SubjectTypeLiteral = Literal["conveyor", "workcenter", "circuit", "line", "equipment", "site"]
 
 
 def _entry_from_point(p: IntervalMetricPoint) -> IntervalMetricEntry:
@@ -81,9 +77,7 @@ def _snapshot_store(request: Request) -> SnapshotStore:
     if store is None:
         raise HTTPException(
             status_code=503,
-            detail=(
-                "Snapshot store not initialised. Check uvicorn startup log."
-            ),
+            detail=("Snapshot store not initialised. Check uvicorn startup log."),
         )
     return store
 
@@ -167,15 +161,9 @@ async def metrics_history(
         Path(description="Bucket regime: 'hourly' or 'shiftly'."),
     ],
     site_id: Annotated[str, Query(description="Site to fetch.")],
-    from_date: Annotated[
-        date, Query(description="Inclusive window start, YYYY-MM-DD.")
-    ],
-    to_date: Annotated[
-        date, Query(description="Inclusive window end, YYYY-MM-DD.")
-    ],
-    department_id: Annotated[
-        str | None, Query(description="Optional workcenter filter.")
-    ] = None,
+    from_date: Annotated[date, Query(description="Inclusive window start, YYYY-MM-DD.")],
+    to_date: Annotated[date, Query(description="Inclusive window end, YYYY-MM-DD.")],
+    department_id: Annotated[str | None, Query(description="Optional workcenter filter.")] = None,
     subject_id: Annotated[
         str | None, Query(description="Optional asset filter (e.g. 'C4').")
     ] = None,
@@ -183,6 +171,18 @@ async def metrics_history(
         str | None,
         Query(description="Optional metric-name filter (e.g. 'Total')."),
     ] = None,
+    include_all_qualities: Annotated[
+        bool,
+        Query(
+            description=(
+                "When False (default), drop buckets whose vendor quality "
+                "code is not 192 ('GOOD' in Flow's encoding). Set True to "
+                "pass through every bucket regardless of quality -- "
+                "intended for diagnostics. The two modes are cached "
+                "separately."
+            ),
+        ),
+    ] = False,
 ) -> IntervalMetricsResponse:
     settings = get_settings()
     store = _snapshot_store(request)
@@ -206,6 +206,7 @@ async def metrics_history(
             department_id=department_id,
             subject_id=subject_id,
             metric=metric,
+            include_all_qualities=include_all_qualities,
             cache_ttl_seconds=ttl,
             max_points=settings.metrics_max_points,
             max_window_days=max_window,

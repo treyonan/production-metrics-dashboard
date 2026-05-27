@@ -76,8 +76,7 @@ def get_timebase_client_registry(request: Request) -> TimebaseClientRegistry:
         raise HTTPException(
             status_code=503,
             detail=(
-                "Timebase client registry unavailable: not initialized. "
-                "Check uvicorn startup log."
+                "Timebase client registry unavailable: not initialized. Check uvicorn startup log."
             ),
         )
     return registry
@@ -115,9 +114,7 @@ def get_timebase_history_cache(request: Request) -> TimebaseHistoryCache:
     return cache
 
 
-def _resolve_site_client(
-    registry: TimebaseClientRegistry, site_id: str
-) -> TimebaseClient:
+def _resolve_site_client(registry: TimebaseClientRegistry, site_id: str) -> TimebaseClient:
     """Return the client for ``site_id`` or raise the right HTTPException.
 
     * 404 when site_id isn't configured at all (typo, unknown site).
@@ -145,13 +142,9 @@ def _resolve_site_client(
     return client
 
 
-TimebaseClientRegistryDep = Annotated[
-    TimebaseClientRegistry, Depends(get_timebase_client_registry)
-]
+TimebaseClientRegistryDep = Annotated[TimebaseClientRegistry, Depends(get_timebase_client_registry)]
 TimebaseCatalogDep = Annotated[TimebaseCatalog, Depends(get_timebase_catalog)]
-TimebaseCacheDep = Annotated[
-    TimebaseHistoryCache, Depends(get_timebase_history_cache)
-]
+TimebaseCacheDep = Annotated[TimebaseHistoryCache, Depends(get_timebase_history_cache)]
 
 
 # ============================================================================
@@ -177,6 +170,46 @@ def _rekey_to_tag_paths(
     for composed, payload in upstream_response.items():
         rekeyed[composed_to_tag_path.get(composed, composed)] = payload
     return rekeyed
+
+
+def _filter_quality(
+    rekeyed_response: dict[str, Any],
+    include_all_qualities: bool,
+) -> dict[str, Any]:
+    """Return a copy of the response with non-GOOD samples dropped.
+
+    Applied AFTER the cache + rekey so the cache holds one upstream
+    response and both modes (filtered + unfiltered) are served from
+    it. The filter is O(n_samples), trivially cheap relative to the
+    upstream round-trip we're saving.
+
+    Non-mutating by design: ``_rekey_to_tag_paths`` shares payload
+    references with the cached upstream response, so mutating
+    ``payload["data"]`` here would corrupt the cache for any
+    subsequent ``include_all_qualities=True`` request. We shallow-
+    copy each payload and replace ``data`` with a filtered list.
+
+    No-op when ``include_all_qualities=True``. Non-dict payloads or
+    missing ``data`` keys are passed through unchanged (defensive
+    against future upstream shape changes).
+    """
+    if include_all_qualities:
+        return rekeyed_response
+    out: dict[str, Any] = {}
+    for key, payload in rekeyed_response.items():
+        if not isinstance(payload, dict):
+            out[key] = payload
+            continue
+        data = payload.get("data")
+        if not isinstance(data, list):
+            out[key] = payload
+            continue
+        new_payload = dict(payload)
+        new_payload["data"] = [
+            s for s in data if isinstance(s, dict) and s.get("quality") == "GOOD"
+        ]
+        out[key] = new_payload
+    return out
 
 
 @router.post(
@@ -213,6 +246,18 @@ async def post_history(
             ),
         ),
     ],
+    include_all_qualities: Annotated[
+        bool,
+        Query(
+            description=(
+                "When False (default), drop samples whose quality is "
+                "not 'GOOD' from each tag's data array. Set True to "
+                "pass through every sample regardless of quality -- "
+                "intended for diagnostics. Filtering happens after "
+                "the cache so both modes share one upstream fetch."
+            ),
+        ),
+    ] = False,
 ) -> HistoryResponse:
     # Server-side window cap. Defense-in-depth -- the trend page UI
     # also limits to 8h, but a direct API call could ask for arbitrary
@@ -272,9 +317,7 @@ async def post_history(
         )
     except httpx.HTTPStatusError as exc:
         body_excerpt = exc.response.text[:500] if exc.response is not None else ""
-        upstream_status = (
-            exc.response.status_code if exc.response is not None else "?"
-        )
+        upstream_status = exc.response.status_code if exc.response is not None else "?"
         log.error(
             "timebase.http_error",
             site_id=site_id,
@@ -299,15 +342,10 @@ async def post_history(
         )
         raise HTTPException(
             status_code=504,
-            detail=(
-                f"Cannot reach Timebase site {site_id}: "
-                f"{type(exc).__name__}: {exc}."
-            ),
+            detail=(f"Cannot reach Timebase site {site_id}: {type(exc).__name__}: {exc}."),
         ) from exc
     except httpx.TimeoutException as exc:
-        log.error(
-            "timebase.timeout", site_id=site_id, error_message=str(exc)
-        )
+        log.error("timebase.timeout", site_id=site_id, error_message=str(exc))
         raise HTTPException(
             status_code=504,
             detail=f"Timebase site {site_id} request timed out: {exc}",
@@ -321,10 +359,7 @@ async def post_history(
         )
         raise HTTPException(
             status_code=502,
-            detail=(
-                f"Timebase site {site_id} call failed: "
-                f"{type(exc).__name__}: {exc}"
-            ),
+            detail=(f"Timebase site {site_id} call failed: {type(exc).__name__}: {exc}"),
         ) from exc
 
     log.debug(
@@ -332,9 +367,11 @@ async def post_history(
         site_id=site_id,
         cache_hit=hit,
         tag_path_count=len(clean_paths),
+        include_all_qualities=include_all_qualities,
     )
     rekeyed = _rekey_to_tag_paths(result, composed_to_tag)
-    return HistoryResponse.model_validate(rekeyed)
+    filtered = _filter_quality(rekeyed, include_all_qualities)
+    return HistoryResponse.model_validate(filtered)
 
 
 @router.get(

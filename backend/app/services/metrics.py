@@ -44,6 +44,7 @@ def _make_cache_key(
     department_id: str | None,
     subject_id: str | None,
     metric: str | None,
+    include_all_qualities: bool,
 ) -> str:
     """Deterministic cache key for a metrics fetch.
 
@@ -51,6 +52,11 @@ def _make_cache_key(
     produces the same string regardless of param ordering at the
     call site. Pipe-separated to avoid collisions with values that
     might contain ``&`` or ``=``.
+
+    ``include_all_qualities`` IS part of the key -- the two modes
+    return different result sets, so they must not share a cached
+    entry. Default-mode (False) is the hot path and gets its own
+    cache slot.
     """
     parts = [
         f"subject_type={subject_type}",
@@ -61,6 +67,7 @@ def _make_cache_key(
         f"metric={metric or ''}",
         f"from={from_date.isoformat()}",
         f"to={to_date.isoformat()}",
+        f"all_qualities={1 if include_all_qualities else 0}",
     ]
     return "metrics:fetch|" + "|".join(parts)
 
@@ -80,6 +87,7 @@ async def get_interval_metrics(
     department_id: str | None = None,
     subject_id: str | None = None,
     metric: str | None = None,
+    include_all_qualities: bool = False,
 ) -> FetchPointsResult:
     """Fetch with caching + validation.
 
@@ -91,8 +99,7 @@ async def get_interval_metrics(
     # Window validation: from_date <= to_date, span <= max_window_days.
     if from_date > to_date:
         raise ValueError(
-            f"from_date ({from_date.isoformat()}) must be <= "
-            f"to_date ({to_date.isoformat()})."
+            f"from_date ({from_date.isoformat()}) must be <= to_date ({to_date.isoformat()})."
         )
     window_days = (to_date - from_date).days + 1
     if window_days > max_window_days:
@@ -111,6 +118,7 @@ async def get_interval_metrics(
         department_id=department_id,
         subject_id=subject_id,
         metric=metric,
+        include_all_qualities=include_all_qualities,
     )
 
     # Cache check.
@@ -119,9 +127,7 @@ async def get_interval_metrics(
         age = datetime.now(UTC) - snap.created_at
         if age.total_seconds() < cache_ttl_seconds:
             cached: _CachedFetch = snap.data
-            return FetchPointsResult(
-                points=list(cached.points), truncated=cached.truncated
-            )
+            return FetchPointsResult(points=list(cached.points), truncated=cached.truncated)
 
     # Cache miss / expired -- fan out to the source.
     result = await source.fetch_points(
@@ -133,6 +139,7 @@ async def get_interval_metrics(
         department_id=department_id,
         subject_id=subject_id,
         metric=metric,
+        include_all_qualities=include_all_qualities,
     )
 
     if len(result.points) > max_points:
