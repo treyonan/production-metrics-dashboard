@@ -38,18 +38,36 @@ services:
     env_file:
       - backend/.env
 
-    # Dev-ergonomics bind mounts. The image already contains baked-in
-    # copies of context/ and frontend/, so the container is self-
-    # sufficient without these mounts (important for future CI / prod
-    # use). The mounts overlay the baked-in paths so edits to sample
-    # data or frontend files show up on the next API poll / browser
-    # refresh without rebuilding the image.
+    # Dev-ergonomics + ops bind mounts. The image already contains
+    # baked-in copies of context/, frontend/, and the timebase
+    # catalog.yaml, so the container is self-sufficient without these
+    # mounts. The mounts overlay the baked-in paths so edits to
+    # sample data, frontend files, or the catalog show up on the
+    # next API poll / browser refresh / container restart without
+    # rebuilding the image.
     #
     # :ro = read-only. Defense in depth — the API is read-only and
     # has no reason to write into these paths.
+    #
+    # WHY THE CATALOG FILE-LEVEL MOUNT (not a directory mount like
+    # context/ or frontend/): the timebase/ directory contains Python
+    # source (catalog.py, client.py, cache.py) that we deliberately
+    # ship from the image, not the host -- mounting the whole dir
+    # would let an out-of-sync host source override the baked code
+    # on `restart` and surprise an operator who thought the image
+    # was authoritative. The catalog YAML is the only file in that
+    # directory that's deployment config, so we mount just it.
+    #
+    # The catalog IS committed (single source of truth, normal git
+    # workflow). The bind-mount is what lets a `docker compose
+    # restart api` pick up a catalog edit without an image rebuild.
+    # For commissioning a brand-new site that also touches
+    # extra_hosts + config.py, the full `up --build -d` is
+    # unavoidable; see docs/adding-a-new-site.md.
     volumes:
       - ./context:/app/context:ro
       - ./frontend:/app/frontend:ro
+      - ./backend/app/integrations/timebase/catalog.yaml:/app/backend/app/integrations/timebase/catalog.yaml:ro
 
     # Static /etc/hosts entries so the container can resolve internal
     # hostnames that aren't in the WSL2 NAT's DNS view. Two upstream

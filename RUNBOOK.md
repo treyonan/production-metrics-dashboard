@@ -468,13 +468,20 @@ Short version — three files plus one external dependency:
 | File | What changes |
 |---|---|
 | `docker-compose.yml` | New `extra_hosts` entry mapping the plant box's hostname → IP. |
-| `backend/app/integrations/timebase/catalog.yaml` (gitignored, per-env) | New `sites."<id>"` entry with code, display_name, hostname-based `base_url`, dataset, departments, and asset placement. |
+| `backend/app/integrations/timebase/catalog.yaml` | New `sites."<id>"` entry with code, display_name, hostname-based `base_url`, dataset, departments, and asset placement. |
 | `backend/app/core/config.py` | New `<site_id>: "<Display Name>"` in `_DEFAULT_SITE_NAMES`. |
 | `[FLOW].[INTERVAL_METRIC_TAGS]` (SQL) | Auto-populated by the Ignition upsert script at the new site — nothing for the dashboard to do, just verify the rows show up. |
 
-Then `docker compose down && docker compose up --build -d` (a plain
-`restart` does NOT pick up `extra_hosts` changes) and walk the six-layer
-smoke test in the linked doc.
+All three of those files are committed. Workflow is: edit on dev,
+commit, push, `git pull` on prod, `docker compose down && docker compose up --build -d`
+(plain `restart` does NOT pick up `extra_hosts` changes). Walk the
+six-layer smoke test in the linked doc.
+
+For pure `catalog.yaml` edits *after* a site is live (renaming an
+asset, moving a conveyor between departments, adding a metric), the
+catalog is bind-mounted in compose — `docker compose restart api` is
+enough, no rebuild needed. Same git-pull-on-prod workflow either way;
+only the post-pull command differs.
 
 ## Where things live
 

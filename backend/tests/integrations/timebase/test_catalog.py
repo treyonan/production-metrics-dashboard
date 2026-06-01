@@ -48,11 +48,58 @@ def test_real_catalog_has_conveyor_metric_registry() -> None:
 
 
 def test_real_catalog_conveyor_placement_is_per_department() -> None:
-    """Per-site placement: Conveyor assets are declared inside the dept block."""
+    """Per-site placement: Conveyor assets are declared inside the dept block.
+
+    Asserts INVARIANTS, not a snapshot. The exact conveyor list is
+    operational config that changes whenever a site adds or moves a
+    conveyor, so pinning it here would break this test on every
+    catalog.yaml edit -- which is exactly the wrong cost / benefit
+    trade for a "does the schema work" test.
+
+    What we actually want to verify:
+      * Conveyor lives under at least one department on site 101.
+      * Each conveyor entry is a string matching the C<digits>
+        naming convention (catches things like accidental empty
+        strings or paths leaking into the asset list).
+      * The list contains at least the founding conveyor (C1) so
+        we'd notice if the loader silently returned an empty tuple.
+    """
+    import re
+
     catalog = load_catalog()
-    secondary = catalog.sites["101"].departments["Secondary"]
-    assert secondary.assets["Conveyor"] == (
-        "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8"
+    site = catalog.sites["101"]
+    assert site.departments, "Site 101 should have at least one department"
+
+    # Find every department that owns conveyors -- per-site placement
+    # means we don't pin which department they live in.
+    departments_with_conveyors = {
+        name: dept
+        for name, dept in site.departments.items()
+        if "Conveyor" in dept.assets
+    }
+    assert departments_with_conveyors, (
+        "Site 101 should have Conveyor assets in at least one department"
+    )
+
+    all_conveyors: list[str] = []
+    conveyor_pattern = re.compile(r"^C\d+$")
+    for dept_name, dept in departments_with_conveyors.items():
+        assets = dept.assets["Conveyor"]
+        assert isinstance(assets, tuple), (
+            f"Department {dept_name!r} Conveyor list should be a tuple, "
+            f"got {type(assets).__name__}"
+        )
+        assert assets, f"Department {dept_name!r} has an empty Conveyor list"
+        for c in assets:
+            assert conveyor_pattern.match(c), (
+                f"Conveyor id {c!r} in dept {dept_name!r} does not match "
+                f"the C<digits> convention"
+            )
+            all_conveyors.append(c)
+
+    assert "C1" in all_conveyors, (
+        "Founding conveyor C1 missing from site 101 -- the loader may "
+        "have returned empty placement data"
     )
 
 
@@ -578,31 +625,24 @@ asset_classes:
 
 
 # ============================================================================
-# Fallback to example.yaml when catalog.yaml missing
+# Missing-file behavior
 # ============================================================================
 
 
-def test_loader_falls_back_to_example_file_when_real_missing(
+def test_loader_raises_when_catalog_missing(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    from app.integrations.timebase import catalog as catalog_module
+    """Single committed source of truth -- no example.yaml fallback.
 
-    fake_real = tmp_path / "definitely_not_here.yaml"
-    monkeypatch.setattr(catalog_module, "_CATALOG_REAL_PATH", fake_real)
-    catalog = load_catalog()
-    assert "example.invalid" in catalog.sites["101"].base_url
-
-
-def test_loader_raises_when_neither_file_present(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+    Missing catalog.yaml is a hard error so the lifespan logs it
+    and /api/timebase/* surfaces 503, instead of silently loading
+    a placeholder template and surprising the operator with
+    historian.example.invalid in production.
+    """
     from app.integrations.timebase import catalog as catalog_module
 
     monkeypatch.setattr(
-        catalog_module, "_CATALOG_REAL_PATH", tmp_path / "no_real.yaml"
+        catalog_module, "_DEFAULT_CATALOG_PATH", tmp_path / "no_catalog.yaml"
     )
-    monkeypatch.setattr(
-        catalog_module, "_CATALOG_EXAMPLE_PATH", tmp_path / "no_example.yaml"
-    )
-    with pytest.raises(CatalogError, match="No catalog file found"):
+    with pytest.raises(CatalogError, match="not found"):
         load_catalog()

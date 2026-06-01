@@ -76,7 +76,11 @@ tasks/scratch/*
 !.vscode/extensions.json
 
 # ---- Timebase i3X catalog ----
-# Real historian URLs live in catalog.yaml (gitignored). The
-# committed catalog.example.yaml ships the structure + placeholder
-# URLs. Copy example -> real and fill in actual base_urls per site.
-backend/app/integrations/timebase/catalog.yaml
+# Was gitignored to keep historian URLs out of the repo. Repo is
+# private/internal-only, and the same hostname + IP are already
+# in committed docker-compose.yml's extra_hosts, so catalog.yaml
+# is committed too -- single source of truth, normal git pull /
+# rebuild workflow, no per-env divergence. The file is bind-
+# mounted at runtime (see docker-compose.yml volumes block) so
+# post-deploy edits hot-swap on `docker compose restart api`
+# rather than requiring an image rebuild.

@@ -1,0 +1,117 @@
+# ============================================================================
+# Timebase i3X tag catalog -- single committed source of truth.
+#
+# Workflow: edit on dev -> commit -> pytest -> push. Prod picks it up
+# on `git pull` + `docker compose restart api` (the file is bind-
+# mounted in docker-compose.yml so no rebuild is needed for catalog-
+# only edits). For commissioning a brand-new site that also requires
+# extra_hosts + config.py edits, see docs/adding-a-new-site.md.
+#
+# Repo is private/internal-only; the hostname + IP are already in
+# committed docker-compose.yml's extra_hosts, so this file does not
+# expose anything the rest of the repo didn't already.
+#
+# ----- Schema v2 (2026-05-21) -----
+#
+# Two layers:
+#
+#   sites:         per-site config -- base_url + dataset + departments.
+#                  Each department block holds its prefix path AND the
+#                  per-class asset list. Conveyors at BCQ live in
+#                  Secondary; at other sites they may live elsewhere
+#                  (e.g. C1-C2 in Primary, C3-C8 in Secondary). Placement
+#                  is intrinsically per-site so it lives here, not in
+#                  the shared asset_classes block.
+#
+#   asset_classes: shared metric-definition registry per class.
+#                  Identical across every site -- same TPH path for any
+#                  conveyor anywhere. No asset list here (each site
+#                  declares which assets it owns).
+#
+# Full elementId resolved server-side as:
+#
+#   <dataset>:<departments[D].prefix>/<asset_class>/<asset>/<metrics[K].suffix>
+#
+# Example: (site_id='101', dept='Secondary', class='Conveyor', asset='C1',
+# metric='belt_scale_tph') ->
+#   IAP_BCQ_Controls:Big_Canyon/Secondary/Conveyor/C1/Process_Data/Belt_Scale/TPH
+#
+# ----- Editing this file -----
+#
+# Adding a new site: add a top-level entry under `sites:` AND add the
+#   site's hostname to extra_hosts in docker-compose.yml. See
+#   docs/adding-a-new-site.md for the full checklist.
+#
+# Adding a new metric on an existing asset class: add one entry under
+#   `asset_classes.<class>.metrics:`. Applies to every site at once.
+#
+# Adding/removing an asset (e.g. a new conveyor): edit only that site's
+#   departments block. No schema change.
+#
+# Moving an asset between departments: edit only that site's
+#   departments block. No schema change.
+#
+# URL convention: base_url MUST use the hostname form
+#   (http://dbp-<sitecode>:4511, matching Flow's http://dbp-<sitecode>:4501).
+#   The container resolves the hostname via docker-compose.yml's
+#   extra_hosts -- single source of truth for the box's IP, so both
+#   Flow and Timebase pick up an IP change together.
+# ============================================================================
+
+sites:
+  "101":
+    code: BCQ
+    display_name: Big Canyon Quarry
+    # Hostname (NOT raw IP) so this entry matches the pattern Flow
+    # already uses for the same box (http://dbp-bcq:4501/...). The
+    # container resolves `dbp-bcq` via docker-compose.yml's
+    # `extra_hosts`. Single point of truth: if the historian box
+    # ever moves IPs, change the extra_hosts line in compose and
+    # both Flow and Timebase pick up the new address.
+    base_url: http://dbp-bcq:4511
+    dataset: IAP_BCQ_Controls
+    departments:
+      Secondary:
+        prefix: Big_Canyon/Secondary
+        assets:
+          Conveyor: [C1, C2, C3, C4, C5, C6, C7, C8, C10, C11]
+      Wash_Plant:
+        prefix: Big_Canyon/Wash_Plant
+        assets:
+          Conveyor: [C9]
+
+  # Sketch for additional sites -- copy/paste + edit catalog.yaml:
+  #
+  # "100":
+  #   code: ARP
+  #   display_name: Ardmore Quarry
+  #   base_url: http://<arp-historian-ip>:4511
+  #   dataset: IAP_ARP_Controls
+  #   departments:
+  #     Primary:
+  #       prefix: Ardmore/Primary
+  #       assets:
+  #         Conveyor: [C1, C2]
+  #     Secondary:
+  #       prefix: Ardmore/Secondary
+  #       assets:
+  #         Conveyor: [C3, C4, C5, C6, C7, C8]
+
+asset_classes:
+  Conveyor:
+    # Shared metric registry -- which metrics any conveyor has, regardless
+    # of site or department. Tag suffix is identical across every site by
+    # SCADA-tree convention; per-site placement is in the sites block.
+    metrics:
+      belt_scale_tph:
+        display_name: Belt Scale TPH
+        unit: tph
+        suffix: Process_Data/Belt_Scale/TPH
+      belt_scale_total:
+        display_name: Belt Scale Total
+        unit: tons
+        # Real SCADA leaf is 'Odometer' (cumulative tons since
+        # last reset). We keep the metric_key 'belt_scale_total'
+        # so the frontend's '*_total' detection still computes
+        # delta-from-start (== tons produced in window).
+        suffix: Process_Data/Belt_Scale/Odometer

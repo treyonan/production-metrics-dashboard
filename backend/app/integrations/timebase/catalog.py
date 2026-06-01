@@ -54,14 +54,13 @@ from app.schemas.timebase import (
     CatalogSite,
 )
 
-# Catalog file paths. The real catalog (containing per-site historian URLs)
-# is gitignored; the committed example file ships the structure with
-# placeholder URLs for tests + CI. Production deployments must provide
-# catalog.yaml; otherwise we fall back to the example file (every
-# historian URL will then be unreachable and /history will return 504).
-_CATALOG_REAL_PATH = Path(__file__).resolve().parent / "catalog.yaml"
-_CATALOG_EXAMPLE_PATH = Path(__file__).resolve().parent / "catalog.example.yaml"
-_DEFAULT_CATALOG_PATH = _CATALOG_REAL_PATH  # exported for tests
+# Catalog file path. Single committed source of truth -- per-site
+# historian URLs, dataset names, departments, and asset placements
+# all live here and flow via normal git pull / rebuild. No fallback
+# template file: if catalog.yaml is missing the lifespan logs a
+# clear error and Timebase init is skipped, which is the right
+# loud-failure mode for missing deployment config.
+_DEFAULT_CATALOG_PATH = Path(__file__).resolve().parent / "catalog.yaml"
 
 
 class CatalogError(Exception):
@@ -262,31 +261,28 @@ class TimebaseCatalog:
 def load_catalog(path: Path | None = None) -> TimebaseCatalog:
     """Load and validate the catalog YAML.
 
-    When ``path`` is None, prefers ``catalog.yaml`` (gitignored, real
-    URLs); falls back to ``catalog.example.yaml`` (committed,
-    placeholder URLs) so tests + fresh checkouts work without manual
-    setup. In production, ``catalog.yaml`` MUST exist for routes to
-    reach real historians.
+    When ``path`` is None, reads ``catalog.yaml`` next to this module.
+    Tests pass an explicit ``path`` to a temp-file fixture.
 
     Raises ``CatalogError`` on missing file, malformed YAML, or
     required-field violations. The lifespan in ``main.py`` catches
-    this and logs it, leaving ``app.state.timebase_catalog = None``.
+    this and logs it, leaving ``app.state.timebase_catalog = None``;
+    /api/timebase/* then 503s cleanly via the DI provider rather
+    than crashing the API.
     """
-    if path is not None:
-        target = path
-    elif _CATALOG_REAL_PATH.is_file():
-        target = _CATALOG_REAL_PATH
-    elif _CATALOG_EXAMPLE_PATH.is_file():
-        target = _CATALOG_EXAMPLE_PATH
-    else:
+    target = path if path is not None else _DEFAULT_CATALOG_PATH
+    if not target.is_file():
         raise CatalogError(
-            f"No catalog file found. Expected one of: "
-            f"{_CATALOG_REAL_PATH} (preferred, gitignored), "
-            f"{_CATALOG_EXAMPLE_PATH} (committed example)."
+            f"Catalog file not found: {target}. The catalog is a "
+            "committed file at backend/app/integrations/timebase/"
+            "catalog.yaml -- if it's missing, check the git checkout "
+            "or the bind-mount in docker-compose.yml."
         )
     try:
         raw = target.read_text(encoding="utf-8")
     except FileNotFoundError as exc:
+        # Race between is_file() and read_text(); unusual but possible
+        # under aggressive filesystem mutation.
         raise CatalogError(f"Catalog file not found: {target}") from exc
     try:
         data = yaml.safe_load(raw)

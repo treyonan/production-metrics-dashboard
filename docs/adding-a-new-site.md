@@ -48,38 +48,54 @@ in the chain.
 
 ## Files to update
 
-The dashboard needs three changes (plus one optional one) for a new
-site. Two are committed and ship via `git`; one is per-environment
-config that lives outside git.
+The dashboard needs three changes for a new site. All three are
+committed and ship via `git`. There is no per-environment config
+to keep in sync any more.
 
 | File | What changes | Committed? | Rebuild required? |
 |---|---|---|---|
 | `docker-compose.yml` | Add a line under `services.api.extra_hosts` mapping the new hostname → IP. | Yes | Yes — `docker compose up -d` recreates the container; `restart` does NOT pick up `extra_hosts` changes. |
-| `backend/app/integrations/timebase/catalog.yaml` | Add a top-level entry under `sites:` for the new site. Maintained separately per environment (gitignored). | **No** — file is gitignored. Each env (dev, prod) has its own copy. | Yes today (catalog is COPY'd into the image at build time). See "Why a rebuild today" below. |
+| `backend/app/integrations/timebase/catalog.yaml` | Add a top-level entry under `sites:` for the new site. | Yes | **No** for pure catalog edits — file is bind-mounted by `docker-compose.yml`, so `docker compose restart api` picks up the change. For new-site commissioning specifically, you're also touching `extra_hosts` + `config.py`, so a rebuild is unavoidable for that combined deploy. See "Catalog hot-swap" below. |
 | `backend/app/core/config.py` | Add the new `<site_id>: "<Display Name>"` entry to `_DEFAULT_SITE_NAMES`. This is what the site dropdown shows. | Yes | Yes (Python code change). |
-| `backend/app/integrations/timebase/catalog.example.yaml` (optional) | If the new site reveals a placement pattern worth showing future deployers (e.g. conveyors split across Primary + Secondary), update the commented sketch. Purely documentation. | Yes | No (only the template; runtime falls back to it only if `catalog.yaml` is missing). |
 
-### Why a rebuild today
+### Catalog hot-swap
 
-`catalog.yaml` lives at `backend/app/integrations/timebase/catalog.yaml`,
-and the Dockerfile `COPY backend/app /app/backend/app` bakes it into
-the image at build time. Only `./context` and `./frontend` are
-bind-mounted in `docker-compose.yml`, so a change to `catalog.yaml`
-does not show up in a running container until you rebuild.
-
-This is the same friction we hit when commissioning BCQ — the catalog
-is *deployment config*, not application code, and a future improvement
-is to bind-mount it the way `frontend/` is:
+`catalog.yaml` is bind-mounted into the container by `docker-compose.yml`:
 
 ```yaml
 volumes:
   - ./backend/app/integrations/timebase/catalog.yaml:/app/backend/app/integrations/timebase/catalog.yaml:ro
 ```
 
-That change would let you edit `catalog.yaml` on the host and
-`docker compose restart api` to pick it up — no image rebuild. Not
-done yet; track on the roadmap if site commissioning becomes a
-frequent operation.
+That means a catalog edit on the host takes effect on:
+
+```
+docker compose restart api
+```
+
+No image rebuild, no other downtime. The restart re-runs the
+lifespan, which re-reads `catalog.yaml` and rebuilds the per-site
+Timebase client registry. The full route + frontend stack keeps
+its bytecode warm — restart-to-serving is typically a few seconds.
+
+**Must-exist constraint:** `catalog.yaml` is committed, so a normal
+`git clone` / `git pull` brings the live file with it. If anyone
+manually deletes it on the host while the container is down,
+`docker compose up` would silently create an empty *directory* at
+the bind-mount target and the loader would crash. Treat
+`catalog.yaml` like any other tracked source file -- don't delete
+it locally.
+
+Other paths that **still** require a rebuild:
+
+| Change | Why |
+|---|---|
+| `docker-compose.yml` `extra_hosts` | `restart` does not re-read compose's `extra_hosts`; only `up -d` recreates the container with new `/etc/hosts`. |
+| Python source (`config.py`, route handlers, etc.) | Python code is baked into the image; uvicorn doesn't run with `--reload` in the container. |
+| `requirements.txt` | New dependencies aren't installed at runtime. |
+
+`frontend/`, `context/`, and `catalog.yaml` are the three paths
+that hot-swap.
 
 ## Step-by-step procedure
 
@@ -127,10 +143,11 @@ _DEFAULT_SITE_NAMES: dict[str, str] = {
 Commit this. Order within the dict doesn't matter; alphabetize by
 display name for tidiness.
 
-### 4. Update `catalog.yaml` (per environment)
+### 4. Update `catalog.yaml`
 
-`catalog.yaml` is gitignored — each environment maintains its own copy.
-Edit both dev and prod copies independently.
+`catalog.yaml` is committed. Edit it on dev, commit alongside the
+other site-commissioning changes, and `git pull` brings it to prod.
+No per-environment copy to maintain.
 
 Add a top-level entry under `sites:`:
 
@@ -185,10 +202,16 @@ docker compose up --build -d
 
 `up --build` is required because:
 - `extra_hosts` changes only land on a container *recreate*, not a
-  restart.
-- `catalog.yaml` is baked into the image at build time today.
+  `restart`.
 - `config.py` is a Python code change, which always requires a rebuild
   (no Python hot-reload in the container).
+
+`catalog.yaml` is bind-mounted, so it would normally only need a
+`docker compose restart api`. But for *new-site commissioning* you're
+also editing `extra_hosts` and `config.py`, so a full rebuild is
+unavoidable. Once the site is live and you're tweaking only the
+catalog (renaming an asset, moving a conveyor between departments,
+adding a metric), `docker compose restart api` is enough.
 
 ### 6. Smoke tests
 
@@ -245,8 +268,8 @@ site and see Belt Scale TPH / Total tags.
 
 The container can't resolve the hostname. Walk this list:
 
-1. Does `catalog.yaml`'s `base_url` actually use the hostname (not the
-   IP, not `historian.example.invalid` from the template)?
+1. Does `catalog.yaml`'s `base_url` actually use the hostname (not
+   the IP)?
    ```
    docker compose exec api cat /app/backend/app/integrations/timebase/catalog.yaml | grep base_url
    ```
@@ -262,19 +285,26 @@ The container can't resolve the hostname. Walk this list:
    docker compose exec api python -c "import socket; print(socket.gethostbyname('dbp-<sitecode>'))"
    ```
 
-### `/api/timebase/catalog` shows `historian.example.invalid:4511`
+### `/api/health` shows Timebase as down and the lifespan log says `timebase.catalog_load_failed`
 
-The container is reading `catalog.example.yaml` (the committed template)
-because `catalog.yaml` isn't present. This means your `catalog.yaml`
-edit didn't make it into the image. Check the build context:
+`catalog.yaml` either isn't reaching the container or is malformed.
+Check both:
 
 ```
-docker compose exec api ls -la /app/backend/app/integrations/timebase/
+docker compose exec api ls -la /app/backend/app/integrations/timebase/catalog.yaml
+docker compose exec api cat /app/backend/app/integrations/timebase/catalog.yaml | head -20
+docker compose logs api 2>&1 | grep timebase.catalog_load_failed
 ```
 
-If `catalog.yaml` isn't listed, it wasn't present on the host at build
-time. Create it (copy from `catalog.example.yaml` and edit) and
-rebuild.
+If `ls` shows the file as a *directory* (0-byte, weird), the host
+file was missing when `docker compose up` ran and Docker created an
+empty directory at the bind-mount target. Fix: restore
+`catalog.yaml` from git (`git checkout backend/app/integrations/timebase/catalog.yaml`),
+then `docker compose down && docker compose up -d` to remount.
+
+If the file content looks wrong (corrupted, empty, or missing
+required fields), the lifespan log will say which key failed
+validation. Fix in the host file and `docker compose restart api`.
 
 ### Tag-tree divergence — the new site's tag suffixes don't match
 
@@ -309,10 +339,10 @@ either:
 ## Related references
 
 - `docker-compose.yml` — `extra_hosts` block (and its comment).
-- `backend/app/integrations/timebase/catalog.example.yaml` — header
-  documents the URL convention and the matching `extra_hosts`
-  requirement.
-- `RUNBOOK.md` § "Adding a new site to /api/metrics" — short pointer
-  back to this doc.
+- `backend/app/integrations/timebase/catalog.yaml` — header documents
+  the schema (sites + departments + asset placement), the URL
+  convention, and editing patterns for the three common cases (add
+  metric, add asset, move asset between depts).
+- `RUNBOOK.md` § "Adding a new site" — short pointer back to this doc.
 - `CLAUDE.md` § "Where new content goes" — conventions for where new
   config and code live in the repo.
