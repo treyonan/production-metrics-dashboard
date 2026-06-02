@@ -25,7 +25,17 @@
 
   <div class="topbar">
     <div class="tlogo">
-      <img class="tlogo-img" src="/content/dolese-logo.png" alt="Dolese">
+      <!-- Logo links to the Dolese Operations OT portal in a new tab
+           so operators can jump back to the main plant overview
+           without losing this dashboard's site / time selection.
+           Only the image is the link; the "Production Metrics" title
+           stays a plain text label so it can't be mistaken for nav. -->
+      <a class="tlogo-link" href="https://operationsot.dolese.com/data/perspective/client/Dolese_Plants_Enterprise_System/mainbreakpoint"
+         target="_blank" rel="noopener noreferrer"
+         aria-label="Open Dolese Operations OT portal in a new tab"
+         title="Open Dolese Operations OT portal">
+        <img class="tlogo-img" src="/content/dolese-logo.png" alt="Dolese">
+      </a>
       <b>Production Metrics</b>
     </div>
     <!-- Site selector: was a tab strip (one <button> per site). Now a

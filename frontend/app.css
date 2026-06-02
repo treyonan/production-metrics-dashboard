@@ -1245,3 +1245,23 @@ body {
   width: auto;
   display: block;
 }
+/* Anchor wrapper around the logo image. inline-flex + line-height
+   collapse the default text-baseline whitespace that an <a> would
+   otherwise add below the <img>; the rest just keeps the link from
+   inheriting any default text-link styling (underline / blue) on
+   visited or hover states. The subtle opacity shift on hover is
+   the only visual feedback that the logo is clickable. */
+.tlogo-link {
+  display: inline-flex;
+  align-items: center;
+  line-height: 0;
+  text-decoration: none;
+  color: inherit;
+  border-radius: 2px;
+  transition: opacity .15s;
+}
+.tlogo-link:hover { opacity: 0.85; }
+.tlogo-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
