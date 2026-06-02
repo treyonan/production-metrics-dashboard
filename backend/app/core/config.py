@@ -16,12 +16,18 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _DEFAULT_FRONTEND_DIR = _REPO_ROOT / "frontend"
 
-# Human-readable names for site IDs present in the data. The source layer
-# reports which IDs exist; the service layer joins in these labels. Missing
-# IDs fall back to "Site <id>".
+# Human-readable names for site IDs. The source layer reports which
+# IDs exist in SQL data; the service layer (services/sites.py) unions
+# that with this dict and uses these labels. Missing IDs fall back to
+# "Site <id>".
+#
+# DICT ORDER IS LOAD-BEARING. /api/sites returns sites in this dict's
+# insertion order (configured-first), and the dashboard's frontend
+# treats sites[0] as the no-deep-link default. Put the most-used
+# site first.
 _DEFAULT_SITE_NAMES: dict[str, str] = {
+    "101": "Big Canyon Quarry",     # default
     "100": "Ardmore Quarry",
-    "101": "Big Canyon Quarry",
 }
 
 

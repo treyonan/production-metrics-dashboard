@@ -148,25 +148,53 @@ body {
 .tlogo b { color: var(--shell-text, #f3f2f1); font-size: 12px; }
 .tlogo s { color: var(--shell-text-faint, #a19f9d); font-size: 11px; text-decoration: none; }
 
-.site-tog { display: flex; align-items: center; border-right: 1px solid var(--divider-dark); }
-.stbtn {
-  /* 32px (not the full 40px topbar height) so the active-state
-     accent border at the bottom has clearance from the brand
-     yellow stripe under the topbar. */
-  height: 32px;
-  padding: 0 14px;
-  background: none;
-  border: none;
-  font-size: 11px;
-  cursor: pointer;
-  font-family: inherit;
-  font-weight: 600;
-  color: var(--shell-text-muted, #c8c6c4);
-  border-bottom: 3px solid transparent;
-  transition: color .15s, border-color .15s, background .15s;
+.site-tog {
+  display: flex;
+  align-items: center;
+  border-right: 1px solid var(--divider-dark);
+  padding: 0 12px;
 }
-.stbtn:hover { background: var(--shell-hover-bg, #3b3a39); color: var(--shell-text, #f3f2f1); }
-.stbtn.on { color: var(--shell-text, #f3f2f1); border-bottom-color: var(--accent); }
+/* Site dropdown -- replaces the previous tab-strip. Same height /
+   typography as the view tabs so the topbar reads as one row.
+   Native select is restyled rather than rebuilt with a custom
+   menu: simpler, accessible by default, no keyboard / focus
+   handlers to write. The dropdown arrow is an inline SVG embedded
+   via background-image so it inherits the muted shell-text color. */
+.site-select {
+  height: 28px;
+  padding: 0 28px 0 12px;
+  min-width: 180px;
+  background-color: var(--shell-button-bg, #3b3a39);
+  /* down-chevron SVG, color matches --shell-text-muted #c8c6c4 */
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='%23c8c6c4' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  border: 1px solid var(--border-strong, #605e5c);
+  border-radius: 2px;
+  color: var(--shell-text, #f3f2f1);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  cursor: pointer;
+  /* Strip the OS-native arrow so only our SVG one shows. */
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  transition: background-color .15s, border-color .15s;
+}
+.site-select:hover { background-color: var(--shell-hover-bg, #484644); }
+.site-select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+/* Option panel: most OSes ignore most styling here, but the
+   background-color usually takes so the dropdown panel isn't a
+   stark white on dark themes. */
+.site-select option {
+  background-color: var(--bg-card, #ffffff);
+  color: var(--text, #2d2926);
+}
 
 /* Theme toggle button in the topbar */
 .theme-toggle {

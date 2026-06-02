@@ -35,6 +35,27 @@
     new URLSearchParams(location.search).get("refresh") || "30000",
     10
   );
+
+  // Update the browser URL's ?site_id= when the user changes site
+  // via the topbar toggle. Uses replaceState (not pushState) so the
+  // back button doesn't capture every site flip as a navigation;
+  // the URL just stays in sync with the currently rendered site,
+  // which is what makes the deep-link round-trip:
+  //   1. Ignition launches us with /?site_id=101
+  //   2. User clicks the BCQ tab -- URL becomes /?site_id=102
+  //   3. They share the URL; the recipient lands on BCQ as expected.
+  // Other query params (e.g. ?refresh=) are preserved.
+  function updateSiteIdInUrl(siteId) {
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set("site_id", String(siteId));
+      window.history.replaceState(null, "", url.toString());
+    } catch (e) {
+      // history.replaceState can throw on file:// URLs or older
+      // browsers; deep-linking is a nicety, not load-bearing.
+      console.warn("[pmd] could not update URL with site_id:", e);
+    }
+  }
   const THEME_STORAGE_KEY = "pmd-theme";
   const TIME_FILTER_STORAGE_KEY = "pmd-time-filter";
   const YEAR_SPAN_BACK = 4;  // current year + last 4 = 5 options in the year dropdown
@@ -479,31 +500,52 @@
   }
 
   // --- site + filter panel rendering ---
+  //
+  // Topbar site selector is a native <select> -- see index.html and
+  // .site-select in app.css. This function populates the options
+  // and syncs the dropdown's current value to currentSiteId.
+  //
+  // Called on initial bootstrap AND whenever currentSiteId changes
+  // (for the few code paths that still re-render the topbar, mostly
+  // theme toggle / data refresh). The change event is attached once
+  // in bootstrap() so options can be repopulated without losing
+  // the listener.
   function renderSiteToggle() {
-    const host = $("site-tog");
-    host.innerHTML = "";
+    const select = $("site-select");
+    if (!select) return;
+    // Repopulate options. innerHTML wipe is fine -- this happens at
+    // most a few times in the page lifetime, not in a hot loop.
+    select.innerHTML = "";
     for (const s of sites) {
-      const btn = el("button", {
-        class: "stbtn" + (s.id === currentSiteId ? " on" : ""),
-        role: "tab",
-        "aria-selected": s.id === currentSiteId ? "true" : "false",
-        onclick: () => {
-          if (s.id !== currentSiteId) {
-            currentSiteId = s.id;
-            renderSiteToggle();
-            renderSiteStrip();
-            renderChips();
-            for (const fn of _extLinkRefreshers) fn();
-            // Refresh whichever view is currently active. Dashboard
-            // and Trends both need the new site's data; polling only
-            // ever drives the dashboard.
-            if (currentView === "trends") refreshTrends();
-            else refreshData();
-          }
-        },
-      }, s.name);
-      host.appendChild(btn);
+      const opt = document.createElement("option");
+      opt.value = String(s.id);
+      opt.textContent = s.name;
+      if (String(s.id) === String(currentSiteId)) opt.selected = true;
+      select.appendChild(opt);
     }
+    // Belt-and-suspenders: setting .value after appending children
+    // makes sure the dropdown reflects currentSiteId even on browsers
+    // that ignore option.selected when it changes mid-build.
+    select.value = String(currentSiteId);
+  }
+  // Site change handler. Wired once in bootstrap(). Same logic the
+  // old per-button click handler ran: update state, re-render the
+  // topbar bits that depend on the active site, update the URL so
+  // deep-links stay shareable, and refresh whichever view is open.
+  function onSiteSelectChange(ev) {
+    const newId = ev.target.value;
+    // sites have id as string; normalize defensively in case any
+    // call site ever sets currentSiteId from a number.
+    if (String(newId) === String(currentSiteId)) return;
+    const match = sites.find((s) => String(s.id) === String(newId));
+    if (!match) return;
+    currentSiteId = match.id;
+    renderSiteStrip();
+    renderChips();
+    for (const fn of _extLinkRefreshers) fn();
+    updateSiteIdInUrl(currentSiteId);
+    if (currentView === "trends") refreshTrends();
+    else refreshData();
   }
   function renderSiteStrip() {
     const s = sites.find((x) => x.id === currentSiteId);
@@ -1824,6 +1866,34 @@
     }
     currentSiteId = sites[0].id;
 
+    // Deep-link override: ?site_id=X in the URL wins over the
+    // first-site default if it matches a configured site. Used by
+    // Ignition / other SCADA tools to launch the dashboard pointed
+    // at a specific plant ("Open Production Metrics" button on a
+    // site overview screen). An unrecognized id falls back to the
+    // default and logs a console warning so the launching system's
+    // URL is debuggable. Site IDs are strings in the API but may
+    // arrive as numeric query strings -- compare via String() on
+    // both sides to be liberal in what we accept.
+    const urlSiteId = new URLSearchParams(location.search).get("site_id");
+    if (urlSiteId) {
+      const matched = sites.find((s) => String(s.id) === String(urlSiteId));
+      if (matched) {
+        currentSiteId = matched.id;
+      } else {
+        console.warn(
+          "[pmd] URL ?site_id=" + urlSiteId
+          + " does not match any configured site; falling back to default ("
+          + currentSiteId + "). Available: "
+          + sites.map((s) => s.id).join(", ")
+        );
+        // Sync the URL back to the actually-loaded site so the
+        // address bar doesn't lie. Anyone copying it gets a valid
+        // deep-link instead of a stale invalid one.
+        updateSiteIdInUrl(currentSiteId);
+      }
+    }
+
     // Selection bootstrap: localStorage wins, else /latest-date for
     // the default site, else today.
     const saved = loadSelection();
@@ -1836,6 +1906,12 @@
     }
 
     renderSiteToggle();
+    // One-time wire-up for the dropdown's change event. renderSiteToggle
+    // rebuilds the <option> children each call, but the listener lives
+    // on the <select> itself so it survives those rebuilds.
+    const siteSelect = $("site-select");
+    if (siteSelect) siteSelect.addEventListener("change", onSiteSelectChange);
+
     renderSiteStrip();
     reflectSelectionInControls();
     renderChips();

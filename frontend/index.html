@@ -28,7 +28,17 @@
       <img class="tlogo-img" src="/content/dolese-logo.png" alt="Dolese">
       <b>Production Metrics</b>
     </div>
-    <div class="site-tog" id="site-tog" role="tablist" aria-label="Site selector"></div>
+    <!-- Site selector: was a tab strip (one <button> per site). Now a
+         <select> dropdown so the list scales beyond two sites without
+         crowding the topbar. The selected option mirrors currentSiteId
+         in app.js -- deep-linking via ?site_id= sets it on init; the
+         change event drives the same refresh path the old buttons did.
+         The empty wrapper is here so the existing .site-tog CSS (right
+         border between site selector and view tabs) still applies. -->
+    <div class="site-tog" id="site-tog">
+      <select id="site-select" class="site-select"
+              aria-label="Select site"></select>
+    </div>
     <div class="view-tabs" id="view-tabs" role="tablist" aria-label="View selector">
       <!-- Order is deliberate (left-to-right):
            1. In-app views        : Production Dashboard, Production Charts

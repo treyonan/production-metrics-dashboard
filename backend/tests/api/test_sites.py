@@ -5,32 +5,48 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 
-def test_sites_returns_configured_and_fallback_names(client: TestClient) -> None:
-    """Configured sites use their settings name; sites in the data but
-    not in settings fall through to the generic 'Site <id>' label.
+def test_sites_returns_union_of_configured_and_data(client: TestClient) -> None:
+    """The response is the union of configured site_names AND site IDs
+    observed in the source's data.
 
-    The test fixture's source returns two site IDs (101 and 102). After
-    Phase 24 the synthetic-demo entry for 102 was removed from the
-    default config, so 102 hits the fallback. 101 keeps its configured
-    name. New site 100 (Ardmore Quarry) is in the config but not in
-    the test fixture's data, so it doesn't appear in the response.
+    Configured-but-empty sites (Ardmore=100 has no test fixture rows)
+    appear in the response anyway so the dashboard's dropdown can
+    pre-show them ahead of data landing.
+
+    Test fixture state:
+      - Configured site_names: {"101": "Big Canyon Quarry", "100": "Ardmore Quarry"}
+      - Source data: site_ids 101 + 102 (synthetic demo)
+      - Union: {100, 101, 102} -- all three appear.
+
+    Name resolution:
+      - 100 -> "Ardmore Quarry" (configured, even though no data)
+      - 101 -> "Big Canyon Quarry" (configured AND in data)
+      - 102 -> "Site 102" (in data, no config entry, fallback)
     """
     resp = client.get("/api/sites")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["count"] == 2
+    assert body["count"] == 3
     ids = {s["id"] for s in body["sites"]}
-    assert ids == {"101", "102"}
+    assert ids == {"100", "101", "102"}
 
     by_id = {s["id"]: s for s in body["sites"]}
-    # 101 -> configured name from settings.
+    assert by_id["100"]["name"] == "Ardmore Quarry"
     assert by_id["101"]["name"] == "Big Canyon Quarry"
-    # 102 -> fallback (no config entry).
     assert by_id["102"]["name"] == "Site 102"
 
 
-def test_sites_sorted_by_id(client: TestClient) -> None:
+def test_sites_order_is_configured_first_then_data_only(client: TestClient) -> None:
+    """Configured site_names control listing order (sites[0] is the
+    dashboard's default no-deep-link site). Data-only ids without a
+    config entry append after, so they don't quietly become the
+    default just by virtue of publishing data first.
+
+    _DEFAULT_SITE_NAMES order: 101, 100 -> BCQ first, Ardmore second.
+    Fixture data adds 102 (not configured) -> appended at end.
+
+    Expected: ["101", "100", "102"]
+    """
     resp = client.get("/api/sites")
-    body = resp.json()
-    ids = [s["id"] for s in body["sites"]]
-    assert ids == sorted(ids)
+    ids = [s["id"] for s in resp.json()["sites"]]
+    assert ids == ["101", "100", "102"]
