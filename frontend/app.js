@@ -1947,15 +1947,51 @@
     }
     savePersistedSiteId(currentSiteId);
 
-    // Selection bootstrap: localStorage wins, else /latest-date for
-    // the default site, else today.
+    // Selection bootstrap (revised 2026-06-03):
+    //
+    // Default the TIME FILTER to the most recent date with data for
+    // the active site, NOT to today. Production reports don't land
+    // until after each shift wraps (typically late afternoon), so
+    // an operator opening the dashboard at 8am would see "Nothing
+    // reported for today" -- misleading. Probing /latest-date gives
+    // the most useful default: yesterday's complete report during
+    // the morning, today's data once it lands in the afternoon.
+    //
+    // Fallback chain:
+    //   1. /api/production-report/latest-date for the active site
+    //   2. Today (the empty state then communicates "no data yet"
+    //      cleanly -- correct for new sites like Ardmore until data
+    //      starts flowing).
+    //
+    // Mode toggle (Day vs Month) is still restored from localStorage
+    // -- that's a workflow preference, not a moment-in-time choice.
+    // The specific date / month is always recomputed:
+    //   * Day mode:   dayDate -> latest-date (or today on fallback)
+    //   * Month mode: monthYear + monthMonth -> current month
+    //
+    // Why not the saved dayDate? Because a date saved last week is
+    // stale and surfaces stale numbers to anyone reopening the
+    // dashboard. The picker is right there if they need a specific
+    // past date.
     const saved = loadSelection();
-    if (saved) {
-      currentSelection = saved;
-    } else {
+    const fresh = defaultSelection();
+    let resolvedDay = fresh.dayDate; // today, used as fallback
+    try {
       const latest = await fetchLatestDate(currentSiteId);
-      currentSelection = defaultSelection();
-      if (latest) currentSelection.dayDate = latest;
+      if (latest) resolvedDay = latest;
+    } catch (e) {
+      // Network blip / 503 -- keep "today" and let the empty state
+      // explain it. Not worth blocking the bootstrap on this.
+    }
+    if (saved) {
+      currentSelection = {
+        mode: saved.mode,            // preserve "day" / "month" preference
+        dayDate: resolvedDay,        // latest-date (or today fallback)
+        monthYear: fresh.monthYear,  // always current year
+        monthMonth: fresh.monthMonth, // always current month
+      };
+    } else {
+      currentSelection = { ...fresh, dayDate: resolvedDay };
     }
 
     renderSiteToggle();

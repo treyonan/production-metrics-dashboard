@@ -494,12 +494,20 @@ $("theme_toggle").addEventListener("click", () => {
 });
 
 function setDefaultDates() {
+  // Local date components -- toISOString() returns UTC, which would
+  // skew "today" to tomorrow during evening hours in Central time
+  // (after ~6pm CDT, UTC is already on the next calendar day) and
+  // is then rejected by the API as a future date. Build the ISO
+  // string from getFullYear/getMonth/getDate so the value always
+  // matches what the operator's calendar says.
+  const pad2 = (n) => String(n).padStart(2, "0");
+  const localIso = (d) =>
+    `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
   const today = new Date();
   const past = new Date();
   past.setDate(today.getDate() - 14);
-  const iso = (d) => d.toISOString().slice(0, 10);
-  $("from_date").value = iso(past);
-  $("to_date").value = iso(today);
+  $("from_date").value = localIso(past);
+  $("to_date").value = localIso(today);
 }
 setDefaultDates();
 
