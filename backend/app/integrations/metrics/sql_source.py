@@ -164,8 +164,13 @@ class SqlIntervalMetricSource:
 
         # Fan out concurrently. asyncio.gather preserves order; each
         # task returns (tag_row, FlowFetchResult) pairs we then walk.
+        # site_id is threaded through so FlowClient can pick the right
+        # per-site bearer token (each Flow installation has its own).
         tasks = [
-            self._flow.fetch_history(tag["history_url"], start=start_dt, end=end_dt) for tag in tags
+            self._flow.fetch_history(
+                tag["history_url"], start=start_dt, end=end_dt, site_id=site_id
+            )
+            for tag in tags
         ]
         results = await asyncio.gather(*tasks)
 

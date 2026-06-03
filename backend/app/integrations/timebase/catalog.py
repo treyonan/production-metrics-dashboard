@@ -146,7 +146,7 @@ class TimebaseCatalog:
         Raises ``CatalogError`` if any tuple component isn't configured.
         Asset is validated against the **department's** asset list for
         the class, not a global per-class list -- so e.g. C1 at BCQ
-        (Secondary) and C1 at ARP (Primary) are distinct and each only
+        (Secondary) and C1 at ARQ (Primary) are distinct and each only
         resolves under their actual home department.
         """
         site = self.sites.get(site_id)

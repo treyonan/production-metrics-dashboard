@@ -83,6 +83,7 @@ class _FlowCall:
     url_template: str
     start: datetime
     end: datetime
+    site_id: str
 
 
 class FakeFlowClient:
@@ -98,8 +99,12 @@ class FakeFlowClient:
         self._responses = responses or {}
         self._default = default or FlowFetchResult(raw_data=[], hit_limit=False)
 
-    async def fetch_history(self, url_template, *, start, end):
-        self.calls.append(_FlowCall(url_template, start, end))
+    async def fetch_history(self, url_template, *, start, end, site_id):
+        # site_id is captured into the call record so tests can assert
+        # the source threads it correctly. Most tests don't check this
+        # field directly; the per-site-key behavior is covered in
+        # test_flow_client.py against the real FlowClient.
+        self.calls.append(_FlowCall(url_template, start, end, site_id))
         for substring, resp in self._responses.items():
             if substring in url_template:
                 return resp
@@ -192,6 +197,9 @@ async def test_fetch_points_fans_out_one_request_per_tag() -> None:
 
     assert len(flow.calls) == 2  # one fan-out per tag
     assert {c.url_template[-2:] for c in flow.calls} == {"C1", "C4"}
+    # site_id is threaded into every fan-out so FlowClient can pick
+    # the right per-site bearer token. Both tags belong to site 101.
+    assert {c.site_id for c in flow.calls} == {"101"}
     assert len(result.points) == 2
     assert result.truncated is False
     # Subject info comes from the tag row, not the bucket

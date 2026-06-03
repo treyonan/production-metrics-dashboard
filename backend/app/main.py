@@ -95,20 +95,49 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             )
 
     # Phase 9: Flow API client + in-process SnapshotStore.
-    # Both are created unconditionally (even if FLOW_API_KEY is unset)
+    # Both are created unconditionally (even if no Flow keys are set)
     # so /api/metrics/* can return a clean 503 from its DI provider
     # rather than 500 from a missing app.state attribute.
+    #
+    # Phase 27.1 (2026-06-03): Flow auth is now per-site -- each Flow
+    # installation has its own bearer token. Build the api_keys dict
+    # by walking the configured sites and pulling any per-site key
+    # set in settings (PMD_FLOW_API_KEY_<id>). The legacy
+    # PMD_FLOW_API_KEY survives as the default fallback for any site
+    # without its own key, so single-site deployments keep working
+    # with no env var change.
     app.state.snapshot_store = InMemorySnapshotStore()
     app.state.flow_client = None
-    if settings.flow_api_key is not None:
+
+    per_site_keys: dict[str, str] = {}
+    for sid in settings.site_names:
+        key = settings.resolve_flow_api_key(sid)
+        # Only put per-site keys in the dict (not the fallback) so
+        # the client's "key not found for this site_id" check has
+        # something meaningful to fall back to.
+        explicit = getattr(settings, f"flow_api_key_{sid}", None)
+        if explicit is not None:
+            per_site_keys[sid] = explicit.get_secret_value()
+    default_key = (
+        settings.flow_api_key.get_secret_value()
+        if settings.flow_api_key is not None
+        else None
+    )
+
+    if per_site_keys or default_key is not None:
         try:
             client = FlowClient(
-                api_key=settings.flow_api_key.get_secret_value(),
+                api_keys=per_site_keys,
+                default_api_key=default_key,
                 timeout_seconds=settings.flow_api_timeout_seconds,
             )
             await client.aopen()
             app.state.flow_client = client
-            log.info("flow_client.created")
+            log.info(
+                "flow_client.created",
+                per_site_key_sites=sorted(per_site_keys.keys()),
+                default_key_set=default_key is not None,
+            )
         except Exception as exc:  # noqa: BLE001 -- degrade-gracefully
             log.error(
                 "flow_client.create_failed",
@@ -118,7 +147,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     else:
         log.info(
             "flow_client.not_created",
-            reason="FLOW_API_KEY not set; /api/metrics/* will 503",
+            reason=(
+                "Neither PMD_FLOW_API_KEY nor any per-site "
+                "PMD_FLOW_API_KEY_<id> is set; /api/metrics/* will 503"
+            ),
         )
 
     # Phase 26: Timebase i3X integration. Each site has its own

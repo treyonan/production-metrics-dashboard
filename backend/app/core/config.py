@@ -91,15 +91,47 @@ class Settings(BaseSettings):
 
     # ---- Phase 9: Flow API integration for interval metrics ----
 
+    # Flow auth model: each Flow installation is independently
+    # administered and issues its own bearer token. The dashboard
+    # picks the right key based on the site_id of the fetch:
+    #
+    #   PMD_FLOW_API_KEY_<site_id>   per-site override (preferred)
+    #   PMD_FLOW_API_KEY             fallback default (legacy single-key)
+    #
+    # ``flow_api_key`` is retained for the single-site deployment
+    # path and as a default for any site that doesn't have its own
+    # key set. To add a new site: set PMD_FLOW_API_KEY_<id> in .env
+    # AND add a new ``flow_api_key_<id>`` field below + a branch in
+    # ``resolve_flow_api_key``. See docs/adding-a-new-site.md.
     flow_api_key: SecretStr | None = Field(
         default=None,
         description=(
-            "Bearer token for Flow's REST API. Used as-is in the "
-            "Authorization header by FlowClient (no exchange / refresh). "
-            "When None, /api/metrics/* returns 503 from the DI provider."
+            "Default bearer token for Flow's REST API. Used when no "
+            "per-site override is set. Sent as-is in the Authorization "
+            "header by FlowClient (no exchange / refresh)."
         ),
         validation_alias=AliasChoices("PMD_FLOW_API_KEY", "FLOW_API_KEY"),
     )
+    flow_api_key_100: SecretStr | None = Field(
+        default=None,
+        description="Ardmore (ARQ) Flow bearer token. Overrides flow_api_key for site_id=100.",
+        validation_alias=AliasChoices("PMD_FLOW_API_KEY_100", "FLOW_API_KEY_100"),
+    )
+    flow_api_key_101: SecretStr | None = Field(
+        default=None,
+        description="Big Canyon (BCQ) Flow bearer token. Overrides flow_api_key for site_id=101.",
+        validation_alias=AliasChoices("PMD_FLOW_API_KEY_101", "FLOW_API_KEY_101"),
+    )
+
+    def resolve_flow_api_key(self, site_id: str) -> SecretStr | None:
+        """Return the Flow bearer token for a site, or the default fallback.
+
+        Per-site key wins if set; otherwise falls back to the default
+        ``flow_api_key``. Returns None when neither is set -- callers
+        treat None as "no auth available for this site" and surface 503.
+        """
+        per_site = getattr(self, f"flow_api_key_{site_id}", None)
+        return per_site or self.flow_api_key
     flow_api_timeout_seconds: float = Field(
         default=30.0,
         description=(

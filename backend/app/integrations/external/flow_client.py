@@ -89,18 +89,30 @@ class FlowClient:
     def __init__(
         self,
         *,
-        api_key: str,
+        api_keys: dict[str, str] | None = None,
+        default_api_key: str | None = None,
         timeout_seconds: float = 30.0,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         """Build a Flow API client.
+
+        Auth is per-site: each Flow installation issues its own bearer
+        token. ``api_keys`` maps site_id (string) to that site's token;
+        ``default_api_key`` is the fallback used when a request comes
+        in for a site_id that isn't in the dict (handy for single-site
+        deployments and for migration off the legacy single-key model).
+
+        Raises at fetch time, not here, if a request comes in for a
+        site with no key configured -- so a misconfigured single site
+        doesn't break startup for the other sites.
 
         ``transport`` is an injection point for tests -- pass an
         ``httpx.MockTransport`` to intercept HTTP calls without
         hitting the network. In production, leave it None and
         httpx uses its default transport.
         """
-        self._api_key = api_key
+        self._api_keys = dict(api_keys or {})
+        self._default_api_key = default_api_key
         self._timeout = httpx.Timeout(timeout_seconds)
         self._transport = transport
         self._client: httpx.AsyncClient | None = None
@@ -118,10 +130,23 @@ class FlowClient:
             await self._client.aclose()
             self._client = None
 
-    @property
-    def _headers(self) -> dict[str, str]:
+    def _headers_for(self, site_id: str) -> dict[str, str]:
+        """Resolve auth headers for a given site_id.
+
+        Per-site key wins; otherwise falls back to the default.
+        Raises RuntimeError when neither is available -- the source
+        layer translates that into a 503 so the dashboard surfaces a
+        clean per-site failure rather than crashing the request.
+        """
+        key = self._api_keys.get(site_id) or self._default_api_key
+        if not key:
+            raise RuntimeError(
+                "No Flow API key configured for site_id={0!r}. "
+                "Set PMD_FLOW_API_KEY_{0} (per-site) or PMD_FLOW_API_KEY "
+                "(default fallback) in backend/.env.".format(site_id)
+            )
         return {
-            "Authorization": "Bearer " + self._api_key,
+            "Authorization": "Bearer " + key,
             "Content-Type": "application/json",
         }
 
@@ -131,6 +156,7 @@ class FlowClient:
         *,
         start: datetime,
         end: datetime,
+        site_id: str,
     ) -> FlowFetchResult:
         """Fetch one tag's history.
 
@@ -138,6 +164,11 @@ class FlowClient:
         Flow-formatted ISO strings, GETs with bearer auth, raises on
         non-2xx, and returns the inner ``values[0]['data']`` list
         plus a hit-limit flag.
+
+        ``site_id`` selects which bearer token to send -- each Flow
+        installation has its own. The site_id is the dashboard's
+        canonical numeric id (e.g. '100' for ARQ, '101' for BCQ);
+        it does NOT need to match anything inside the URL template.
 
         Returns an empty list (not None) when Flow's response has no
         values for this tag -- consumers can iterate without a None
@@ -154,7 +185,7 @@ class FlowClient:
             format_flow_iso(end),
         )
 
-        resp = await self._client.get(url, headers=self._headers)
+        resp = await self._client.get(url, headers=self._headers_for(site_id))
         resp.raise_for_status()
 
         if not resp.content:

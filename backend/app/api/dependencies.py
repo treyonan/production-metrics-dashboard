@@ -60,8 +60,9 @@ def get_interval_metric_source(request: Request):
     from ``[FLOW].[INTERVAL_METRIC_TAGS]`` and fanning out to Flow's
     REST API. Returns 503 from this provider when either dependency
     is missing -- the SQL pool (lifespan-created when the SQL backend
-    is selected) or the FlowClient (lifespan-created when
-    ``FLOW_API_KEY`` is set in env).
+    is selected) or the FlowClient (lifespan-created when at least
+    one of ``PMD_FLOW_API_KEY`` or any per-site
+    ``PMD_FLOW_API_KEY_<site_id>`` is set in env).
     """
     from app.integrations.metrics.sql_source import SqlIntervalMetricSource
 

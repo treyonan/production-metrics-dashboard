@@ -80,22 +80,20 @@ sites:
         assets:
           Conveyor: [C9]
 
-  # Sketch for additional sites -- copy/paste + edit catalog.yaml:
-  #
-  # "100":
-  #   code: ARP
-  #   display_name: Ardmore Quarry
-  #   base_url: http://<arp-historian-ip>:4511
-  #   dataset: IAP_ARP_Controls
-  #   departments:
-  #     Primary:
-  #       prefix: Ardmore/Primary
-  #       assets:
-  #         Conveyor: [C1, C2]
-  #     Secondary:
-  #       prefix: Ardmore/Secondary
-  #       assets:
-  #         Conveyor: [C3, C4, C5, C6, C7, C8]
+  "100":
+    code: ARQ
+    display_name: Ardmore Quarry
+    base_url: http://dbp-arq:4511
+    dataset: IAP_ARQ_Controls
+    departments:
+      Primary:
+        prefix: Ardmore/Primary
+        assets:
+          Conveyor: [C1, C2, C3, C4]
+      Secondary:
+        prefix: Ardmore/Secondary
+        assets:
+          Conveyor: [C5, C6, C7, C8, C9, C10, C11, C12, C13, C14]
 
 asset_classes:
   Conveyor:

@@ -3464,7 +3464,7 @@ class's assets existed in every department of every site -- false.
 - `backend/app/integrations/timebase/catalog.yaml` (BCQ remains in
   Secondary; same final elementIds)
 - `backend/app/integrations/timebase/catalog.example.yaml` (same +
-  ARP placement sketch in a comment)
+  ARQ placement sketch in a comment)
 - `backend/tests/integrations/timebase/test_catalog.py` (33 tests now,
   including 4 new ones for per-site placement scenarios)
 - `tasks/specs/003-timebase-i3x-wrapper.md` (Revision 5)
@@ -3474,7 +3474,7 @@ class's assets existed in every department of every site -- false.
 - 70 unit tests pass (cache 20, catalog 33, client 17).
 - ruff check clean.
 - Manually exercised a two-site catalog with non-uniform conveyor
-  placement (ARP C1-C2 in Primary, C3-C8 in Secondary) -- elementIds
+  placement (ARQ C1-C2 in Primary, C3-C8 in Secondary) -- elementIds
   resolve correctly, cross-dept queries reject cleanly, response shape
   honors the placement.
 - BUILD_TAG -> 2026-05-21-phase26-timebase-i3x-placement

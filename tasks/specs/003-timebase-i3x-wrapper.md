@@ -717,13 +717,13 @@ sites:
           Conveyor: [C1, C2, C3, C4, C5, C6, C7, C8]
 
   "100":                                 # future
-    code: ARP
+    code: ARQ
     ...
     departments:
       Primary:
         prefix: Ardmore/Primary
         assets:
-          Conveyor: [C1, C2]             # only these at ARP/Primary
+          Conveyor: [C1, C2]             # only these at ARQ/Primary
       Secondary:
         prefix: Ardmore/Secondary
         assets:
@@ -742,8 +742,8 @@ asset_classes:
 - `SiteDef.departments` changes type from `dict[str, str]` to `dict[str, DepartmentDef]`.
 - `AssetClassDef` loses its `assets` field. Becomes a metric registry only.
 - `resolve_element_id` validates `asset` against the *department's*
-  asset list for the class, not a global per-class list. C1 at ARP
-  in Primary resolves; C1 at ARP in Secondary correctly errors.
+  asset list for the class, not a global per-class list. C1 at ARQ
+  in Primary resolves; C1 at ARQ in Secondary correctly errors.
 - `build_response._build_department` walks the department's own
   asset map (`dept.assets`), only emitting classes the department
   actually contains. No more phantom Conveyor blocks under empty

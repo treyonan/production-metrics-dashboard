@@ -392,24 +392,24 @@ async def test_history_strips_stray_slashes_from_tag_paths(
 async def test_history_routes_to_correct_site(
     wire_timebase, make_mock_client
 ) -> None:
-    """site_id=101 must hit the BCQ historian, not the ARP one."""
+    """site_id=101 must hit the BCQ historian, not the ARQ one."""
     bcq_hits = 0
-    arp_hits = 0
+    arq_hits = 0
 
     def bcq_handler(request: httpx.Request) -> httpx.Response:
         nonlocal bcq_hits
         bcq_hits += 1
         return httpx.Response(200, json=_UPSTREAM_RESPONSE)
 
-    def arp_handler(request: httpx.Request) -> httpx.Response:
-        nonlocal arp_hits
-        arp_hits += 1
+    def arq_handler(request: httpx.Request) -> httpx.Response:
+        nonlocal arq_hits
+        arq_hits += 1
         return httpx.Response(200, json={})
 
     bcq = await make_mock_client("101", bcq_handler, dataset=_DATASET)
-    arp = await make_mock_client("100", arp_handler, dataset="IAP_ARP_Controls")
+    arq = await make_mock_client("100", arq_handler, dataset="IAP_ARQ_Controls")
     try:
-        with wire_timebase(clients={"101": bcq, "100": arp}) as tc:
+        with wire_timebase(clients={"101": bcq, "100": arq}) as tc:
             resp = tc.post(
                 "/api/timebase/history?site_id=101",
                 json={
@@ -420,10 +420,10 @@ async def test_history_routes_to_correct_site(
             )
         assert resp.status_code == 200
         assert bcq_hits == 1
-        assert arp_hits == 0
+        assert arq_hits == 0
     finally:
         await bcq.aclose()
-        await arp.aclose()
+        await arq.aclose()
 
 
 @pytest.mark.asyncio

@@ -48,15 +48,15 @@ in the chain.
 
 ## Files to update
 
-The dashboard needs three changes for a new site. All three are
-committed and ship via `git`. There is no per-environment config
-to keep in sync any more.
+The dashboard needs three committed files plus one per-deployment env
+var for a new site.
 
 | File | What changes | Committed? | Rebuild required? |
 |---|---|---|---|
 | `docker-compose.yml` | Add a line under `services.api.extra_hosts` mapping the new hostname → IP. | Yes | Yes — `docker compose up -d` recreates the container; `restart` does NOT pick up `extra_hosts` changes. |
 | `backend/app/integrations/timebase/catalog.yaml` | Add a top-level entry under `sites:` for the new site. | Yes | **No** for pure catalog edits — file is bind-mounted by `docker-compose.yml`, so `docker compose restart api` picks up the change. For new-site commissioning specifically, you're also touching `extra_hosts` + `config.py`, so a rebuild is unavoidable for that combined deploy. See "Catalog hot-swap" below. |
-| `backend/app/core/config.py` | Add the new `<site_id>: "<Display Name>"` entry to `_DEFAULT_SITE_NAMES`. This is what the site dropdown shows. | Yes | Yes (Python code change). |
+| `backend/app/core/config.py` | (a) Add `<site_id>: "<Display Name>"` to `_DEFAULT_SITE_NAMES`. (b) Add a `flow_api_key_<id>` field so the per-site Flow bearer token can be picked up from env. | Yes | Yes (Python code change). |
+| `backend/.env` on each deployment | Set `PMD_FLOW_API_KEY_<site_id>=<token>` with the new site's Flow bearer token. **Not committed** — `.env` is per-environment. | No | Yes (env vars are read at startup). |
 
 ### Catalog hot-swap
 
@@ -111,10 +111,14 @@ below:
   digits, matches whatever the SCADA pipeline already uses (e.g. `"100"`,
   `"101"`). Talk to whoever runs the SCADA side; the dashboard is the
   follower here, not the leader.
-- **`code`** — short site code (3–4 chars), e.g. `BCQ`, `ARP`. Used in
+- **`code`** — short site code (3–4 chars), e.g. `BCQ`, `ARQ`. Used in
   the site dropdown chip and in the Time Series export filename.
-- **`hostname`** — the corporate hostname of the plant box, ideally
-  following the `dbp-<lowercased-code>` convention (e.g. `dbp-arp`).
+- **`hostname`** — the corporate hostname of the plant box, following
+  the `dbp-<lowercased-code>` convention (e.g. `dbp-arq`). Match the
+  code's letters exactly — `dbp-arq` ↔ `code: ARQ`. Picking a hostname
+  whose letters don't match the code (e.g. `dbp-xyz` with `code: ABC`)
+  forces every reader to remember the mapping across files and tends
+  to drift over time.
 
 ### 2. Update `docker-compose.yml`
 
@@ -123,7 +127,7 @@ Add one line under `services.api.extra_hosts`:
 ```yaml
 extra_hosts:
   - "dbp-bcq:10.44.135.12"         # site 101 (Big Canyon Quarry)
-  - "dbp-arp:10.44.x.x"            # site 100 (Ardmore Quarry)   <-- new
+  - "dbp-arq:10.40.135.12"         # site 100 (Ardmore Quarry)   <-- new
 ```
 
 Commit this. Same line works for both dev and prod — `extra_hosts` is
@@ -131,17 +135,37 @@ checked into git.
 
 ### 3. Update `backend/app/core/config.py`
 
-Add the new site to `_DEFAULT_SITE_NAMES`:
+**(a) Add the new site to `_DEFAULT_SITE_NAMES`:**
 
 ```python
 _DEFAULT_SITE_NAMES: dict[str, str] = {
+    "101": "Big Canyon Quarry",     # default (first entry)
     "100": "Ardmore Quarry",        # <-- new
-    "101": "Big Canyon Quarry",
 }
 ```
 
-Commit this. Order within the dict doesn't matter; alphabetize by
-display name for tidiness.
+**Dict order matters here** — `/api/sites` returns entries in this
+order, and the dashboard's site dropdown treats `sites[0]` as the
+no-deep-link default. Put the most-used / canonical site first.
+
+**(b) Add a per-site Flow API key field** in the same file (under
+the existing `flow_api_key_<id>` declarations):
+
+```python
+flow_api_key_<id>: SecretStr | None = Field(
+    default=None,
+    description="<Display Name> Flow bearer token. Overrides flow_api_key for site_id=<id>.",
+    validation_alias=AliasChoices("PMD_FLOW_API_KEY_<id>", "FLOW_API_KEY_<id>"),
+)
+```
+
+This is what teaches the settings loader to pick up the new env var.
+Without it, `PMD_FLOW_API_KEY_<id>` would be silently ignored. The
+`resolve_flow_api_key` method below already handles the lookup via
+`getattr`, so no further code change.
+
+Commit this. The actual bearer token value goes in the per-deployment
+`.env` — step 6.
 
 ### 4. Update `catalog.yaml`
 
@@ -165,10 +189,10 @@ sites:
           Conveyor: [C1, C2, C3, C4, C5, C6, C7, C8]
 
   "100":                              # <-- new
-    code: ARP
+    code: ARQ
     display_name: Ardmore Quarry
-    base_url: http://dbp-arp:4511     # hostname, NOT IP
-    dataset: IAP_ARP_Controls
+    base_url: http://dbp-arq:4511     # hostname, NOT IP
+    dataset: IAP_ARQ_Controls
     departments:
       Primary:
         prefix: Ardmore/Primary
@@ -191,7 +215,28 @@ resolves the hostname via the `extra_hosts` line you added in step 2;
 using the IP directly works but breaks the pattern Flow already uses
 and gives you two places to update if the IP ever changes.
 
-### 5. Rebuild + restart
+### 5. Set the new site's Flow API key in `.env`
+
+Each Flow installation has its own bearer token. Once the field is
+declared in `config.py` (step 3b), the value comes from a per-deployment
+env var. Edit `backend/.env` (NOT committed):
+
+```
+PMD_FLOW_API_KEY_<id>=<bearer-token-from-flow-admin-ui>
+```
+
+For example, ARQ uses `PMD_FLOW_API_KEY_100=<arq-token>`. The legacy
+`PMD_FLOW_API_KEY` still works as a fallback for any site without its
+own key, so single-site deployments don't need to change anything.
+
+This step runs **per deployment** — dev and prod each have their own
+`.env`, and each gets the new key wherever you want Ardmore Flow
+fetches to work. Skip if you're not enabling Flow fetches for this
+site yet; the dashboard will still load Production Reports + Time
+Series for that site, and `/api/metrics/<...>?site_id=<id>` will
+surface a clear "no Flow API key configured" error.
+
+### 6. Rebuild + restart
 
 From the repo root:
 
@@ -205,6 +250,8 @@ docker compose up --build -d
   `restart`.
 - `config.py` is a Python code change, which always requires a rebuild
   (no Python hot-reload in the container).
+- `.env` is re-read at container start, so it picks up the new key
+  automatically when the container is recreated.
 
 `catalog.yaml` is bind-mounted, so it would normally only need a
 `docker compose restart api`. But for *new-site commissioning* you're
@@ -213,7 +260,7 @@ unavoidable. Once the site is live and you're tweaking only the
 catalog (renaming an asset, moving a conveyor between departments,
 adding a metric), `docker compose restart api` is enough.
 
-### 6. Smoke tests
+### 7. Smoke tests
 
 In this order — each step verifies one layer of the chain. If layer N
 passes but N+1 fails, you know exactly which file is wrong.

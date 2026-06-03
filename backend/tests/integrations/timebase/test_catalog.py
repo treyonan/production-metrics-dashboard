@@ -262,10 +262,10 @@ sites:
         assets:
           Conveyor: [C1, C2, C3, C4, C5, C6, C7, C8]
   "100":
-    code: ARP
+    code: ARQ
     display_name: Ardmore Quarry
     base_url: http://10.0.0.2:4511
-    dataset: IAP_ARP_Controls
+    dataset: IAP_ARQ_Controls
     departments:
       Primary:
         prefix: Ardmore/Primary
@@ -292,7 +292,7 @@ def _write_yaml(tmp_path: Path, body: str) -> Path:
 
 
 def test_per_site_placement_resolves_correctly(tmp_path: Path) -> None:
-    """C1 lives in Secondary at BCQ but in Primary at ARP -- both resolve."""
+    """C1 lives in Secondary at BCQ but in Primary at ARQ -- both resolve."""
     p = _write_yaml(tmp_path, _MULTI_SITE_YAML)
     catalog = load_catalog(p)
 
@@ -305,18 +305,18 @@ def test_per_site_placement_resolves_correctly(tmp_path: Path) -> None:
         "/Process_Data/Belt_Scale/TPH"
     )
 
-    arp_c1 = catalog.resolve_element_id(
+    arq_c1 = catalog.resolve_element_id(
         site_id="100", department="Primary",
         asset_class="Conveyor", asset="C1", metric_key="belt_scale_tph",
     )
-    assert arp_c1 == (
-        "IAP_ARP_Controls:Ardmore/Primary/Conveyor/C1"
+    assert arq_c1 == (
+        "IAP_ARQ_Controls:Ardmore/Primary/Conveyor/C1"
         "/Process_Data/Belt_Scale/TPH"
     )
 
 
 def test_per_site_placement_rejects_wrong_department(tmp_path: Path) -> None:
-    """ARP/C1 is in Primary; querying it under Secondary must fail."""
+    """ARQ/C1 is in Primary; querying it under Secondary must fail."""
     p = _write_yaml(tmp_path, _MULTI_SITE_YAML)
     catalog = load_catalog(p)
     with pytest.raises(CatalogError, match="Unknown asset.*C1"):
@@ -331,14 +331,14 @@ def test_per_site_placement_in_response(tmp_path: Path) -> None:
     p = _write_yaml(tmp_path, _MULTI_SITE_YAML)
     catalog = load_catalog(p)
     resp = catalog.build_response(site_id="100")
-    arp = resp.sites[0]
-    primary = next(d for d in arp.departments if d.name == "Primary")
+    arq = resp.sites[0]
+    primary = next(d for d in arq.departments if d.name == "Primary")
     primary_conv = next(
         ac for ac in primary.asset_classes if ac.asset_class == "Conveyor"
     )
     assert [a.asset for a in primary_conv.assets] == ["C1", "C2"]
 
-    secondary = next(d for d in arp.departments if d.name == "Secondary")
+    secondary = next(d for d in arq.departments if d.name == "Secondary")
     secondary_conv = next(
         ac for ac in secondary.asset_classes if ac.asset_class == "Conveyor"
     )

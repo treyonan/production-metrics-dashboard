@@ -78,7 +78,7 @@ async def test_fetch_history_sends_bearer_and_substitutes_url() -> None:
             }
         )
 
-    client = FlowClient(api_key="test-key", transport=httpx.MockTransport(handler))
+    client = FlowClient(default_api_key="test-key", transport=httpx.MockTransport(handler))
     await client.aopen()
     try:
         url_template = (
@@ -87,7 +87,9 @@ async def test_fetch_history_sends_bearer_and_substitutes_url() -> None:
         )
         start = datetime(2026, 4, 1, tzinfo=UTC)
         end = datetime(2026, 4, 2, tzinfo=UTC)
-        result = await client.fetch_history(url_template, start=start, end=end)
+        result = await client.fetch_history(
+            url_template, start=start, end=end, site_id="101"
+        )
     finally:
         await client.aclose()
 
@@ -109,7 +111,7 @@ async def test_fetch_history_raises_on_non_2xx() -> None:
     def handler(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(401, json={"error": "unauthorized"})
 
-    client = FlowClient(api_key="bad-key", transport=httpx.MockTransport(handler))
+    client = FlowClient(default_api_key="bad-key", transport=httpx.MockTransport(handler))
     await client.aopen()
     try:
         with pytest.raises(httpx.HTTPStatusError):
@@ -117,6 +119,7 @@ async def test_fetch_history_raises_on_non_2xx() -> None:
                 "http://flow/api?start=[PeriodStart]&end=[PeriodEnd]",
                 start=datetime(2026, 4, 1, tzinfo=UTC),
                 end=datetime(2026, 4, 2, tzinfo=UTC),
+                site_id="101",
             )
     finally:
         await client.aclose()
@@ -147,13 +150,14 @@ async def test_fetch_history_detects_truncation_at_limit() -> None:
             }
         )
 
-    client = FlowClient(api_key="k", transport=httpx.MockTransport(handler))
+    client = FlowClient(default_api_key="k", transport=httpx.MockTransport(handler))
     await client.aopen()
     try:
         result = await client.fetch_history(
             "http://flow/api?limit=3&start=[PeriodStart]&end=[PeriodEnd]",
             start=datetime(2026, 4, 1, tzinfo=UTC),
             end=datetime(2026, 4, 2, tzinfo=UTC),
+            site_id="101",
         )
     finally:
         await client.aclose()
@@ -169,13 +173,14 @@ async def test_fetch_history_handles_empty_values() -> None:
     def handler(_request: httpx.Request) -> httpx.Response:
         return _make_response({"values": [], "errors": []})
 
-    client = FlowClient(api_key="k", transport=httpx.MockTransport(handler))
+    client = FlowClient(default_api_key="k", transport=httpx.MockTransport(handler))
     await client.aopen()
     try:
         result = await client.fetch_history(
             "http://flow/api?start=[PeriodStart]&end=[PeriodEnd]&limit=1000",
             start=datetime(2026, 4, 1, tzinfo=UTC),
             end=datetime(2026, 4, 2, tzinfo=UTC),
+            site_id="101",
         )
     finally:
         await client.aclose()
@@ -186,10 +191,102 @@ async def test_fetch_history_handles_empty_values() -> None:
 
 @pytest.mark.asyncio
 async def test_fetch_history_raises_when_aopen_not_called() -> None:
-    client = FlowClient(api_key="k")
+    client = FlowClient(default_api_key="k")
     with pytest.raises(RuntimeError, match="aopen"):
         await client.fetch_history(
             "http://flow/api?start=[PeriodStart]&end=[PeriodEnd]",
             start=datetime(2026, 4, 1, tzinfo=UTC),
             end=datetime(2026, 4, 2, tzinfo=UTC),
+            site_id="101",
         )
+
+
+# ============================================================================
+# Per-site auth (Phase 27.1, 2026-06-03)
+# ============================================================================
+#
+# Each Flow installation has its own bearer token. The client holds a
+# dict keyed by site_id and falls back to a default for any site not in
+# the dict. These tests pin both branches of the resolver.
+
+
+@pytest.mark.asyncio
+async def test_fetch_history_sends_per_site_key_when_configured() -> None:
+    """site_id has its own per-site token -> that token is sent."""
+    seen_auths: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_auths.append(request.headers.get("authorization", ""))
+        return _make_response({"values": []})
+
+    client = FlowClient(
+        api_keys={"101": "bcq-token", "100": "arq-token"},
+        default_api_key="default-token",
+        transport=httpx.MockTransport(handler),
+    )
+    await client.aopen()
+    try:
+        await client.fetch_history(
+            "http://dbp-bcq:4501/api?start=[PeriodStart]&end=[PeriodEnd]",
+            start=datetime(2026, 6, 1, tzinfo=UTC),
+            end=datetime(2026, 6, 2, tzinfo=UTC),
+            site_id="101",
+        )
+        await client.fetch_history(
+            "http://dbp-arq:4501/api?start=[PeriodStart]&end=[PeriodEnd]",
+            start=datetime(2026, 6, 1, tzinfo=UTC),
+            end=datetime(2026, 6, 2, tzinfo=UTC),
+            site_id="100",
+        )
+    finally:
+        await client.aclose()
+
+    assert seen_auths == ["Bearer bcq-token", "Bearer arq-token"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_history_falls_back_to_default_key() -> None:
+    """site_id without a per-site entry -> default_api_key is used."""
+    seen_auth = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_auth["v"] = request.headers.get("authorization", "")
+        return _make_response({"values": []})
+
+    client = FlowClient(
+        api_keys={"101": "bcq-token"},  # 100 deliberately absent
+        default_api_key="default-token",
+        transport=httpx.MockTransport(handler),
+    )
+    await client.aopen()
+    try:
+        await client.fetch_history(
+            "http://flow/api?start=[PeriodStart]&end=[PeriodEnd]",
+            start=datetime(2026, 6, 1, tzinfo=UTC),
+            end=datetime(2026, 6, 2, tzinfo=UTC),
+            site_id="100",
+        )
+    finally:
+        await client.aclose()
+
+    assert seen_auth["v"] == "Bearer default-token"
+
+
+@pytest.mark.asyncio
+async def test_fetch_history_raises_when_no_key_for_site() -> None:
+    """No per-site key + no default for that site -> RuntimeError before HTTP."""
+    client = FlowClient(
+        api_keys={"101": "bcq-token"},  # only 101 configured
+        default_api_key=None,            # no fallback
+    )
+    await client.aopen()
+    try:
+        with pytest.raises(RuntimeError, match="No Flow API key configured"):
+            await client.fetch_history(
+                "http://flow/api?start=[PeriodStart]&end=[PeriodEnd]",
+                start=datetime(2026, 6, 1, tzinfo=UTC),
+                end=datetime(2026, 6, 2, tzinfo=UTC),
+                site_id="100",   # not in api_keys, no default
+            )
+    finally:
+        await client.aclose()
