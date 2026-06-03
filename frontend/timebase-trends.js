@@ -927,6 +927,28 @@
   }
 
   // ============================================================
+  // Topbar back-link propagation (Model A: URL is source of truth)
+  // ============================================================
+  // Rewrites the "&lsaquo; Dashboard" link in the topbar to include
+  // ?site_id=<currentSite>, so clicking it returns to the dashboard
+  // pointed at the same site the operator was just viewing. Also
+  // updates the current URL's ?site_id= so a refresh keeps the
+  // selection and a copied URL is a valid deep-link.
+  function propagateSiteToTopbar() {
+    if (!window.pmdSiteLink || state.siteId === null) return;
+    const homeLink = document.querySelector(".home-link");
+    if (homeLink) {
+      if (homeLink.dataset.originalHref === undefined) {
+        homeLink.dataset.originalHref = homeLink.getAttribute("href");
+      }
+      homeLink.setAttribute(
+        "href",
+        window.pmdSiteLink.withSiteId(homeLink.dataset.originalHref, state.siteId)
+      );
+    }
+  }
+
+  // ============================================================
   // Event wiring
   // ============================================================
   els.site.addEventListener("change", () => {
@@ -937,6 +959,10 @@
     rebuildAssetOptions();
     rebuildMetricOptions();
     saveState();
+    // Keep URL + topbar in sync with the new site so the deep-link
+    // model holds even after manual switches on this page.
+    if (window.pmdSiteLink) window.pmdSiteLink.writeSiteIdToUrl(state.siteId);
+    propagateSiteToTopbar();
   });
   els.dept.addEventListener("change", () => {
     state.deptName = els.dept.value;
@@ -1027,6 +1053,38 @@
       }
     }
 
+    // Site bootstrap cascade: URL ?site_id= -> localStorage (already
+    // applied above) -> catalog.sites[0] (used implicitly by
+    // rebuildSiteOptions when state.siteId is null/unknown). URL wins,
+    // overriding any localStorage carry-over so a launch with
+    // ?site_id=100 always lands on Ardmore. Unknown ids fall through
+    // to the next tier and trigger a URL rewrite so the address bar
+    // matches what actually loaded.
+    let urlSiteRewrite = false;
+    const urlSiteId = window.pmdSiteLink
+      ? window.pmdSiteLink.parseSiteIdFromUrl()
+      : null;
+    if (urlSiteId) {
+      const m = state.catalog.sites.find(
+        (s) => String(s.site_id) === String(urlSiteId)
+      );
+      if (m) {
+        state.siteId = m.site_id;
+        // URL-driven selection wipes the previously-stored selection
+        // hierarchy below site so we don't pre-select an asset from
+        // a different site. They'll fall back to first-of-category.
+        state.deptName = state.className = state.assetName = state.metricKey = null;
+      } else {
+        console.warn(
+          "[pmd] URL ?site_id=" + urlSiteId
+          + " is not configured in the Timebase catalog; cascading. "
+          + "Available: "
+          + state.catalog.sites.map((s) => s.site_id).join(", ")
+        );
+        urlSiteRewrite = true;  // rewrite after rebuildSiteOptions picks the actual site
+      }
+    }
+
     // If no stored window (first visit), default to "last DEFAULT_WINDOW_HOURS
     // ending at today's most-recent 2h boundary".
     if (!stored || !Number.isFinite(stored.startHours) || !Number.isFinite(stored.endHours)) {
@@ -1043,6 +1101,17 @@
     paintTicks();
     updateDayUI();
     saveState();
+
+    // After the cascade settles on an actual site (which rebuildSiteOptions
+    // may have defaulted to catalog.sites[0] if the URL/store didn't match),
+    // sync the URL + the topbar back-link. The home-link rewrite makes
+    // clicking "< Dashboard" carry the current site forward, matching the
+    // Model A "URL is source of truth" behavior the dashboard already has.
+    propagateSiteToTopbar();
+    if (urlSiteRewrite || (urlSiteId && String(urlSiteId) !== String(state.siteId))) {
+      // URL had a value but it didn't survive the cascade -- rewrite it.
+      if (window.pmdSiteLink) window.pmdSiteLink.writeSiteIdToUrl(state.siteId);
+    }
 
     // Initial chart fetch on load -- this is user-initiated by virtue
     // of them opening the page; no polling. They want to see something.

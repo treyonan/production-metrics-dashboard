@@ -353,8 +353,12 @@
     <div class="form-group">
       <div class="form-group-label">Context</div>
       <div class="row">
-        <label class="field">Site ID
-          <input type="number" id="site_id" value="101">
+        <label class="field">Site
+          <!-- Populated by JS from /api/sites once the page loads. The
+               element id stays `site_id` so the existing form-builder
+               (URLSearchParams.set("site_id", ...)) keeps working
+               unchanged. -->
+          <select id="site_id"></select>
         </label>
         <label class="field">Subject Type
           <select id="subject_type">
@@ -433,6 +437,11 @@
   </div>
 </main>
 
+<!-- Shared site-id URL helpers (parse / write / withSiteId). Loaded
+     before the page's inline <script> so window.pmdSiteLink is
+     available. Same module used by the main dashboard and the Time
+     Series page so deep-link propagation is uniform across pages. -->
+<script src="site-link.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 
@@ -493,6 +502,124 @@ function setDefaultDates() {
   $("to_date").value = iso(today);
 }
 setDefaultDates();
+
+// ----------------------------------------------------------------------------
+// Site dropdown -- Model A deep-link participation
+// ----------------------------------------------------------------------------
+// Loads /api/sites into the Site dropdown and applies the same
+// URL -> localStorage -> sites[0] cascade the main dashboard uses.
+// Once the page knows its site, the topbar Dashboard back-link is
+// rewritten with ?site_id= so navigating "back" carries the
+// selection forward (Model A: URL is the source of truth).
+//
+// Falls back gracefully when /api/sites fails (network blip, 503):
+// the dropdown stays empty and an inline error appears in the
+// status bar. The form's other fields are usable -- operator could
+// still hit "Fetch metrics" with a manually-set query param via the
+// URL, though that's a power-user fallback.
+
+const SITE_STORAGE_KEY = "pmd-last-site";
+
+function persistedSiteId() {
+  try { return localStorage.getItem(SITE_STORAGE_KEY); } catch (e) { return null; }
+}
+function savePersistedSiteId(id) {
+  try { localStorage.setItem(SITE_STORAGE_KEY, String(id)); } catch (e) {}
+}
+
+// Rewrite the Dashboard back-link's href to include ?site_id=,
+// so clicking it returns to the main dashboard at the same site.
+// Called whenever the site dropdown's value changes (initial load
+// + every user pick).
+function propagateSiteToTopbar(siteId) {
+  if (!window.pmdSiteLink || siteId == null) return;
+  const homeLink = document.querySelector(".home-link");
+  if (!homeLink) return;
+  if (homeLink.dataset.originalHref === undefined) {
+    homeLink.dataset.originalHref = homeLink.getAttribute("href");
+  }
+  homeLink.setAttribute(
+    "href",
+    window.pmdSiteLink.withSiteId(homeLink.dataset.originalHref, siteId)
+  );
+}
+
+async function loadSitesAndPopulate() {
+  let sites = [];
+  try {
+    const resp = await fetch("/api/sites");
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    const body = await resp.json();
+    sites = body.sites || [];
+  } catch (err) {
+    setStatus(
+      "Failed to load site list: " + err.message
+      + ". Refresh the page once the API is reachable.",
+      "error"
+    );
+    return;
+  }
+  if (!sites.length) {
+    setStatus("No sites available from /api/sites.", "error");
+    return;
+  }
+
+  const sel = $("site_id");
+  sel.innerHTML = "";
+  for (const s of sites) {
+    const opt = document.createElement("option");
+    opt.value = String(s.id);
+    opt.textContent = s.name + " (" + s.id + ")";
+    sel.appendChild(opt);
+  }
+
+  // Cascade: URL -> localStorage -> sites[0]. Mismatches trigger
+  // an automatic URL rewrite so the address bar matches the
+  // actually-loaded site.
+  const urlSiteId = window.pmdSiteLink
+    ? window.pmdSiteLink.parseSiteIdFromUrl()
+    : null;
+  const stored = persistedSiteId();
+  let resolved = null;
+  let resolvedFrom = "default";
+  if (urlSiteId && sites.some((s) => String(s.id) === String(urlSiteId))) {
+    resolved = urlSiteId;
+    resolvedFrom = "url";
+  } else if (urlSiteId) {
+    console.warn(
+      "[pmd] URL ?site_id=" + urlSiteId
+      + " not in /api/sites; cascading. Available: "
+      + sites.map((s) => s.id).join(", ")
+    );
+  }
+  if (resolved === null && stored && sites.some((s) => String(s.id) === String(stored))) {
+    resolved = stored;
+    resolvedFrom = "localStorage";
+  }
+  if (resolved === null) {
+    resolved = String(sites[0].id);
+    resolvedFrom = "default";
+  }
+
+  sel.value = resolved;
+  savePersistedSiteId(resolved);
+  if (urlSiteId && resolvedFrom !== "url" && window.pmdSiteLink) {
+    window.pmdSiteLink.writeSiteIdToUrl(resolved);
+  }
+  propagateSiteToTopbar(resolved);
+
+  // User change -> URL update + localStorage + topbar back-link
+  // refresh. No auto-fetch; the operator still presses "Fetch
+  // metrics" -- this page is intentionally explicit about every
+  // request (good for the diagnostic workflows it grew out of).
+  sel.addEventListener("change", () => {
+    const newId = sel.value;
+    if (window.pmdSiteLink) window.pmdSiteLink.writeSiteIdToUrl(newId);
+    savePersistedSiteId(newId);
+    propagateSiteToTopbar(newId);
+  });
+}
+loadSitesAndPopulate();
 
 function setStatus(msg, kind) {
   const el = $("status");

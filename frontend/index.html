@@ -300,6 +300,10 @@
 
 <script src="vendor/chart.umd.js"></script>
 <script src="vendor/xlsx.full.min.js"></script>
+<!-- pmdSiteLink helpers (parse/write/withSiteId) -- shared between
+     pages so deep-link propagation logic lives in one file. Must
+     load before app.js. -->
+<script src="site-link.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

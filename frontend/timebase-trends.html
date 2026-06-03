@@ -526,6 +526,10 @@
 
 <script src="vendor/chart.umd.js"></script>
 <script src="vendor/xlsx.full.min.js"></script>
+<!-- pmdSiteLink helpers (parse/write/withSiteId) -- shared between
+     pages so deep-link propagation logic lives in one file. Loaded
+     before timebase-trends.js so window.pmdSiteLink is available. -->
+<script src="site-link.js"></script>
 <script src="timebase-trends.js" defer></script>
 </body>
 </html>

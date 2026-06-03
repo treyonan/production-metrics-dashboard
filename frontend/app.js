@@ -36,25 +36,57 @@
     10
   );
 
-  // Update the browser URL's ?site_id= when the user changes site
-  // via the topbar toggle. Uses replaceState (not pushState) so the
-  // back button doesn't capture every site flip as a navigation;
-  // the URL just stays in sync with the currently rendered site,
-  // which is what makes the deep-link round-trip:
-  //   1. Ignition launches us with /?site_id=101
-  //   2. User clicks the BCQ tab -- URL becomes /?site_id=102
-  //   3. They share the URL; the recipient lands on BCQ as expected.
-  // Other query params (e.g. ?refresh=) are preserved.
+  // Site-id URL helpers live in site-link.js (loaded before this
+  // file). updateSiteIdInUrl wraps writeSiteIdToUrl so the existing
+  // call sites in this file don't have to change.
   function updateSiteIdInUrl(siteId) {
-    try {
-      const url = new URL(window.location.href);
-      url.searchParams.set("site_id", String(siteId));
-      window.history.replaceState(null, "", url.toString());
-    } catch (e) {
-      // history.replaceState can throw on file:// URLs or older
-      // browsers; deep-linking is a nicety, not load-bearing.
-      console.warn("[pmd] could not update URL with site_id:", e);
+    if (window.pmdSiteLink) window.pmdSiteLink.writeSiteIdToUrl(siteId);
+  }
+
+  // Rewrite the topbar's "Interval" + "Time Series" link hrefs so
+  // they carry the current site forward when the operator navigates.
+  // Called once on initial bootstrap and again whenever the site
+  // dropdown changes. Without this, clicking Time Series from a
+  // dashboard at Ardmore would land on Time Series at its own
+  // default site -- breaking the "deep-link sticks" model.
+  //
+  // We deliberately do NOT rewrite the Charts / Forms dropdowns or
+  // the API link: those go to external Flow URLs or Swagger that
+  // don't understand our site_id param.
+  function propagateSiteIdToTopbarLinks(siteId) {
+    if (!window.pmdSiteLink) return;
+    const flowLink = $("flow-metrics-link");
+    if (flowLink && flowLink.dataset.originalHref === undefined) {
+      flowLink.dataset.originalHref = flowLink.getAttribute("href");
     }
+    if (flowLink) {
+      flowLink.setAttribute(
+        "href",
+        window.pmdSiteLink.withSiteId(flowLink.dataset.originalHref, siteId)
+      );
+    }
+    const tbLink = $("timebase-trends-link");
+    if (tbLink && tbLink.dataset.originalHref === undefined) {
+      tbLink.dataset.originalHref = tbLink.getAttribute("href");
+    }
+    if (tbLink) {
+      tbLink.setAttribute(
+        "href",
+        window.pmdSiteLink.withSiteId(tbLink.dataset.originalHref, siteId)
+      );
+    }
+  }
+
+  // localStorage key for the dashboard's last-selected site -- used
+  // by the bootstrap fallback chain (URL -> localStorage -> sites[0])
+  // so a fresh load with no ?site_id= restores whatever the user was
+  // looking at last instead of always snapping back to sites[0].
+  const SITE_STORAGE_KEY = "pmd-last-site";
+  function savePersistedSiteId(siteId) {
+    try { localStorage.setItem(SITE_STORAGE_KEY, String(siteId)); } catch (e) {}
+  }
+  function loadPersistedSiteId() {
+    try { return localStorage.getItem(SITE_STORAGE_KEY); } catch (e) { return null; }
   }
   const THEME_STORAGE_KEY = "pmd-theme";
   const TIME_FILTER_STORAGE_KEY = "pmd-time-filter";
@@ -544,6 +576,8 @@
     renderChips();
     for (const fn of _extLinkRefreshers) fn();
     updateSiteIdInUrl(currentSiteId);
+    savePersistedSiteId(currentSiteId);
+    propagateSiteIdToTopbarLinks(currentSiteId);
     if (currentView === "trends") refreshTrends();
     else refreshData();
   }
@@ -1864,35 +1898,54 @@
       showError("No sites available in the data source.");
       return;
     }
-    currentSiteId = sites[0].id;
+    // Site bootstrap cascade: URL ?site_id= -> localStorage last-site
+    // -> sites[0] (config-controlled default). Each tier is tried only
+    // if the previous one was missing or didn't match a configured
+    // site. Mismatches trigger a console warning and an automatic URL
+    // rewrite so the address bar matches the actually-loaded site.
+    const hardDefault = sites[0].id;
+    const urlSiteId = window.pmdSiteLink
+      ? window.pmdSiteLink.parseSiteIdFromUrl()
+      : null;
+    const storedSiteId = loadPersistedSiteId();
 
-    // Deep-link override: ?site_id=X in the URL wins over the
-    // first-site default if it matches a configured site. Used by
-    // Ignition / other SCADA tools to launch the dashboard pointed
-    // at a specific plant ("Open Production Metrics" button on a
-    // site overview screen). An unrecognized id falls back to the
-    // default and logs a console warning so the launching system's
-    // URL is debuggable. Site IDs are strings in the API but may
-    // arrive as numeric query strings -- compare via String() on
-    // both sides to be liberal in what we accept.
-    const urlSiteId = new URLSearchParams(location.search).get("site_id");
+    let resolved = null;
+    let resolvedFrom = "default";
+
     if (urlSiteId) {
-      const matched = sites.find((s) => String(s.id) === String(urlSiteId));
-      if (matched) {
-        currentSiteId = matched.id;
+      const m = sites.find((s) => String(s.id) === String(urlSiteId));
+      if (m) {
+        resolved = m.id;
+        resolvedFrom = "url";
       } else {
         console.warn(
           "[pmd] URL ?site_id=" + urlSiteId
-          + " does not match any configured site; falling back to default ("
-          + currentSiteId + "). Available: "
-          + sites.map((s) => s.id).join(", ")
+          + " is not a configured site; cascading to last-known / default. "
+          + "Available: " + sites.map((s) => s.id).join(", ")
         );
-        // Sync the URL back to the actually-loaded site so the
-        // address bar doesn't lie. Anyone copying it gets a valid
-        // deep-link instead of a stale invalid one.
-        updateSiteIdInUrl(currentSiteId);
       }
     }
+    if (resolved === null && storedSiteId) {
+      const m = sites.find((s) => String(s.id) === String(storedSiteId));
+      if (m) {
+        resolved = m.id;
+        resolvedFrom = "localStorage";
+      }
+      // Silent on miss -- a stale localStorage value is common (e.g.
+      // a decommissioned site_id) and not worth a console warning.
+    }
+    if (resolved === null) {
+      resolved = hardDefault;
+      resolvedFrom = "default";
+    }
+    currentSiteId = resolved;
+    // If the URL had something but we ended up resolving from a
+    // different tier, rewrite the URL so it reflects what's actually
+    // loaded -- a copied URL should always work.
+    if (urlSiteId && resolvedFrom !== "url") {
+      updateSiteIdInUrl(currentSiteId);
+    }
+    savePersistedSiteId(currentSiteId);
 
     // Selection bootstrap: localStorage wins, else /latest-date for
     // the default site, else today.
@@ -1911,6 +1964,10 @@
     // on the <select> itself so it survives those rebuilds.
     const siteSelect = $("site-select");
     if (siteSelect) siteSelect.addEventListener("change", onSiteSelectChange);
+
+    // Initial topbar-link rewrite. Subsequent rewrites happen inside
+    // onSiteSelectChange when the user picks a different site.
+    propagateSiteIdToTopbarLinks(currentSiteId);
 
     renderSiteStrip();
     reflectSelectionInControls();
