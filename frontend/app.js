@@ -141,7 +141,7 @@
         // Big Canyon Quarry
         "101": "http://dbp-bcq:4501/flow-software/flow/instances/80D1092C-EFBF-4592-9425-C85ABE2EC7FB/server/charts/68",
         // Ardmore
-        // "100": "http://dbp-ard:4501/flow-software/...",
+        "100": "http://dbp-arq:4501/flow-software/flow/instances/11B1AA14-69D5-4E2F-8993-F1083BD10B36/server/charts/7"
       },
     },
   ];
@@ -156,7 +156,7 @@
         // Big Canyon Quarry
         "101": "http://dbp-bcq:4501/flow-software/flow/instances/80D1092C-EFBF-4592-9425-C85ABE2EC7FB/server/dashboards/12",
         // Ardmore
-        // "100": "http://dbp-ard:4501/...",
+        "100": "http://dbp-arq:4501/flow-software/flow/instances/11B1AA14-69D5-4E2F-8993-F1083BD10B36/server/dashboards/2"
       },
     },
     {
