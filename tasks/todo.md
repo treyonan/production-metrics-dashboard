@@ -3828,3 +3828,27 @@ pattern.
   **Day | Month | Year** (was Monthly/Yearly). `data-bucket` values
   ("monthly"/"yearly") unchanged -- pure label change, backend untouched.
 - `node --check frontend/app.js` -> PASS.
+
+### Phase 29 follow-up: deep-link launch to #trends (2026-06-08)
+- **Bug**: launching `?site_id=<id>#trends` showed the trends view empty.
+  `applyViewFromHash()` runs at initial paint before the site cascade
+  resolves `currentSiteId`, so its `if (next==="trends" && currentSiteId)`
+  fetch guard was skipped; bootstrap then only called `refreshData()`
+  (dashboard-only).
+- **Fix**: bootstrap's final load now routes to the active view --
+  always `refreshData()` (keeps tab-switch instant) plus `refreshTrends()`
+  when `currentView==="trends"`. The `#trends` fragment survives the
+  site-id URL rewrite (`writeSiteIdToUrl` only touches query params).
+- `node --check frontend/app.js` -> PASS.
+
+### Phase 29 follow-up: stale dashboard after site change on trends (2026-06-08)
+- **Bug**: changing the site on the trends page refreshed trends but not
+  the dashboard; switching back showed the previous site's data until the
+  site was re-selected. Root cause: `onSiteSelectChange` refreshes only the
+  visible view, and `applyViewFromHash` refetched on switch-to-trends but
+  had no equivalent for switch-to-dashboard (asymmetry).
+- **Fix**: `applyViewFromHash` now refetches the dashboard on switch
+  (`next==="dashboard" && currentSiteId && currentSelection -> refreshData()`),
+  mirroring the existing trends behavior. Each view is fetched once per
+  visit; no redundant fetches. Site change anywhere -> both views correct.
+- `node --check frontend/app.js` -> PASS.

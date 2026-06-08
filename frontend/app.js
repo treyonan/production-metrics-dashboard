@@ -2011,7 +2011,16 @@
     reflectSelectionInControls();
     renderChips();
 
-    await Promise.all([refreshHealth(), refreshData()]);
+    // Deep-link support: when the launch URL is #trends, applyViewFromHash()
+    // ran during initial paint (above) before currentSiteId was resolved, so
+    // its trends fetch was skipped. Load dashboard data regardless (keeps a
+    // later tab-switch instant) and additionally fetch trends when that's the
+    // active launch view. Mirrors onSiteSelectChange's view routing.
+    await Promise.all([
+      refreshHealth(),
+      refreshData(),
+      currentView === "trends" ? refreshTrends() : Promise.resolve(),
+    ]);
     retunePolling();
   }
 
@@ -2190,9 +2199,15 @@
     // state reflects whichever view's cached payload exists.
     updateExportButtonState();
 
-    // First time we land on trends, fetch + render.
+    // Landing on a view (re)fetches its data so it reflects the active
+    // site. Trends already did this; dashboard now mirrors it -- otherwise
+    // changing the site on the trends page (onSiteSelectChange refreshes
+    // only the visible view) leaves the dashboard showing the previous
+    // site until it's re-selected.
     if (next === "trends" && currentSiteId) {
       refreshTrends();
+    } else if (next === "dashboard" && currentSiteId && currentSelection) {
+      refreshData();
     }
   }
 
