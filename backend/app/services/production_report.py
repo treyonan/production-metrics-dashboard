@@ -10,13 +10,18 @@ import math
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass
-from datetime import date, datetime
-from typing import Any
+from datetime import date, datetime, time
+from typing import TYPE_CHECKING, Any
 
 from app.integrations.production_report.base import (
     ProductionReportRow,
     ProductionReportSource,
 )
+
+if TYPE_CHECKING:
+    from app.integrations.production_report.configured_run_report import (
+        ConfiguredRunReportSource,
+    )
 
 # Sentinel for rows with a null ``dtm``. ``datetime.min`` is older than
 # any plausible production record, so null-dtm rows sort as oldest.
@@ -893,3 +898,95 @@ async def get_circuit_rollup(
 
     return out
 
+
+# --- Phase 31: configured run report (SP-backed export) -----------------
+
+
+@dataclass
+class RunReportDeptResult:
+    """One department's configured-run-report slice (service-internal).
+
+    ``columns`` are the SP's dynamic display-name headers in
+    DISPLAY_ORDER; ``rows`` are parallel value lists. The route maps this
+    to the Pydantic ``RunReportDepartment``; the frontend maps each to
+    its own Excel worksheet.
+    """
+
+    department_id: str
+    department_name: str
+    columns: list[str]
+    rows: list[list[Any]]
+
+
+def _dept_sort_key(dept_id: str) -> tuple[int, int, str]:
+    """Sort department ids numerically when possible, else lexically.
+
+    Returns (is_non_numeric, numeric_value, raw) so numeric ids order
+    naturally (2 before 10) and any non-numeric ids sort after by string.
+    """
+    try:
+        return (0, int(dept_id), "")
+    except (TypeError, ValueError):
+        return (1, 0, dept_id)
+
+
+async def get_configured_run_report(
+    source: ProductionReportSource,
+    run_report_source: ConfiguredRunReportSource,
+    *,
+    site_id: str,
+    from_date: date,
+    to_date: date,
+) -> list[RunReportDeptResult]:
+    """Assemble the configured run report for every department in a site.
+
+    Enumerates the departments that have production reports in the window
+    (reusing the source's Phase 12 department-name resolution), then
+    EXECs ``UNS.GET_CONFIGURED_RUN_REPORT`` once per department. The SP
+    window is inclusive: start at 00:00:00 of ``from_date``, end at
+    23:59:59.999999 of ``to_date``.
+
+    Departments are returned numeric-id-sorted (falling back to string
+    order) so worksheet order is stable across exports.
+
+    Raises ``ValueError`` if ``from_date > to_date``.
+    """
+    if from_date > to_date:
+        raise ValueError(
+            f"from_date ({from_date.isoformat()}) must be <= "
+            f"to_date ({to_date.isoformat()})."
+        )
+
+    rows = await source.fetch_rows()
+    rows = [
+        r for r in rows
+        if r.site_id == site_id and from_date <= r.prod_date.date() <= to_date
+    ]
+
+    # Distinct department_id -> department_name. First name seen wins;
+    # every row for a department shares the same name via the
+    # Departments join, so this is deterministic.
+    dept_names: dict[str, str] = {}
+    for r in rows:
+        dept_names.setdefault(r.department_id, r.department_name)
+
+    start_dt = datetime.combine(from_date, time.min)
+    end_dt = datetime.combine(to_date, time.max)
+
+    out: list[RunReportDeptResult] = []
+    for dept_id in sorted(dept_names, key=_dept_sort_key):
+        columns, data = await run_report_source.fetch_report(
+            site_id=site_id,
+            department_id=dept_id,
+            start=start_dt,
+            end=end_dt,
+        )
+        out.append(
+            RunReportDeptResult(
+                department_id=dept_id,
+                department_name=dept_names[dept_id],
+                columns=columns,
+                rows=data,
+            )
+        )
+    return out

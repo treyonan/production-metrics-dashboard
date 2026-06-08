@@ -263,3 +263,33 @@ send a second `Edit` to the same file, stop and rewrite it via heredoc
 instead. The in-memory tracked-state note is never proof the disk write
 succeeded.
 
+
+### Even bash+Python full-file rewrites truncate large files — 2026-06-08
+**Mistake**: Building the Phase 31 run-report export, I rewrote
+`frontend/app.js` (~3300 lines) via a `python3 - <<PY ... open(p,"w").write(s) ... PY`
+bash heredoc. `node --check` passed immediately after. Many tool calls
+later (all on OTHER files), a re-run of `node --check` showed app.js
+truncated mid-word at the tail ("  docu"), braces/parens unbalanced.
+Trey told me to stop using the tool that keeps truncating, since it's
+only caught after the fact.
+**Why it happened**: The prior lessons recommended the bash+Python
+full-file rewrite as the SAFE alternative to the Edit tool. But that
+pattern *also* truncates large files on this Windows mount -- the write
+doesn't fully land, and an immediate `node --check` can pass against a
+cached/in-flight view while the on-disk file is short. Deferring the
+real verification to a later step meant the corruption surfaced long
+after the write, far from its cause.
+**Rule**: On this mount, NO full-file write method is trustworthy for
+large existing files (Edit truncates; bash/Python `open("w")` rewrite
+truncates). So:
+1. Don't rewrite a large existing file wholesale. Make the smallest
+   change that works; for big files prefer append (`>>`) which doesn't
+   rewrite existing bytes, or split into the narrowest edit.
+2. VERIFY EVERY WRITE IMMEDIATELY, in the same step as the write --
+   `wc -l` + `tail -3` + `node --check`/`py_compile`. Never move on to
+   another file before confirming the byte-level result of this one.
+   The immediate post-write `node --check` is necessary but not
+   sufficient; also check `wc -l`/`tail` since a cached pass can lie.
+3. Commit (or snapshot) frequently so git reconstruction
+   (`git show HEAD:path` + re-apply the small edit) is the cheap
+   recovery path -- which is exactly how app.js was restored here.

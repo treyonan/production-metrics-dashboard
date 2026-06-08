@@ -1217,6 +1217,12 @@ body {
 }
 .bucket-btn + .bucket-btn { border-left: 1px solid var(--border-strong); }
 
+/* Phase 31: line the Run Report export button up with the Formula toggle
+   buttons (Simplified/Verbose) in the same row -- the toggle group is
+   28px tall, but .export-btn is 26px. Single-class override; wins over
+   .export-btn by source order (equal specificity). */
+.trends-runreport-btn { height: 28px; }
+
 /* Phase 19/20 -- Crusher table inside the details modal. */
 .dm-crusher-table {
   width: 100%;

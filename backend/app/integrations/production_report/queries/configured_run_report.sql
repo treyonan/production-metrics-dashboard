@@ -1,0 +1,19 @@
+-- Configured Run Report (Phase 31).
+--
+-- EXECs the existing stored procedure UNS.GET_CONFIGURED_RUN_REPORT,
+-- which builds a per-site/department flat report whose COLUMNS are
+-- dynamically resolved from MES.RUN_REPORTS_CONFIG (DISPLAY_ORDER /
+-- DISPLAY_NAME, CLASS -> payload JSON path). Because the column set is
+-- dynamic, this report CANNOT be replicated as a static SELECT the way
+-- select_all.sql replaced UNS.GET_PRODUCTION_RUN_REPORTS -- so here we
+-- EXEC the SP directly. See tasks/decisions/004-configured-run-report-sp.md
+-- (contrast with decision 003).
+--
+-- Read-only: the SP only SELECTs (SET NOCOUNT ON inside it suppresses
+-- the rowcount result so the SELECT is the sole result set). The API's
+-- read-only account needs EXECUTE on UNS.GET_CONFIGURED_RUN_REPORT.
+--
+-- Positional ? params bind in order: siteID, departmentID, startDate,
+-- endDate. The service passes startDate at 00:00:00 and endDate at
+-- end-of-day so the SP's PRODDATE BETWEEN window is inclusive.
+EXEC UNS.GET_CONFIGURED_RUN_REPORT @siteID = ?, @departmentID = ?, @startDate = ?, @endDate = ?;

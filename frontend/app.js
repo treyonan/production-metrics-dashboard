@@ -2363,6 +2363,10 @@
         _setActiveFormulaMode(btn.dataset.formula);
       });
     }
+
+    // Phase 31: configured run report export button.
+    const runReportBtn = $("trends-runreport-btn");
+    if (runReportBtn) runReportBtn.addEventListener("click", exportRunReport);
   }
 
   // Phase 18: switch between Monthly and Yearly bucket modes. Persists
@@ -3102,6 +3106,83 @@
     const sheet = XLSX.utils.json_to_sheet(rows);
     applyColumnFormats(sheet, rows, formats || {});
     XLSX.utils.book_append_sheet(wb, sheet, _truncateSheetName(name));
+  }
+
+  // Excel sheet names must be unique within a workbook (besides the
+  // <=31-char / no-[]:*?/\\ rules _truncateSheetName already enforces).
+  // De-dupe by appending _2, _3, ... within the truncation budget.
+  function _uniqueSheetName(rawName, usedSet) {
+    let name = _truncateSheetName(rawName);
+    let i = 2;
+    while (usedSet.has(name)) {
+      const suffix = "_" + i;
+      name = _truncateSheetName(rawName).slice(0, 31 - suffix.length) + suffix;
+      i++;
+    }
+    usedSet.add(name);
+    return name;
+  }
+
+  // Phase 31: export the configured run report (SP-backed) to Excel --
+  // one worksheet per department in the active site, using the trends
+  // page's selected from/to dates. The backend loops the SP per
+  // department and returns ordered columns + rows; we render each as an
+  // array-of-arrays sheet so the dynamic column order is preserved.
+  async function exportRunReport() {
+    if (typeof XLSX === "undefined") {
+      _showTrendsError("Export unavailable: XLSX library failed to load.");
+      return;
+    }
+    if (!currentSiteId) {
+      _showTrendsError("Select a site first.");
+      return;
+    }
+    const range = _trendsRange();
+    if (!range) {
+      _showTrendsError("Select a date range first.");
+      return;
+    }
+    const btn = $("trends-runreport-btn");
+    const status = $("trends-status");
+    if (btn) btn.disabled = true;
+    if (status) status.textContent = "Exporting run report...";
+    try {
+      const qs =
+          `?site_id=${encodeURIComponent(currentSiteId)}`
+        + `&from_date=${encodeURIComponent(range.from_date)}`
+        + `&to_date=${encodeURIComponent(range.to_date)}`;
+      const data = await fetchJSON(`/api/production-report/run-report-export${qs}`);
+      const departments = (data && data.departments) || [];
+      if (!departments.length) {
+        _showTrendsError("No run-report data in the selected date range.");
+        return;
+      }
+      const wb = XLSX.utils.book_new();
+      const usedNames = new Set();
+      for (const dept of departments) {
+        const cols = dept.columns || [];
+        const rows = dept.rows || [];
+        const ws = XLSX.utils.aoa_to_sheet([cols, ...rows]);
+        const sheetName = _uniqueSheetName(
+          dept.department_name || ("Dept " + dept.department_id), usedNames);
+        XLSX.utils.book_append_sheet(wb, ws, sheetName);
+      }
+      const siteMeta = sites.find((s) => s.id === currentSiteId)
+        || { id: currentSiteId, name: "" };
+      const filename =
+        `run-report_${slugifySite(siteMeta.name, siteMeta.id)}`
+        + `_${range.from_date}_${range.to_date}.xlsx`;
+      XLSX.writeFile(wb, filename);
+      _clearTrendsError();
+    } catch (err) {
+      console.error("run report export failed", err);
+      _showTrendsError(`Run report export failed: ${err.message}`);
+    } finally {
+      if (btn) btn.disabled = false;
+      if (status && status.textContent === "Exporting run report...") {
+        status.textContent = "";
+      }
+    }
   }
 
   async function exportTrends() {

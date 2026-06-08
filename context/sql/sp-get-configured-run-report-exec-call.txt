@@ -1,0 +1,39 @@
+
+Table data transform in Ignition - displays data returned from stored procedure UNS.GET_CONFIGURED_RUN_REPORT
+
+def transform(self, value, quality, timestamp):
+	siteID       = value['siteID']
+	departmentID = value['departmentID']
+	startDate    = value['startDate']
+	endDate      = value['endDate']
+	database     = self.session.custom.dataSources.Enterprise
+
+	if siteID and departmentID:
+		return UNS.Production.UI.Transforms.getConfiguredRunReport(database, startDate, endDate, siteID, departmentID)
+	
+	return None
+	
+=============================================================================================================================
+
+Ignition script to call stored procedure
+	
+def getConfiguredRunReport(database, startDate, endDate, siteID, departmentID):
+	"""
+	Configured Run Report Query. Utilizes MES.LEGACY_RUN_REPORTS_CONFIG to parse
+	JSON payloads and return site/department specific display columns.
+	
+	Arguments:
+		database     = str(database name) - sql database connection name
+		startDate    = datetime
+		endDate      = datetime
+		siteID       = int - site identifier
+		departmentID = int - department identifier
+	
+	Returns:
+		Ignition dataset with configured display columns in DISPLAY_ORDER,
+		prefixed by fixed control columns and suffixed by post columns.
+	"""
+	sql = "EXEC UNS.GET_CONFIGURED_RUN_REPORT @siteID = ?, @departmentID = ?, @startDate = ?, @endDate = ?"
+	params = [siteID, departmentID, startDate, endDate]
+	return system.db.runPrepQuery(sql, params, database)	
+	

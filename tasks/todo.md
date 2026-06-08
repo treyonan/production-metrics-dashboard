@@ -3883,3 +3883,127 @@ per-conveyor table stays put; only the chart collapses.
 - [ ] Expanded section stays open across a poll refresh + theme toggle.
 - [ ] Chart sizes correctly on expand (no 0-height canvas).
 - [ ] Keyboard: Tab to header, Enter/Space toggles.
+
+## Phase 31 -- Configured Run Report export (SP-backed, per-department sheets) (IMPLEMENTED 2026-06-08, browser QA pending)
+
+Button on the Production Charts (trends) page that exports the
+`UNS.GET_CONFIGURED_RUN_REPORT` stored procedure output to a multi-sheet
+Excel file -- one worksheet per department in the active site, using the
+trends page's selected start/end dates. Decisions confirmed with Trey:
+(1) loop ALL departments in the site -> one sheet each; (2) Excel built
+client-side with SheetJS (consistent with existing exports), backend
+returns JSON; (3) SQL account already has EXECUTE on the SP.
+
+### Architecture decision
+- **EXEC the SP directly** (don't reuse a dashboard route + transform,
+  don't replicate in a static query file). The SP's columns are
+  dynamically built from `MES.RUN_REPORTS_CONFIG` (DISPLAY_ORDER /
+  DISPLAY_NAME, CLASS->JSON-path), so they CANNOT be replicated as a
+  static `.sql` the way `select_all.sql` replaced
+  `UNS.GET_PRODUCTION_RUN_REPORTS`. This is the documented exception to
+  decision 003: justified because (a) dynamic config-driven columns,
+  (b) on-demand export, not the 1-5min poll, so per-department
+  round-trips are acceptable.
+- New ADR: `tasks/decisions/004-configured-run-report-sp.md` capturing
+  the above (contrast with 003).
+
+### Backend
+- [ ] Query file `integrations/production_report/queries/configured_run_report.sql`:
+      `EXEC UNS.GET_CONFIGURED_RUN_REPORT @siteID=?, @departmentID=?, @startDate=?, @endDate=?`
+      (positional `?`, ODBC-compliant; read-only SP).
+- [ ] New source `integrations/production_report/configured_run_report.py`:
+      `ConfiguredRunReportSource(pool)` with
+      `fetch_report(site_id, department_id, start, end) -> (columns, rows)`.
+      Generic: reads `cur.description` for ordered column names + `fetchall`;
+      coerces cells JSON-safe (Decimal->float, datetime/date->isoformat).
+      Per-call timeout; failure -> raise for the service to surface 503.
+- [ ] DI provider `get_configured_run_report_source(request)` in
+      `api/dependencies.py` (grab `app.state.sql_pool`, 503 if missing) +
+      `ConfiguredRunReportSourceDep` Annotated alias.
+- [ ] Service `services/...get_configured_run_report(prod_source, run_source,
+      site_id, from_date, to_date)`:
+        * enumerate departments via existing production-report rows
+          (distinct department_id + department_name, filtered to site +
+          window) -- reuses the Phase 12 Departments name resolution.
+        * loop departments -> SP per dept -> assemble.
+        * end date passed as end-of-day so the window is inclusive.
+- [ ] Schema `schemas/...`: `RunReportDepartment{department_id,
+      department_name, columns:list[str], rows:list[list[Any]]}` +
+      `ConfiguredRunReportResponse{site_id, from_date, to_date,
+      generated_at, departments:[...]}`.
+- [ ] Route `GET /api/production-report/run-report-export?site_id=&from_date=&to_date=`
+      -> `ConfiguredRunReportResponse`. No caching (on-demand). Validate
+      from<=to; optional window cap (<=366 days -> 422) to bound a Year-view
+      pull across all departments.
+
+### Frontend
+- [ ] "Export Run Report" button at the top of the trends page (trends
+      controls bar; distinct from the existing chart-data export).
+- [ ] Handler: read `_trendsRange()` from/to + currentSiteId -> fetch
+      endpoint -> build workbook with SheetJS:
+        * one sheet per department, `XLSX.utils.aoa_to_sheet([columns, ...rows])`
+          (array-of-arrays preserves dynamic column order exactly),
+        * sheet name = department name sanitized (<=31 chars, strip
+          []:*?/\, de-dupe collisions),
+        * `XLSX.writeFile(wb, run-report_<site-slug>_<from>_<to>.xlsx)`.
+- [ ] Loading + error states (reuse trends error bar); empty -> friendly
+      "no departments / no data" message. Disable button while in flight.
+- [ ] `node --check`.
+
+### Tests
+- [ ] Service test with a fake run-report source (canned columns/rows)
+      + fake production-report source (2 departments): asserts one
+      response entry per department, columns/rows passthrough, names
+      resolved. (The live SP can't run in CI -- same fake-source pattern
+      as test_flow_client.)
+- [ ] Route test via DI override: 200 shape, from>to -> 422, oversized
+      window -> 422.
+
+### Verification
+- [ ] `cd backend && pytest` (Trey's Windows 3.12 venv authoritative).
+- [ ] `ruff check` (zero new errors), `node --check`.
+- [ ] Manual: button on trends page -> .xlsx with one sheet per
+      department, dynamic columns in DISPLAY_ORDER, dates match the
+      trends selection.
+
+### Out of scope
+- No change to the SP. No new top-level folders. No caching layer.
+- Existing trends chart-data export is untouched (separate button).
+
+
+### Phase 31 -- build + verification (2026-06-08)
+- Files: NEW `integrations/production_report/queries/configured_run_report.sql`,
+  `integrations/production_report/configured_run_report.py`
+  (`ConfiguredRunReportSource`, generic cur.description columns + JSON-safe
+  cells, per-call timeout); `tasks/decisions/004-configured-run-report-sp.md`
+  (ADR, contrasts 003). EDITED `api/dependencies.py` (DI provider),
+  `services/production_report.py` (`get_configured_run_report` +
+  `RunReportDeptResult` + `_dept_sort_key`), `schemas/production_report.py`
+  (`RunReportDepartment` + `ConfiguredRunReportResponse`),
+  `api/routes/production_report.py` (`/run-report-export` route, 366-day cap,
+  503 on SP failure). Frontend: `index.html` (Run Report button),
+  `app.js` (`exportRunReport` + `_uniqueSheetName`, SheetJS aoa_to_sheet
+  one sheet/dept).
+- Verified: all backend `py_compile` clean; `ruff check` delta vs HEAD = 0
+  on every touched file, new files pass clean; `node --check` PASS.
+  Service logic checked via standalone driver under the 3.10 shim
+  (per-dept SP call, numeric-id sort, name resolution, site+window filter,
+  inclusive end-of-day, inverted-window raise, empty-site empty). `_json_safe`
+  cell coercion unit-checked. Route + service pytest written for Trey's
+  Windows 3.12 venv (live SP can't run in CI; SP stood in by a fake source).
+- INCIDENT: `frontend/app.js` truncated on the Windows mount AFTER a
+  Python write that had passed `node --check` -- the same family as the
+  Edit-tool truncation lessons, but via `open().write()`. Recovered by
+  rebuilding from `git show HEAD:frontend/app.js` (collapsible feature was
+  already committed) + re-applying the two exportRunReport edits; re-verified
+  balanced braces/parens + `node --check`. A stale `.git/index.lock` is
+  present (mount blocks unlink) -- will block `git commit` until removed.
+
+### Browser QA for Trey
+- [ ] "Run Report" button at top of Production Charts page.
+- [ ] Click -> .xlsx downloads with one worksheet per department in the
+      active site; columns in the SP's DISPLAY_ORDER with DISPLAY_NAME headers.
+- [ ] Dates in the export match the trends from/to selection (Day/Month/Year).
+- [ ] >366-day window -> friendly 422 surfaced (not a blank file).
+- [ ] Switching site then exporting pulls the new site's departments.
+- [ ] SP/SQL down -> button shows an error, no blank download.

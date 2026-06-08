@@ -17,16 +17,24 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 
-from app.api.dependencies import get_chart_labels, get_production_report_source
+from app.api.dependencies import (
+    get_chart_labels,
+    get_configured_run_report_source,
+    get_production_report_source,
+)
 from app.integrations.production_report.base import (
     ProductionReportRow,
     ProductionReportSource,
+)
+from app.integrations.production_report.configured_run_report import (
+    ConfiguredRunReportSource,
 )
 from app.integrations.production_report.labels import ChartLabels
 from app.schemas.production_report import (
     CircuitBucketEntry as PydCircuitBucketEntry,
     CircuitRollup as PydCircuitRollup,
     CircuitRollupResponse,
+    ConfiguredRunReportResponse,
     ConveyorTotals,
     DepartmentCircuitRollup as PydDepartmentCircuitRollup,
     LatestDateResponse,
@@ -36,6 +44,7 @@ from app.schemas.production_report import (
     ProductionReportRangeResponse,
     RollupEntry,
     RollupResponse,
+    RunReportDepartment,
 )
 from app.services.production_report import (
     CircuitBucketEntry as SvcCircuitBucketEntry,
@@ -46,6 +55,7 @@ from app.services.production_report import (
     Rollup,
     compute_conveyor_totals,
     get_circuit_rollup,
+    get_configured_run_report,
     get_latest_date,
     get_latest_per_workcenter,
     get_range,
@@ -56,6 +66,14 @@ router = APIRouter()
 
 ProductionReportSourceDep = Annotated[ProductionReportSource, Depends(get_production_report_source)]
 ChartLabelsDep = Annotated[ChartLabels, Depends(get_chart_labels)]
+ConfiguredRunReportSourceDep = Annotated[
+    ConfiguredRunReportSource, Depends(get_configured_run_report_source)
+]
+
+# Cap on the configured-run-report window. The export loops the SP
+# across every department in the site, so an unbounded year-view pull
+# could be heavy; 366 days bounds it to ~a year.
+_MAX_RUN_REPORT_DAYS = 366
 
 # Maximum span of /range in days (inclusive-inclusive). A defensive
 # upper bound so a malformed client can't accidentally scan years of
@@ -558,3 +576,86 @@ async def circuit_rollup(
         departments=[_to_pyd_department(d, chart_labels, site_id_int) for d in depts],
     )
 
+
+# ---- /run-report-export (Phase 31) -------------------------------------
+
+
+@router.get(
+    "/run-report-export",
+    response_model=ConfiguredRunReportResponse,
+    summary="Configured run report per department, for Excel export",
+    description=(
+        "Executes the stored procedure UNS.GET_CONFIGURED_RUN_REPORT once "
+        "per department in the site (those with reports in the window) and "
+        "returns each department's dynamically-configured columns + rows. "
+        "On-demand export -- not cached. The frontend turns each department "
+        "into its own Excel worksheet. ``from_date`` / ``to_date`` are the "
+        "same window selected on the Production Charts page; the SP window "
+        "is inclusive of both days. Cap: 366 days. SP failures surface as "
+        "503 so the export button can show an error rather than a blank "
+        "download. See tasks/decisions/004-configured-run-report-sp.md."
+    ),
+)
+async def run_report_export(
+    production_report: ProductionReportSourceDep,
+    run_report_source: ConfiguredRunReportSourceDep,
+    site_id: Annotated[str, Query(description="Site to export (required).")],
+    from_date: Annotated[
+        date, Query(description="Inclusive window start, YYYY-MM-DD.")
+    ],
+    to_date: Annotated[
+        date, Query(description="Inclusive window end, YYYY-MM-DD.")
+    ],
+) -> ConfiguredRunReportResponse:
+    if from_date > to_date:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"from_date ({from_date.isoformat()}) must be <= "
+                f"to_date ({to_date.isoformat()})."
+            ),
+        )
+    span_days = (to_date - from_date).days + 1
+    if span_days > _MAX_RUN_REPORT_DAYS:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Window too large: {span_days} days exceeds the "
+                f"{_MAX_RUN_REPORT_DAYS}-day cap. Narrow the window."
+            ),
+        )
+
+    try:
+        depts = await get_configured_run_report(
+            production_report,
+            run_report_source,
+            site_id=site_id,
+            from_date=from_date,
+            to_date=to_date,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 -- SP/SQL failure -> graceful 503
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "source": "configured_run_report",
+                "error": f"{type(exc).__name__}: {exc}",
+            },
+        ) from exc
+
+    return ConfiguredRunReportResponse(
+        site_id=site_id,
+        from_date=from_date,
+        to_date=to_date,
+        generated_at=datetime.now(UTC),
+        departments=[
+            RunReportDepartment(
+                department_id=d.department_id,
+                department_name=d.department_name,
+                columns=d.columns,
+                rows=d.rows,
+            )
+            for d in depts
+        ],
+    )

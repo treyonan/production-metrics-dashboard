@@ -454,3 +454,40 @@ class CircuitRollupResponse(BaseModel):
         description="Per-department rollup. Empty when no rows match the filter."
     )
 
+
+
+# --- Phase 31: configured run report (SP-backed export) -----------------
+
+
+class RunReportDepartment(BaseModel):
+    """One department's slice of the configured run report.
+
+    The SP resolves columns dynamically per site+department from
+    ``MES.RUN_REPORTS_CONFIG`` (DISPLAY_ORDER / DISPLAY_NAME), so they're
+    carried as an ordered list of header strings plus parallel row-value
+    lists rather than typed fields. The frontend maps each department to
+    its own Excel worksheet.
+    """
+
+    department_id: str = Field(description="Workcenter / department identifier.")
+    department_name: str = Field(
+        description="Human-readable department name; used as the worksheet title."
+    )
+    columns: list[str] = Field(
+        description="Ordered display-name column headers (the SP's DISPLAY_ORDER)."
+    )
+    rows: list[list[Any]] = Field(
+        description="Row values parallel to `columns`; cells are JSON-safe scalars or null."
+    )
+
+
+class ConfiguredRunReportResponse(BaseModel):
+    """Envelope for ``GET /api/production-report/run-report-export``."""
+
+    site_id: str = Field(description="Site rolled into the export.")
+    from_date: date = Field(description="Inclusive window start (YYYY-MM-DD).")
+    to_date: date = Field(description="Inclusive window end (YYYY-MM-DD).")
+    generated_at: datetime = Field(description="Server timestamp when the export was assembled.")
+    departments: list[RunReportDepartment] = Field(
+        description="One entry per department in the site that has reports in the window."
+    )

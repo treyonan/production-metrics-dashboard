@@ -53,6 +53,30 @@ def get_production_report_source(request: Request) -> ProductionReportSource:
     return SqlProductionReportSource(pool=pool)
 
 
+def get_configured_run_report_source(request: Request):
+    """Return the Configured Run Report source (Phase 31).
+
+    Same pool-from-``app.state`` pattern as
+    ``get_production_report_source``; returns 503 when the SQL pool
+    didn't initialize so /api/health can surface it.
+    """
+    from app.integrations.production_report.configured_run_report import (
+        ConfiguredRunReportSource,
+    )
+
+    pool = getattr(request.app.state, "sql_pool", None)
+    if pool is None:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Configured-run-report source unavailable: SQL pool not "
+                "initialized. Check uvicorn startup log for "
+                "'sql_pool.create_failed' or 'sql_pool.not_created'."
+            ),
+        )
+    return ConfiguredRunReportSource(pool=pool)
+
+
 def get_interval_metric_source(request: Request):
     """Return the configured interval-metric source.
 
