@@ -3526,3 +3526,189 @@ revertable via kill switch (env var) or by deleting the two files.
 Soft: `PMD_TIMEBASE_ENABLED=false` in `backend/.env`, restart.
 Hard: `rm frontend/timebase-trends.{html,js}` + remove one nav link.
 
+
+## Phase 28 -- Multi-site commissioning (Ardmore) + UI polish (DONE 2026-06-08)
+
+Long working session bringing Ardmore (site 100) online end-to-end and
+shipping a batch of UI consistency / deep-link / auth fixes that arose
+along the way. Single session, multiple discrete commits.
+
+### Ardmore commissioning fixes (root-cause walk-through)
+
+1. **DNS failure (`Errno -2`)** -- container couldn't resolve `dbp-arq`
+   because `extra_hosts` had only `dbp-bcq`. Fix: append
+   `dbp-arq:10.40.135.12` to `docker-compose.yml`, `docker compose
+   down && up -d` to recreate (restart does NOT pick up extra_hosts).
+2. **`historian.example.invalid` in catalog** -- prod's `catalog.yaml`
+   didn't exist; loader fell back to the (now-deleted) example
+   template. Fix: standardized on single committed `catalog.yaml`
+   (gitignore removed, example.yaml deleted, loader fallback
+   removed).
+3. **401 Unauthorized on Flow** -- each Flow installation has its own
+   bearer token. The single `FLOW_API_KEY` was BCQ's, Ardmore's
+   Flow rejected it. Fix: per-site env vars
+   (`PMD_FLOW_API_KEY_<site_id>`) with a default fallback, picked
+   up via new `flow_api_key_<id>` Field declarations + a
+   `resolve_flow_api_key(site_id)` method. FlowClient takes a dict
+   at construction, picks per request.
+4. **Ardmore not in /api/sites** -- endpoint was data-driven (SQL
+   distinct site_ids only). Fix: union with configured
+   `_DEFAULT_SITE_NAMES` so commissioned-but-empty sites surface
+   in the dropdown before SQL data arrives.
+5. **Code/hostname mismatch** -- caught on review: catalog had
+   `code: ARP` but hostname was `dbp-arq`. Global rename to ARQ
+   across catalog.yaml, catalog.py, both test files, doc, spec,
+   and historical todo entries.
+
+### UI work
+
+- **Time Series slider rewrite**: native dual `<input type="range">`
+  → custom div-based dual-handle slider. Round dots draggable
+  independently (2h step), fill bar between handles draggable to
+  translate the whole window preserving width. Keyboard arrows
+  + today-cap honored.
+- **Topbar nav reorganization**:
+    - "Metrics" → "Interval" (the data shape)
+    - "Trends" (link) → "Time Series" (the data shape, with
+      timebase-logo.png inline)
+    - "Dashboard" → "Production Dashboard"
+    - In-page "Trends" vtab → "Production Charts"
+    - Reorder: Production Dashboard, Production Charts, Interval,
+      Time Series, Charts ▾, Forms ▾, API
+    - Three faint vertical separators between functional groups
+      (site selector | in-app views | sibling pages | external popouts)
+- **Site selector**: tab strip → dropdown (`<select>`), styled to
+  match the dark topbar. Ardmore now visible.
+- **Excel export** added to Time Series page (SheetJS, single
+  sheet, Timestamp + Quality + descriptive value-column header
+  + Δ-from-baseline column for cumulative metrics). Filename
+  encodes site code + asset + metric_key + window date.
+- **Dolese logo** in topbar wrapped as `<a>` to operationsot
+  portal, same-tab navigation (acts as "back to Ignition").
+- **Daily Totals** entry added to Charts ▾ dropdown
+  (`EXTERNAL_LINKS_CHARTS` in app.js).
+- **Flow Interval Metrics page promoted to production**: text
+  Site ID field → dropdown populated from /api/sites. Same
+  cascade as the other pages.
+- **Dolese green focus outlines** + opacity hover for the logo
+  link.
+
+### Backend filtering + auth
+
+- **Quality filter** added to both Flow Interval Metrics and
+  Timebase /history endpoints. Default drops non-GOOD samples;
+  `?include_all_qualities=true` query param bypasses. Flow uses
+  numeric `192` (OPC UA GOOD); Timebase uses string `"GOOD"`.
+- **Per-site Flow API keys** (see #3 above).
+
+### Deep-link propagation (`?site_id=<id>`, Model A)
+
+URL is the source of truth; localStorage is the fallback. Three
+pages now participate:
+
+- **Main dashboard**: bootstrap cascade URL → localStorage
+  (`pmd-last-site`) → `sites[0]`. URL writes back via
+  `history.replaceState` on dropdown change. Topbar Interval +
+  Time Series links rewritten to carry `?site_id=` forward.
+- **Time Series**: same cascade against the Timebase catalog.
+  Back-link to Dashboard rewritten with the current site.
+- **Flow Interval Metrics**: same cascade against /api/sites.
+  Back-link rewritten too.
+- **Shared helper** `frontend/site-link.js` exposes
+  `parseSiteIdFromUrl`, `writeSiteIdToUrl`, `withSiteId`.
+
+### Catalog refactor
+
+- **Schema v2 stays** (per-site asset placement).
+- **Bind-mount** catalog.yaml in `docker-compose.yml` so post-
+  commissioning catalog edits are restart-only (no rebuild).
+- **Consolidate to single committed file**: removed
+  `catalog.example.yaml`, removed loader fallback chain, removed
+  `catalog.yaml` from `.gitignore`. Single source of truth, normal
+  git workflow.
+- **Header rewritten** to carry the schema + editing-pattern docs
+  the example.yaml used to hold.
+
+### Date defaults
+
+- **Main dashboard TIME FILTER**: probes
+  `/api/production-report/latest-date?site_id=<active>` on every
+  load, falls back to today. Mode (Day/Month) still preserved
+  from localStorage; specific date / month is always recomputed.
+  Initial implementation defaulted to today; reversed because
+  production reports land late afternoon, so an 8am open would
+  show "Nothing reported."
+- **Flow Interval Metrics**: To Date switched from
+  `toISOString().slice(0,10)` (UTC, off-by-one in evening hours
+  Central time) to local date components.
+- **Time Series day stepper**: already correct via
+  `midnightLocal(new Date())`, verified.
+
+### Documentation
+
+- **`docs/adding-a-new-site.md`** created, then refactored from
+  395 → 145 lines as a concise checklist. Covers:
+    - Identifiers + credentials to gather first
+    - 5-step pre-flight (network, SQL)
+    - Committed files (5 rows including both `EXTERNAL_LINKS_*`),
+      per-environment .env, auto-populated SQL
+    - Optional per-site CHART_LABEL overrides in
+      `MES.RUN_REPORTS_CONFIG`
+    - Deploy commands
+    - 7-step smoke tests
+    - Common failures table (6 rows)
+- **Chart-label scope correction**: only the chart panel TITLE
+  is resolved from `CHART_LABEL`. Formula expression underneath
+  (e.g. `C1+C8-C7`) is always raw. Fixed in both the doc and
+  `labels.py` module docstring.
+
+### Tests
+
+- `test_flow_client.py`: legacy tests migrated to new
+  `default_api_key=` + per-call `site_id=` signature; three new
+  tests for per-site key picking, default fallback, and
+  no-key-raises.
+- `test_metrics_sql_source.py`: FakeFlowClient gained `site_id`
+  param; new `test_fetch_points_drops_non_good_quality_by_default`
+  + `test_fetch_points_includes_all_qualities_when_flag_set`.
+- `test_timebase.py`: three new tests for quality filter
+  (filtered-by-default, opt-out, cache-not-corrupted regression
+  guard).
+- `test_catalog.py`: `test_real_catalog_conveyor_placement_is_per_department`
+  rewrote to assert invariants (`/^C\d+$/`, at least one dept owns
+  Conveyor, C1 present) instead of the literal `[C1..C8]` tuple --
+  was breaking on every catalog edit.
+- `test_sites.py`: rewrote for the new union + configured-first
+  ordering contract.
+
+### Files added
+
+- `frontend/site-link.js` (new shared helper)
+- `docs/adding-a-new-site.md` (new)
+
+### Files removed
+
+- `backend/app/integrations/timebase/catalog.example.yaml`
+
+### Verification
+
+- Backend pytest suite passed on Trey's Windows 3.12 venv after each
+  major commit boundary (sandbox in this session was Python 3.10,
+  couldn't run the suite).
+- Manual end-to-end on dev: deep-link `?site_id=100` → all three
+  pages load Ardmore. Switching site updates URL + back-links.
+  Flow + Timebase fetches now resolve `dbp-arq`.
+
+### Carry-over for next session
+
+- Set `PMD_FLOW_API_KEY_100` in prod's `backend/.env` once the
+  Ardmore Flow bearer token is in hand. Until then ARQ Flow
+  Interval Metrics return 401 cleanly.
+- Verify Ardmore historian dataset name matches `IAP_ARQ_Controls`
+  via `curl http://dbp-arq:4511/v2/namespaces` from prod after
+  network reachability is in place. Update catalog.yaml `dataset:`
+  if the actual i3X name differs.
+- The "Latest value" lessons.md entry has been truncated mid-
+  sentence since at least 2026-04-23 (predates this session).
+  Re-stitch if anyone remembers what the original text said.
+

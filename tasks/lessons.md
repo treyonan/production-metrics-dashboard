@@ -20,6 +20,99 @@ global CLAUDE.md as a rule rather than leaving it here.
 ---
 
 <!-- Entries below, newest first -->
+### Chart-label CHART_LABEL overrides title only, not formula — 2026-06-08
+**Mistake**: In `docs/adding-a-new-site.md` and the `labels.py` module
+docstring I described the chart-label resolution as relabeling
+"calcs lines like `Total = C1+C8-C7`," implying the whole equation
+participates in the lookup. Trey corrected with a screenshot: each
+chart panel has a bold **title** (e.g. `TOTAL TONS FED`) and a
+separate **formula expression** rendered underneath (e.g. `C1+C8-C7`).
+Only the title is resolved from `MES.RUN_REPORTS_CONFIG.CHART_LABEL`;
+the formula always renders as the raw conveyor expression.
+**Why it happened**: I read the code's resolver logic and inferred a
+visual model from the column names + lookup-key shape rather than
+opening the dashboard and checking what actually renders. Both the
+labels.py docstring and the new-site checklist propagated that
+incorrect framing.
+**Rule**: When documenting user-facing rendering, ground the
+description in what the page *actually* shows -- look at the chart
+panel in the browser before writing about it. Resolver code and
+DB-column names describe what's looked up, not how it appears.
+
+### TIME FILTER default: probe /latest-date, not "today" — 2026-06-08
+**Mistake**: When Trey asked me to default the dashboard's TIME
+FILTER to "current day" on launch, I implemented "always today." He
+reversed it because production reports don't land until late
+afternoon -- an operator opening the dashboard at 8am would see
+"Nothing reported for today" even when yesterday's complete data
+is right there in SQL.
+**Why it happened**: I took "current day" at face value without
+walking through the daily shift cycle. Operators want "most recent
+populated data," which is yesterday during the morning, today after
+the shift wraps. "Today" only matches that intent for ~4 hours of
+the day.
+**Rule**: For any "default" tied to operational data freshness,
+probe the data source for the latest-available value rather than
+using wall-clock today. SCADA / shift / batch data lands on its
+own schedule; the UI default has to align with that schedule, not
+with the system clock. Probe-and-fallback is the canonical pattern:
+try /latest-date, fall back to today if the probe returns null or
+errors.
+
+### Hostname letters must match site code letters — 2026-06-08
+**Mistake**: When commissioning Ardmore, the original commented
+sketch in `catalog.example.yaml` used `code: ARP`, but the real
+plant hostname turned out to be `dbp-arq` (Q for Quarry, not P). I
+committed it as `ARP` matching the sketch; Trey caught the mismatch
+on review and asked for a global rename to `ARQ`.
+**Why it happened**: Sketch-vs-reality drift. The example.yaml
+sketch was a placeholder authored before the real hostname existed,
+and I treated it as authoritative when the actual plant box's
+hostname was the real source of truth.
+**Rule**: When commissioning a new site, the **hostname** is the
+canonical identifier (it's what the network team registers and
+what Ignition's MQTT URLs already use). Derive `code` from the
+hostname (`dbp-arq` -> `ARQ`), not the other way around. If a
+committed sketch / example has a code that doesn't match the new
+hostname, treat the example as wrong, not the hostname.
+
+### Test invariants, not snapshots of operational config — 2026-06-08
+**Mistake**: `test_real_catalog_conveyor_placement_is_per_department`
+asserted the exact tuple `("C1", "C2", ..., "C8")` for BCQ
+Secondary. When Trey added C10/C11 + a Wash_Plant department, that
+test failed -- not because the schema or code regressed, but because
+operational config changed. The test was holding catalog.yaml
+hostage to its momentary state.
+**Why it happened**: I wrote the assertion as "exact tuple" because
+the existing test pattern used `==` against a literal. The test's
+docstring claimed it was checking "per-site placement" (an
+invariant) but the assertion checked the specific data (a snapshot).
+**Rule**: Tests against config files / catalogs / live data sources
+should assert *structural invariants*, not specific contents:
+- "Every conveyor matches `/^C\d+$/`" — invariant
+- "At least one department owns Conveyor" — invariant
+- "Conveyors == [C1..C8]" — snapshot, will break on every catalog edit
+If a test fails the moment someone makes a routine config change,
+the test was wrong, not the change.
+
+### Each Flow installation has its own bearer token — 2026-06-08
+**Mistake**: When implementing the original Flow integration, I
+modeled `FLOW_API_KEY` as a single env var serving every site.
+When Ardmore's Flow instance came online, requests for site 100
+got 401 because the dashboard was sending BCQ's bearer token to
+Ardmore's Flow API.
+**Why it happened**: Single-site assumption baked in early when
+there was only BCQ. The auth surface wasn't reconsidered when
+Ardmore (a separate, independently-administered Flow installation
+with its own instance UUID and bearer) was added.
+**Rule**: Multi-tenant external APIs almost never share auth. When
+adding a second site to the dashboard, AUDIT every external API
+client (Flow now, Timebase historian if it ever grows auth) to
+confirm whether the credential is shared or per-installation. The
+canonical pattern: per-site env vars (`PMD_FLOW_API_KEY_<id>`)
+plus an optional default fallback for single-site deployments
+and migration ergonomics.
+
 ### Verify the server is running your latest code — 2026-04-22
 **Mistake**: Chased a "static mount isn't working" theory through three
 rewrites of `main.py` while the user's browser was actually hitting a
@@ -170,7 +263,3 @@ send a second `Edit` to the same file, stop and rewrite it via heredoc
 instead. The in-memory tracked-state note is never proof the disk write
 succeeded.
 
-### "Latest value" vs "most representative value" -- 2026-04-23
-**Mistake**: When Trey asked for a per-conveyor Produced_Item_Description
-label on the bar chart, I implemented "latest value in window" because
-the feature sounded straightforward and

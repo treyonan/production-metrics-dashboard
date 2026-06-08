@@ -1,395 +1,169 @@
-# Adding a new site to the dashboard
+# Adding a new site — checklist
 
-Authoritative checklist for commissioning a new plant site in the
-production-metrics-dashboard. Use this end-to-end when a new quarry
-(or similar) comes online; treat the section order as the order of
-operations.
+Walk this top to bottom when commissioning a new plant. Every step has a
+single-line explanation; everything else lives in the file being touched.
 
-The dashboard reads from three data sources, each of which has to
-know about the new site independently before it shows up on the UI:
+## 1. Identifiers + credentials to gather first
 
-1. **SQL Server** (`Flow_Curated`) — production-report rows tagged
-   with the new `site_id`. Populated externally by the SCADA + Flow
-   ETL pipeline; nothing for the dashboard to do here except
-   verify the rows arrive.
-2. **Flow REST API** — per-tag `history_url` rows in
-   `[FLOW].[INTERVAL_METRIC_TAGS]`. Populated automatically by the
-   Ignition trigger that subscribes to the new site's MQTT topics
-   (`scada/ignition/upsert_interval_metric_tag.py`).
-3. **Timebase i3X historian** — per-site catalog in
-   `backend/app/integrations/timebase/catalog.yaml`. **This is the
-   only one the dashboard owns directly.**
-
-Plus three pieces of cross-cutting configuration that the dashboard
-*does* own:
-
-- The site's hostname → IP mapping in `docker-compose.yml`
-  (`extra_hosts`).
-- The site's human-readable display name in
-  `backend/app/core/config.py` (`_DEFAULT_SITE_NAMES`).
-- The Timebase catalog entry (see #3 above).
-
-## Before you touch any files
-
-Confirm these are true *before* doing any work. If any of them
-isn't, fix that first — editing the dashboard's config to point at
-a site that isn't actually reachable just buries the failure later
-in the chain.
-
-| Check | How to verify | What to do if it fails |
+| Thing | Example | Where it comes from |
 |---|---|---|
-| **Network reachability** from the prod server to the new plant box on **port 4501** (Flow REST) | `nc -zv <sitehost> 4501` or `curl -m 5 http://<sitehost>:4501/` from the prod shell | Corporate firewall / VLAN routing. Open the path before continuing. |
-| **Network reachability** on **port 4511** (Timebase i3X) | `nc -zv <sitehost> 4511` or `curl -m 5 http://<sitehost>:4511/v2/namespaces` | Same — firewall / routing. |
-| **Hostname pattern** — confirm the new plant box follows the `dbp-<sitecode>` convention | Ask the network team or grep an existing site's host record | If the convention is broken, you have two choices: use a non-`dbp-` hostname (works but breaks the pattern) or get the hostname renamed. Stick with the convention if at all possible. |
-| **SQL production-report rows** are arriving with the new `site_id` | `SELECT TOP 5 * FROM <production_report_view> WHERE Site_ID = '<new_id>' ORDER BY ProductionDate DESC` | Talk to whoever owns the SCADA → Flow → SQL pipeline; the dashboard is purely a consumer here. |
-| **Flow interval-metric tags** are populated for the new site | `SELECT TOP 5 * FROM [FLOW].[INTERVAL_METRIC_TAGS] WHERE site_id = '<new_id>'` | Make sure the Ignition project at the new site subscribes to the MQTT topics and runs the upsert script. See `scada/ignition/`. |
-| **SCADA tag tree** at the new site follows the convention | Browse the new site's tags in Ignition Designer or `curl http://<sitehost>:4511/v2/elements?path=<DataSet>:&maxDepth=4` | Tag suffixes (e.g. `Process_Data/Belt_Scale/TPH`) MUST match the existing sites' convention. If they don't, you'll need to extend `catalog.yaml`'s `asset_classes` registry — see "Tag-tree divergence" in Troubleshooting below. |
-| **Dataset name** at the new site follows `IAP_<sitecode>_Controls` | Browse the i3X namespace list: `curl http://<sitehost>:4511/v2/namespaces` | If it's named differently, fine — just record the actual name in `catalog.yaml`'s `dataset:` field. The dataset name doesn't have to follow the convention; it just has to be accurate. |
+| `site_id` | `"100"` | SCADA pipeline (must match what's already in SQL) |
+| `code` | `ARQ` | Short site code, 3 chars, MUST share letters with hostname |
+| `hostname` | `dbp-arq` | Network team — corporate hostname for the plant box |
+| Plant box IP | `10.40.135.12` | `ping <hostname>` from a Windows host |
+| Flow bearer token | (opaque string) | Flow admin UI at the new site |
+| Timebase dataset name | `IAP_ARQ_Controls` | `curl http://<hostname>:4511/v2/namespaces` |
 
-## Files to update
+**Naming rule:** hostname letters and `code` letters must match (`dbp-arq` ↔ `ARQ`).
+Don't mix them.
 
-The dashboard needs three committed files plus one per-deployment env
-var for a new site.
+## 2. Pre-flight (verify before editing files)
 
-| File | What changes | Committed? | Rebuild required? |
-|---|---|---|---|
-| `docker-compose.yml` | Add a line under `services.api.extra_hosts` mapping the new hostname → IP. | Yes | Yes — `docker compose up -d` recreates the container; `restart` does NOT pick up `extra_hosts` changes. |
-| `backend/app/integrations/timebase/catalog.yaml` | Add a top-level entry under `sites:` for the new site. | Yes | **No** for pure catalog edits — file is bind-mounted by `docker-compose.yml`, so `docker compose restart api` picks up the change. For new-site commissioning specifically, you're also touching `extra_hosts` + `config.py`, so a rebuild is unavoidable for that combined deploy. See "Catalog hot-swap" below. |
-| `backend/app/core/config.py` | (a) Add `<site_id>: "<Display Name>"` to `_DEFAULT_SITE_NAMES`. (b) Add a `flow_api_key_<id>` field so the per-site Flow bearer token can be picked up from env. | Yes | Yes (Python code change). |
-| `backend/.env` on each deployment | Set `PMD_FLOW_API_KEY_<site_id>=<token>` with the new site's Flow bearer token. **Not committed** — `.env` is per-environment. | No | Yes (env vars are read at startup). |
-
-### Catalog hot-swap
-
-`catalog.yaml` is bind-mounted into the container by `docker-compose.yml`:
-
-```yaml
-volumes:
-  - ./backend/app/integrations/timebase/catalog.yaml:/app/backend/app/integrations/timebase/catalog.yaml:ro
+```bash
+nc -zv <hostname> 4501             # Flow REST port reachable
+nc -zv <hostname> 4511              # Timebase i3X port reachable
+curl http://<hostname>:4511/v2/namespaces   # dataset name appears
 ```
 
-That means a catalog edit on the host takes effect on:
-
-```
-docker compose restart api
-```
-
-No image rebuild, no other downtime. The restart re-runs the
-lifespan, which re-reads `catalog.yaml` and rebuilds the per-site
-Timebase client registry. The full route + frontend stack keeps
-its bytecode warm — restart-to-serving is typically a few seconds.
-
-**Must-exist constraint:** `catalog.yaml` is committed, so a normal
-`git clone` / `git pull` brings the live file with it. If anyone
-manually deletes it on the host while the container is down,
-`docker compose up` would silently create an empty *directory* at
-the bind-mount target and the loader would crash. Treat
-`catalog.yaml` like any other tracked source file -- don't delete
-it locally.
-
-Other paths that **still** require a rebuild:
-
-| Change | Why |
-|---|---|
-| `docker-compose.yml` `extra_hosts` | `restart` does not re-read compose's `extra_hosts`; only `up -d` recreates the container with new `/etc/hosts`. |
-| Python source (`config.py`, route handlers, etc.) | Python code is baked into the image; uvicorn doesn't run with `--reload` in the container. |
-| `requirements.txt` | New dependencies aren't installed at runtime. |
-
-`frontend/`, `context/`, and `catalog.yaml` are the three paths
-that hot-swap.
-
-## Step-by-step procedure
-
-Walk these in order. Each step is small enough that you can roll back
-just that step if it doesn't go cleanly.
-
-### 1. Pick the site identifiers
-
-You'll need three values that stay consistent across all the files
-below:
-
-- **`site_id`** — the string that flows through SQL and the API. Three
-  digits, matches whatever the SCADA pipeline already uses (e.g. `"100"`,
-  `"101"`). Talk to whoever runs the SCADA side; the dashboard is the
-  follower here, not the leader.
-- **`code`** — short site code (3–4 chars), e.g. `BCQ`, `ARQ`. Used in
-  the site dropdown chip and in the Time Series export filename.
-- **`hostname`** — the corporate hostname of the plant box, following
-  the `dbp-<lowercased-code>` convention (e.g. `dbp-arq`). Match the
-  code's letters exactly — `dbp-arq` ↔ `code: ARQ`. Picking a hostname
-  whose letters don't match the code (e.g. `dbp-xyz` with `code: ABC`)
-  forces every reader to remember the mapping across files and tends
-  to drift over time.
-
-### 2. Update `docker-compose.yml`
-
-Add one line under `services.api.extra_hosts`:
-
-```yaml
-extra_hosts:
-  - "dbp-bcq:10.44.135.12"         # site 101 (Big Canyon Quarry)
-  - "dbp-arq:10.40.135.12"         # site 100 (Ardmore Quarry)   <-- new
+```sql
+SELECT TOP 5 * FROM <production_report_view> WHERE Site_ID = '<id>';
+SELECT TOP 5 * FROM [FLOW].[INTERVAL_METRIC_TAGS] WHERE site_id = '<id>';
 ```
 
-Commit this. Same line works for both dev and prod — `extra_hosts` is
-checked into git.
+If any of these fail, fix the upstream first. The dashboard can't fabricate
+data that isn't reaching SQL / Flow / the historian.
 
-### 3. Update `backend/app/core/config.py`
+## 3. Files to update
 
-**(a) Add the new site to `_DEFAULT_SITE_NAMES`:**
+### Committed (ships via `git pull`)
 
-```python
-_DEFAULT_SITE_NAMES: dict[str, str] = {
-    "101": "Big Canyon Quarry",     # default (first entry)
-    "100": "Ardmore Quarry",        # <-- new
-}
-```
+| File | What it controls | Add |
+|---|---|---|
+| `docker-compose.yml` | Container `/etc/hosts` mapping so `httpx` can reach the plant box | One line under `services.api.extra_hosts`: `- "<hostname>:<ip>"` |
+| `backend/app/core/config.py` | Site display name + Flow API key field declaration | (a) `_DEFAULT_SITE_NAMES["<id>"] = "<Display Name>"` — controls the dropdown label and the no-deep-link default (insertion order matters). (b) New `flow_api_key_<id>: SecretStr` field with `AliasChoices("PMD_FLOW_API_KEY_<id>", "FLOW_API_KEY_<id>")` so the env var is picked up. |
+| `backend/app/integrations/timebase/catalog.yaml` | Timebase historian config: base_url, dataset, department + asset placement | Top-level entry under `sites:` with hostname-form `base_url`, dataset name, and per-department asset map. **Bind-mounted at runtime — pure catalog edits restart-only after commissioning.** |
+| `frontend/app.js` — `EXTERNAL_LINKS_CHARTS` | Charts ▾ dropdown entries (Flow dashboards) | For each chart entry that exists at the new site, add `"<id>": "<flow-url>"` to its `urls` dict. Omit per-entry if that chart doesn't exist at this site. |
+| `frontend/app.js` — `EXTERNAL_LINKS_FORMS` | Forms ▾ dropdown entries (Flow operator forms) | Same pattern as Charts. Add per-site URLs only where the form exists at the new site. |
 
-**Dict order matters here** — `/api/sites` returns entries in this
-order, and the dashboard's site dropdown treats `sites[0]` as the
-no-deep-link default. Put the most-used / canonical site first.
+### Per-environment (NOT committed, lives in `backend/.env` on each deployment)
 
-**(b) Add a per-site Flow API key field** in the same file (under
-the existing `flow_api_key_<id>` declarations):
+| Variable | Purpose | Required? |
+|---|---|---|
+| `PMD_FLOW_API_KEY_<id>=<token>` | Bearer token for the new Flow installation. Each Flow installation has its own. | Yes if you want `/api/metrics/*` for this site to work |
 
-```python
-flow_api_key_<id>: SecretStr | None = Field(
-    default=None,
-    description="<Display Name> Flow bearer token. Overrides flow_api_key for site_id=<id>.",
-    validation_alias=AliasChoices("PMD_FLOW_API_KEY_<id>", "FLOW_API_KEY_<id>"),
-)
-```
+`PMD_FLOW_API_KEY` (no suffix) still works as a fallback default. Drop it
+once every site has its own explicit key, for clarity.
 
-This is what teaches the settings loader to pick up the new env var.
-Without it, `PMD_FLOW_API_KEY_<id>` would be silently ignored. The
-`resolve_flow_api_key` method below already handles the lookup via
-`getattr`, so no further code change.
+### Auto-populated (no action — just verify in pre-flight)
 
-Commit this. The actual bearer token value goes in the per-deployment
-`.env` — step 6.
+| Source | What | How |
+|---|---|---|
+| `[UNS].[SITE_PRODUCTION_RUN_REPORTS]` | Per-shift production reports (JSON payloads). The dashboard reads this for every Production Dashboard / Production Charts panel. | SCADA → Flow → SQL pipeline. Each shift wraps a report and writes one row. Nothing for the dashboard to do; the pre-flight `SELECT TOP 5 ... WHERE Site_ID = '<id>'` verifies it. |
+| `[FLOW].[INTERVAL_METRIC_TAGS]` | One row per (site, asset, metric, interval) tag. The dashboard reads this to discover which interval-metric tags exist for each site. | Ignition's `upsert_interval_metric_tag` script fires on every Flow MQTT message at the new site. First publish = first row. |
 
-### 4. Update `catalog.yaml`
+### Optional: per-site chart label overrides
 
-`catalog.yaml` is committed. Edit it on dev, commit alongside the
-other site-commissioning changes, and `git pull` brings it to prod.
-No per-environment copy to maintain.
+Each chart panel has a **title** (the bold header, e.g. `TOTAL TONS
+FED`) and a **formula expression** rendered just under it (e.g.
+`C1+C8-C7`). Only the **title** is resolved per-site from
+`[IA_ENTERPRISE].[MES].[RUN_REPORTS_CONFIG]`. The formula always
+renders as the raw conveyor expression — it describes the
+calculation, not the display name, so it's never relabeled.
 
-Add a top-level entry under `sites:`:
+Title resolution order:
 
-```yaml
-sites:
-  "101":
-    code: BCQ
-    display_name: Big Canyon Quarry
-    base_url: http://dbp-bcq:4511
-    dataset: IAP_BCQ_Controls
-    departments:
-      Secondary:
-        prefix: Big_Canyon/Secondary
-        assets:
-          Conveyor: [C1, C2, C3, C4, C5, C6, C7, C8]
+1. `(site_id, department_id, class, asset, column_name)` — exact match → use that row's `CHART_LABEL`
+2. `(0, 0, class, asset, column_name)` — global fallback row
+3. Raw metric key (`Total`, `Rate`, ...) — safety net so the chart still renders
 
-  "100":                              # <-- new
-    code: ARQ
-    display_name: Ardmore Quarry
-    base_url: http://dbp-arq:4511     # hostname, NOT IP
-    dataset: IAP_ARQ_Controls
-    departments:
-      Primary:
-        prefix: Ardmore/Primary
-        assets:
-          Conveyor: [C1, C2]
-      Secondary:
-        prefix: Ardmore/Secondary
-        assets:
-          Conveyor: [C3, C4, C5, C6, C7, C8]
-```
+**Most new sites need NO chart-label work** — the global fallback row
+(`SITE_ID = 0, DEPARTMENT_ID = 0`) covers the standard metric titles
+already.
 
-Conveyor placement (which department each conveyor lives in) is
-per-site — figure it out from the SCADA tag tree. The example above
-shows what to do when the same conveyor number sits in different
-departments at different sites; the full `elementId` is
-dataset+prefix-scoped so the numbers don't collide.
+INSERT into `MES.RUN_REPORTS_CONFIG` ONLY when the new site needs a
+*different* CHART_LABEL title than what the global fallback provides
+for the same `(class, asset, column_name)` tuple. (Example: BCQ's
+"Total" metric is titled `TOTAL TONS FED`; if Ardmore's `Total`
+should read differently, INSERT an Ardmore-specific row.) INSERT-only
+rollout — no API change, no rebuild. Picked up on the dashboard's
+next 5-minute label-cache refresh, or immediately on
+`docker compose restart api`.
 
-`base_url` MUST use the hostname form, not the raw IP. The container
-resolves the hostname via the `extra_hosts` line you added in step 2;
-using the IP directly works but breaks the pattern Flow already uses
-and gives you two places to update if the IP ever changes.
+The sibling dictionary tables are `[IA_ENTERPRISE].[MES].[REPORT_COLUMN_CONFIG]`
+(metric keys: Total / Rate / Yield / ...) and
+`[IA_ENTERPRISE].[MES].[REPORT_ASSET_CLASSES]` (scope enum: Workcenter
+/ Circuit / Circuit_Line_A / ...). Only touch those when introducing
+genuinely new metric keys or asset classes — rare, and a SCADA-side
+schema decision, not a dashboard one.
 
-### 5. Set the new site's Flow API key in `.env`
+The API's SQL login MUST hold SELECT on all three tables.
 
-Each Flow installation has its own bearer token. Once the field is
-declared in `config.py` (step 3b), the value comes from a per-deployment
-env var. Edit `backend/.env` (NOT committed):
+## 4. Deploy
 
-```
-PMD_FLOW_API_KEY_<id>=<bearer-token-from-flow-admin-ui>
-```
-
-For example, ARQ uses `PMD_FLOW_API_KEY_100=<arq-token>`. The legacy
-`PMD_FLOW_API_KEY` still works as a fallback for any site without its
-own key, so single-site deployments don't need to change anything.
-
-This step runs **per deployment** — dev and prod each have their own
-`.env`, and each gets the new key wherever you want Ardmore Flow
-fetches to work. Skip if you're not enabling Flow fetches for this
-site yet; the dashboard will still load Production Reports + Time
-Series for that site, and `/api/metrics/<...>?site_id=<id>` will
-surface a clear "no Flow API key configured" error.
-
-### 6. Rebuild + restart
-
-From the repo root:
-
-```
+```bash
+git pull                           # dev: commit + push; prod: pull
+# Edit backend/.env locally to add the per-env Flow key:
+#   PMD_FLOW_API_KEY_<id>=<token>
 docker compose down
 docker compose up --build -d
 ```
 
-`up --build` is required because:
-- `extra_hosts` changes only land on a container *recreate*, not a
-  `restart`.
-- `config.py` is a Python code change, which always requires a rebuild
-  (no Python hot-reload in the container).
-- `.env` is re-read at container start, so it picks up the new key
-  automatically when the container is recreated.
+`up --build -d` is required for commissioning because **all three** of these
+landed: `extra_hosts` (only picked up on recreate), Python code change in
+`config.py`, and `.env` change (read at container start).
 
-`catalog.yaml` is bind-mounted, so it would normally only need a
-`docker compose restart api`. But for *new-site commissioning* you're
-also editing `extra_hosts` and `config.py`, so a full rebuild is
-unavoidable. Once the site is live and you're tweaking only the
-catalog (renaming an asset, moving a conveyor between departments,
-adding a metric), `docker compose restart api` is enough.
+Catalog-only edits *after* the site is live = `docker compose restart api`,
+no rebuild. The catalog is bind-mounted.
 
-### 7. Smoke tests
+## 5. Smoke tests (in order)
 
-In this order — each step verifies one layer of the chain. If layer N
-passes but N+1 fails, you know exactly which file is wrong.
+Each step verifies one layer. If N+1 fails after N passed, you know which
+file is wrong.
 
-**Layer 1: Sites endpoint sees the new site**
-```
-curl http://localhost:8001/api/sites
-```
-Look for `"site_id": "<new_id>"` with the right `display_name`. If
-missing, the `_DEFAULT_SITE_NAMES` change didn't deploy.
+```bash
+# 1. Sites endpoint sees the new site
+curl http://localhost:8001/api/sites | grep '<id>'
 
-**Layer 2: Health endpoint says the new site's historian is up**
-```
-curl http://localhost:8001/api/health
-```
-Look for a `timebase:i3x:<new_id>` source with `ok: true`. If `ok: false`
-with a DNS error → `extra_hosts` is wrong. If `ok: false` with a connection
-error → `base_url` port is wrong or the firewall is blocking 4511.
+# 2. Health shows the Timebase historian for the new site is reachable
+curl http://localhost:8001/api/health | grep '<id>'
 
-**Layer 3: Timebase catalog endpoint returns the new site's tags**
-```
-curl http://localhost:8001/api/timebase/catalog/<new_id>
-```
-Look for the departments and assets you declared in `catalog.yaml`.
-If absent or wrong, your `catalog.yaml` edit didn't make it into the
-container — confirm with `docker compose exec api cat /app/backend/app/integrations/timebase/catalog.yaml`.
+# 3. Catalog endpoint shows the configured assets
+curl http://localhost:8001/api/timebase/catalog/<id>
 
-**Layer 4: Production-report endpoint returns data for the new site**
-```
-curl "http://localhost:8001/api/production-report/latest?site_id=<new_id>"
-```
-If empty, SQL doesn't have rows yet for the new `site_id` — that's a
-SCADA pipeline issue, not a dashboard issue.
+# 4. Container resolves the new hostname
+docker compose exec api python -c "import socket; print(socket.gethostbyname('<hostname>'))"
 
-**Layer 5: Interval-metrics endpoint sees the new site's tags**
-```
-curl "http://localhost:8001/api/metrics/conveyor/subjects?site_id=<new_id>"
-```
-If empty, `[FLOW].[INTERVAL_METRIC_TAGS]` doesn't have rows — the
-Ignition upsert script isn't running at the new site, or the new
-site's MQTT topics aren't being subscribed.
+# 5. Production-report data flows (or empty for new sites with no data yet)
+curl "http://localhost:8001/api/production-report/latest?site_id=<id>"
 
-**Layer 6: Browser smoke test**
-Open the dashboard. The new site should appear in the topbar's site
-toggle. Click it; the dashboard should render production-report data
-(if SQL has it), and the Time Series page should let you pick the new
-site and see Belt Scale TPH / Total tags.
+# 6. Interval-metric tags are discoverable
+curl "http://localhost:8001/api/metrics/conveyor/subjects?site_id=<id>"
 
-## Troubleshooting
-
-### `Cannot reach Timebase site <id>: ConnectError: [Errno -2] Name or service not known`
-
-The container can't resolve the hostname. Walk this list:
-
-1. Does `catalog.yaml`'s `base_url` actually use the hostname (not
-   the IP)?
-   ```
-   docker compose exec api cat /app/backend/app/integrations/timebase/catalog.yaml | grep base_url
-   ```
-2. Does `/etc/hosts` inside the container have the mapping?
-   ```
-   docker compose exec api cat /etc/hosts | grep dbp-
-   ```
-   If the entry is missing, you ran `docker compose restart` instead of
-   `docker compose up -d`. `restart` does NOT pick up `extra_hosts`
-   changes — the container has to be recreated.
-3. Does Python's resolver agree?
-   ```
-   docker compose exec api python -c "import socket; print(socket.gethostbyname('dbp-<sitecode>'))"
-   ```
-
-### `/api/health` shows Timebase as down and the lifespan log says `timebase.catalog_load_failed`
-
-`catalog.yaml` either isn't reaching the container or is malformed.
-Check both:
-
-```
-docker compose exec api ls -la /app/backend/app/integrations/timebase/catalog.yaml
-docker compose exec api cat /app/backend/app/integrations/timebase/catalog.yaml | head -20
-docker compose logs api 2>&1 | grep timebase.catalog_load_failed
+# 7. Browser end-to-end
+#    - Site appears in the topbar dropdown
+#    - Deep-link works: /?site_id=<id>
+#    - Time Series page Site dropdown lists the new site
+#    - Chart titles render the friendly CHART_LABEL (e.g. "TOTAL TONS FED")
+#      rather than raw metric keys ("Total") -- confirms MES.RUN_REPORTS_CONFIG
+#      resolution is reaching the dashboard. The formula line ("C1+C8-C7")
+#      stays as the raw expression by design.
 ```
 
-If `ls` shows the file as a *directory* (0-byte, weird), the host
-file was missing when `docker compose up` ran and Docker created an
-empty directory at the bind-mount target. Fix: restore
-`catalog.yaml` from git (`git checkout backend/app/integrations/timebase/catalog.yaml`),
-then `docker compose down && docker compose up -d` to remount.
+## 6. Common failures
 
-If the file content looks wrong (corrupted, empty, or missing
-required fields), the lifespan log will say which key failed
-validation. Fix in the host file and `docker compose restart api`.
+| Symptom | Cause | Fix |
+|---|---|---|
+| `[Errno -2] Name or service not known` from any source | `extra_hosts` missing in compose, or you ran `restart` instead of `up -d` | Add the line; `docker compose down && up -d`. |
+| `/api/timebase/catalog` returns `historian.example.invalid:4511` for the new site | catalog.yaml not edited / not picking up | Verify the file in the container: `docker compose exec api cat /app/backend/app/integrations/timebase/catalog.yaml` |
+| `401 Unauthorized` from Flow | Wrong bearer token, or no `PMD_FLOW_API_KEY_<id>` in `.env` for this site | Add / fix the token in `.env`, `docker compose down && up -d`. Logs say `flow_client.created` with `per_site_key_sites=[...]`. |
+| `404 Unknown Timebase site_id` | catalog.yaml has no `sites."<id>"` block | Add the block, restart. |
+| `/api/sites` doesn't list the new site | `_DEFAULT_SITE_NAMES` missing the entry **and** no SQL data exists yet | Add the entry to `config.py`; rebuild. |
+| Tag tree returns empty data | Department prefix or asset placement in catalog doesn't match the actual SCADA path | `curl http://<hostname>:4511/v2/elements?path=<dataset>:&maxDepth=4` and align catalog.yaml to what you see |
+| Chart titles show raw metric keys (`Total`, `Rate`) instead of friendly names (`TOTAL TONS FED`, etc.) | New site has no matching row in `MES.RUN_REPORTS_CONFIG` and the global `(0, 0)` fallback row is also absent or has `ACTIVE = 0` / `RETIRED = 1` | Verify the global fallback row exists first (`SELECT * FROM ... WHERE SITE_ID = 0 AND DEPARTMENT_ID = 0 AND ACTIVE = 1 AND RETIRED = 0`); if you want a site-specific title, INSERT with the new SITE_ID. Wait up to 5 min for TTL or `docker compose restart api`. (Formula expressions like `C1+C8-C7` are NOT affected by this table — they always render raw.) |
 
-### Tag-tree divergence — the new site's tag suffixes don't match
+## 7. Related references
 
-The `asset_classes.<class>.metrics.<key>.suffix` field is currently
-shared across every site (e.g. all conveyors expose
-`Process_Data/Belt_Scale/TPH`). If the new site has a different layout —
-say, Belt Scale lives at `Sensors/Belt/TPH` instead of
-`Process_Data/Belt_Scale/TPH` — you have two options:
-
-1. **Best**: get the new site's SCADA team to bring the tag tree into
-   convention. This is a one-time pain that pays back forever — the
-   shared registry stays clean.
-2. **Compromise**: add a per-site suffix override capability to the
-   catalog (not implemented today; would be a schema v3 change). Don't
-   do this for one site; do it only if multiple sites need it.
-
-### `/api/health` shows the new site as `ok: false` but the IP IS reachable from the host
-
-The container's network is different from the host's. The container
-reaches the plant box via the Docker bridge network, not the host's
-network stack directly. If `ping <sitehost>` works from the host but
-not from `docker compose exec api ping <sitehost>`, the issue is
-either:
-
-1. `extra_hosts` isn't set (see DNS troubleshooting above), or
-2. The Docker bridge network can't route to the plant subnet. This is
-   a Linux networking concern, usually solved by enabling
-   `network_mode: host` in compose (last resort — breaks port
-   isolation) or by configuring the host's iptables to NAT the
-   container's outbound traffic. Talk to whoever owns the prod server.
-
-## Related references
-
-- `docker-compose.yml` — `extra_hosts` block (and its comment).
-- `backend/app/integrations/timebase/catalog.yaml` — header documents
-  the schema (sites + departments + asset placement), the URL
-  convention, and editing patterns for the three common cases (add
-  metric, add asset, move asset between depts).
-- `RUNBOOK.md` § "Adding a new site" — short pointer back to this doc.
-- `CLAUDE.md` § "Where new content goes" — conventions for where new
-  config and code live in the repo.
+- `docker-compose.yml` — extra_hosts block + bind-mount block + their comments
+- `backend/app/integrations/timebase/catalog.yaml` — header documents the schema and editing patterns
+- `backend/.env.example` — documents the per-site Flow key env var pattern
+- `RUNBOOK.md` — operational reference (URLs, troubleshooting, etc.)

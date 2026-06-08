@@ -1,7 +1,12 @@
 """Chart label lookup.
 
-The dashboard renders calcs lines such as ``Total = C1+C8-C7``. The
-left-hand label was the raw metric key (``Total``, ``Rate``, ``Yield``,
+Each chart panel has a **title** (e.g. ``TOTAL TONS FED``) and a
+**formula expression** rendered just under it (e.g. ``C1+C8-C7``).
+Only the title is resolved here. The formula always renders as the
+raw conveyor expression -- it describes the calculation, not the
+display name, and is not relabeled.
+
+Title was originally the raw metric key (``Total``, ``Rate``, ``Yield``,
 ``Performance``, ``Availability``); we now resolve it to a human-readable
 display name from the existing ``[IA_ENTERPRISE].[MES].[RUN_REPORTS_CONFIG]``
 table family (the same three tables that drive the legacy
