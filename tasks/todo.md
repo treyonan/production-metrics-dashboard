@@ -3852,3 +3852,34 @@ pattern.
   mirroring the existing trends behavior. Each view is fetched once per
   visit; no redundant fetches. Site change anywhere -> both views correct.
 - `node --check frontend/app.js` -> PASS.
+
+## Phase 30 -- Collapsible conveyor-totals chart on dashboard (IMPLEMENTED 2026-06-08, browser QA pending)
+
+Each department panel's conveyor bar chart is now collapsible. The
+per-conveyor table stays put; only the chart collapses.
+
+- **Header**: the existing "Conveyor Total -- N tons -- N conveyors, N
+  report(s)" subtitle is now a clickable toggle (`role=button`,
+  keyboard-accessible) with a leading chevron: points **down** when
+  collapsed, rotates **up** (`.open`, 180deg) when expanded.
+- **Default collapsed.** Chart is **lazy-built on first expand** -- a
+  collapsed section builds no Chart.js instance at all.
+- **State persists** across re-renders (poll refresh / theme toggle /
+  selection change) via module-level `_expandedConveyorSections`
+  (keyed `siteId:deptId`, in-memory, reset on reload). Without this an
+  open chart would snap shut on every poll tick.
+- On re-expand of an already-built chart, `chart.resize()` is called
+  (Chart.js needs a nudge after returning from display:none).
+- Files: `frontend/app.js` (renderConveyorChart split into header +
+  `_toggleConveyorSection` + `_buildConveyorChartInto`; both call sites
+  pass a sectionKey), `frontend/app.css` (`.conveyor-toggle*`).
+- `node --check` PASS; CSS braces balanced.
+
+### Browser QA for Trey
+- [ ] Each department's conveyor chart starts collapsed, showing
+      "v CONVEYOR TOTAL ... tons" header; table above still visible.
+- [ ] Clicking the header expands the chart; chevron flips up.
+- [ ] Clicking again collapses; chevron flips down.
+- [ ] Expanded section stays open across a poll refresh + theme toggle.
+- [ ] Chart sizes correctly on expand (no 0-height canvas).
+- [ ] Keyboard: Tab to header, Enter/Space toggles.

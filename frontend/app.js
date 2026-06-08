@@ -104,6 +104,11 @@
   // Conveyor totals are stashed per-poll before panel renderers run so
   // they can read per-workcenter aggregates without a signature change.
   let _currentConveyorTotals = null;
+  // Phase 30: which conveyor-total sections (keyed "siteId:deptId")
+  // are expanded. Default collapsed; held in-memory so a poll refresh /
+  // theme re-render doesn't snap an open section shut. Intentionally not
+  // localStorage -- a per-session UI state, reset on reload.
+  const _expandedConveyorSections = new Set();
   // Most recent /range payload; used for theme-toggle rerender (Phase 5)
   // and Export (Phase 6) without hitting the API again.
   let _lastPayload = null;
@@ -718,7 +723,7 @@
         el("div", { class: "mxw" }, table),
         (() => {
           const chartHost = el("div", { class: "wc-chart" });
-          renderConveyorChart(chartHost, getConveyorTotalsFor(entry.site_id, entry.department_id));
+          renderConveyorChart(chartHost, getConveyorTotalsFor(entry.site_id, entry.department_id), entry.site_id + ":" + entry.department_id);
           return chartHost;
         })(),
       ]),
@@ -796,7 +801,7 @@
         el("div", { class: "mxw" }, table),
         (() => {
           const chartHost = el("div", { class: "wc-chart" });
-          renderConveyorChart(chartHost, getConveyorTotalsFor(latest.site_id, deptId));
+          renderConveyorChart(chartHost, getConveyorTotalsFor(latest.site_id, deptId), latest.site_id + ":" + deptId);
           return chartHost;
         })(),
       ]),
@@ -916,7 +921,7 @@
     };
   }
 
-  function renderConveyorChart(hostEl, totals) {
+  function renderConveyorChart(hostEl, totals, sectionKey) {
     const empty =
       !totals ||
       !totals.per_conveyor ||
@@ -929,13 +934,70 @@
 
     const convLabel = totals.conveyors_counted === 1 ? "conveyor" : "conveyors";
     const reportLabel = totals.reports_counted === 1 ? "report" : "reports";
-    hostEl.appendChild(el("div", { class: "chart-subtitle" }, [
+
+    // Phase 30: the conveyor-totals chart is collapsible. The subtitle
+    // line doubles as a clickable toggle header (arrow + "Conveyor Total"
+    // + summary); only the bar chart collapses -- the per-conveyor table
+    // above stays put. Default collapsed; the chart is lazy-built on the
+    // first expand (collapsed sections cost nothing), and open/closed
+    // state persists across re-renders via _expandedConveyorSections.
+    const expanded = sectionKey ? _expandedConveyorSections.has(sectionKey) : false;
+
+    const body = el("div", { class: "conveyor-collapse-body" });
+    body.style.display = expanded ? "" : "none";
+
+    const arrow = el("span",
+      { class: "conveyor-toggle-arrow" + (expanded ? " open" : ""), "aria-hidden": "true" });
+    arrow.innerHTML =
+      '<svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" '
+      + 'stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg>';
+
+    const header = el("div", {
+      class: "chart-subtitle conveyor-toggle",
+      role: "button",
+      tabindex: "0",
+      "aria-expanded": expanded ? "true" : "false",
+      onclick: () => _toggleConveyorSection(sectionKey, header, arrow, body, totals),
+      onkeydown: (ev) => {
+        if (ev.key === "Enter" || ev.key === " ") {
+          ev.preventDefault();
+          _toggleConveyorSection(sectionKey, header, arrow, body, totals);
+        }
+      },
+    }, [
+      arrow,
       el("span", { class: "chart-subtitle-label" }, "Conveyor Total"),
       el("span", { class: "chart-subtitle-value" }, `${fmtInt(totals.grand_total)} tons`),
       el("span", { class: "chart-subtitle-meta muted" },
         `${totals.conveyors_counted} ${convLabel}, ${totals.reports_counted} ${reportLabel}`),
-    ]));
+    ]);
 
+    hostEl.appendChild(header);
+    hostEl.appendChild(body);
+
+    if (expanded) _buildConveyorChartInto(body, totals);
+  }
+
+  // Toggle a conveyor section open/closed. Lazy-builds the chart on the
+  // first expand, and resizes it on later expands (Chart.js needs a nudge
+  // after a container returns from display:none). Persists the choice.
+  function _toggleConveyorSection(sectionKey, header, arrow, body, totals) {
+    const willExpand = body.style.display === "none";
+    body.style.display = willExpand ? "" : "none";
+    arrow.classList.toggle("open", willExpand);
+    header.setAttribute("aria-expanded", willExpand ? "true" : "false");
+    if (sectionKey) {
+      if (willExpand) _expandedConveyorSections.add(sectionKey);
+      else _expandedConveyorSections.delete(sectionKey);
+    }
+    if (willExpand) {
+      if (!body.querySelector("canvas")) _buildConveyorChartInto(body, totals);
+      else if (body._chart) body._chart.resize();
+    }
+  }
+
+  // Build the Chart.js bar chart for a conveyor section into wrapEl.
+  function _buildConveyorChartInto(wrapEl, totals) {
     // Sort conveyors ascending by numeric suffix (C1, C2, C3, ...)
     // regardless of insertion order in totals.per_conveyor. Backend
     // already returns sorted keys; the client-side recomputation path
@@ -950,7 +1012,7 @@
     });
 
     const canvas = el("canvas", { class: "conveyor-chart-canvas" });
-    hostEl.appendChild(el("div", { class: "chart-wrap" }, canvas));
+    wrapEl.appendChild(el("div", { class: "chart-wrap" }, canvas));
 
     const colors = _themeColors();
     const chart = new Chart(canvas.getContext("2d"), {
@@ -976,6 +1038,7 @@
       },
     });
     _chartInstances.add(chart);
+    wrapEl._chart = chart;
   }
 
   // --- XLSX export (Phase 6 / Phase 7) -------------------------------
