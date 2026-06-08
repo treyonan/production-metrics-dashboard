@@ -436,3 +436,40 @@ async def test_circuit_rollup_falls_back_to_total_over_runtime_when_rate_absent(
     main = depts[0].circuits[0]
     # Per-report TPH via fallback: 400/2=200, 300/1=300. Mean = 250.
     assert main.buckets[0].avg_tph == pytest.approx(250.0)
+
+
+@pytest.mark.asyncio
+async def test_circuit_rollup_daily_buckets_per_day() -> None:
+    """Phase 29: two reports on different days -> two daily entries per
+    node, each labelled YYYY-MM-DD."""
+    rows = [
+        _row(
+            row_id=1,
+            prod_date=datetime(2026, 4, 1),
+            circuit=_circuit_with_lines(
+                main_total=400.0, main_runtime=2.0, main_yield=0.5,
+                line_a_total=150.0, line_a_runtime=1.0, line_a_yield=0.2,
+                line_b_total=250.0, line_b_runtime=1.0, line_b_yield=0.3,
+            ),
+        ),
+        _row(
+            row_id=2,
+            prod_date=datetime(2026, 4, 2),
+            circuit=_circuit_with_lines(
+                main_total=600.0, main_runtime=2.0, main_yield=0.7,
+                line_a_total=250.0, line_a_runtime=1.0, line_a_yield=0.3,
+                line_b_total=350.0, line_b_runtime=1.0, line_b_yield=0.4,
+            ),
+        ),
+    ]
+    depts = await get_circuit_rollup(
+        _FakeSource(rows),
+        site_id="101",
+        bucket="daily",
+        from_date=date(2026, 4, 1),
+        to_date=date(2026, 4, 2),
+    )
+    main = next(c for c in depts[0].circuits if c.description == "Main Circuit")
+    assert [m.bucket_label for m in main.buckets] == ["2026-04-01", "2026-04-02"]
+    assert main.buckets[0].avg_tph == pytest.approx(200.0)
+    assert main.buckets[1].avg_tph == pytest.approx(300.0)

@@ -231,9 +231,10 @@ class RollupEntry(BaseModel):
     )
     bucket_label: str = Field(
         description=(
-            "Bucket identifier. YYYY-MM for monthly buckets (e.g. "
-            "'2026-04'); YYYY for yearly buckets (e.g. '2026'). Sortable "
-            "lexicographically; consumers can plot directly as a category axis."
+            "Bucket identifier. YYYY-MM-DD for daily buckets (e.g. "
+            "'2026-04-15'); YYYY-MM for monthly (e.g. '2026-04'); YYYY for "
+            "yearly (e.g. '2026'). Sortable lexicographically; consumers "
+            "can plot directly as a category axis."
         )
     )
     total_tons: float = Field(
@@ -359,7 +360,7 @@ class RollupResponse(BaseModel):
 class CircuitBucketEntry(BaseModel):
     """One per-(circuit-or-line, month) aggregate on the wire."""
 
-    bucket_label: str = Field(description="Bucket identifier (YYYY-MM for monthly, YYYY for yearly).")
+    bucket_label: str = Field(description="Bucket identifier (YYYY-MM-DD daily, YYYY-MM monthly, YYYY yearly).")
     total_tons: float = Field(description="Sum of node.Total across reports in this month bucket.")
     runtime_hours: float = Field(description="Sum of node.Runtime (decimal hours) across reports.")
     avg_tph: float | None = Field(
@@ -411,7 +412,7 @@ class LineRollup(BaseModel):
 
     line_id: str = Field(description="Payload slot key (e.g. 'A', 'B'). Positional.")
     description: str = Field(description="Operator-facing label from payload (e.g. '57-1').")
-    buckets: list[CircuitBucketEntry] = Field(description="Per-bucket aggregates (monthly or yearly per bucket arg) for this line.")
+    buckets: list[CircuitBucketEntry] = Field(description="Per-bucket aggregates (daily, monthly, or yearly per bucket arg) for this line.")
 
 
 class CircuitRollup(BaseModel):
@@ -419,7 +420,7 @@ class CircuitRollup(BaseModel):
 
     circuit_id: str = Field(description="Payload slot key (e.g. 'A', 'B'). Positional.")
     description: str = Field(description="Operator-facing label from payload (e.g. 'Main Circuit').")
-    buckets: list[CircuitBucketEntry] = Field(description="Per-bucket aggregates (monthly or yearly per bucket arg) for this circuit.")
+    buckets: list[CircuitBucketEntry] = Field(description="Per-bucket aggregates (daily, monthly, or yearly per bucket arg) for this circuit.")
     lines: list[LineRollup] = Field(
         default_factory=list,
         description="Sub-lines under this circuit. Empty when the circuit has no Line sub-structure.",

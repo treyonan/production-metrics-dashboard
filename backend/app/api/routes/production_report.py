@@ -306,14 +306,16 @@ def _to_rollup_entry(
     )
 
 
-BucketLiteral = Literal["monthly", "yearly"]
+BucketLiteral = Literal["daily", "monthly", "yearly"]
 
 # Per-bucket caps on the number of buckets a single response can contain.
 # Keeps a malformed client from accidentally requesting a 500-year scan.
-_MAX_BUCKETS = {"monthly": 37, "yearly": 50}
+_MAX_BUCKETS = {"daily": 31, "monthly": 37, "yearly": 50}
 
 
 def _bucket_count(bucket: str, from_d: date, to_d: date) -> int:
+    if bucket == "daily":
+        return (to_d - from_d).days + 1
     if bucket == "yearly":
         return to_d.year - from_d.year + 1
     return (to_d.year - from_d.year) * 12 + (to_d.month - from_d.month) + 1
@@ -342,7 +344,7 @@ async def rollup(
     chart_labels: ChartLabelsDep,
     bucket: Annotated[
         BucketLiteral,
-        Path(description="Bucket regime: 'monthly' or 'yearly'."),
+        Path(description="Bucket regime: 'daily', 'monthly', or 'yearly'."),
     ],
     site_id: Annotated[str, Query(description="Site to roll up (required).")],
     from_date: Annotated[
@@ -508,7 +510,7 @@ async def circuit_rollup(
     chart_labels: ChartLabelsDep,
     bucket: Annotated[
         BucketLiteral,
-        Path(description="Bucket regime: 'monthly' or 'yearly'."),
+        Path(description="Bucket regime: 'daily', 'monthly', or 'yearly'."),
     ],
     site_id: Annotated[str, Query(description="Site to roll up (required).")],
     from_date: Annotated[date, Query(description="Inclusive window start, YYYY-MM-DD.")],

@@ -358,3 +358,35 @@ async def test_rollup_rejects_unknown_bucket() -> None:
             from_date=date(2026, 1, 1),
             to_date=date(2026, 12, 31),
         )
+
+
+@pytest.mark.asyncio
+async def test_rollup_daily_buckets_per_day() -> None:
+    """Phase 29: reports on distinct days fall into distinct daily
+    buckets, each labelled YYYY-MM-DD (invariant on format, explicit on
+    the two known labels)."""
+    rows = [
+        _row(
+            row_id=1,
+            prod_date=datetime(2026, 4, 1),
+            workcenter={"Rate": 600.0, "Runtime": 5.0, "Scheduled_Runtime": 8.0},
+        ),
+        _row(
+            row_id=2,
+            prod_date=datetime(2026, 4, 3),
+            workcenter={"Rate": 800.0, "Runtime": 5.0, "Scheduled_Runtime": 8.0},
+        ),
+    ]
+    rollups = await get_rollup(
+        _FakeSource(rows),
+        site_id="101",
+        bucket="daily",
+        from_date=date(2026, 4, 1),
+        to_date=date(2026, 4, 3),
+    )
+    import re as _re
+
+    labels = sorted(r.bucket_label for r in rollups)
+    assert labels == ["2026-04-01", "2026-04-03"]
+    for r in rollups:
+        assert _re.match(r"^\d{4}-\d{2}-\d{2}$", r.bucket_label)

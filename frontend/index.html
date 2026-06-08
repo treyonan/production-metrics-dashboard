@@ -243,9 +243,18 @@
         <div class="trends-control-group">
           <label class="filter-label">View</label>
           <div class="trends-bucket-toggle" id="trends-bucket-toggle" role="tablist" aria-label="Bucket selector">
-            <button type="button" class="bucket-btn on" data-bucket="monthly" role="tab" aria-selected="true">Monthly</button>
-            <button type="button" class="bucket-btn"    data-bucket="yearly"  role="tab" aria-selected="false">Yearly</button>
+            <button type="button" class="bucket-btn"    data-bucket="daily"   role="tab" aria-selected="false">Day</button>
+            <button type="button" class="bucket-btn on" data-bucket="monthly" role="tab" aria-selected="true">Month</button>
+            <button type="button" class="bucket-btn"    data-bucket="yearly"  role="tab" aria-selected="false">Year</button>
           </div>
+        </div>
+        <div class="trends-control-group trends-daily-only" id="trends-daily-from-group" style="display:none">
+          <label class="filter-label" for="trends-from-day">From date</label>
+          <input type="date" class="date-input" id="trends-from-day" aria-label="Trends from-date">
+        </div>
+        <div class="trends-control-group trends-daily-only" id="trends-daily-to-group" style="display:none">
+          <label class="filter-label" for="trends-to-day">To date</label>
+          <input type="date" class="date-input" id="trends-to-day" aria-label="Trends to-date">
         </div>
         <div class="trends-control-group trends-monthly-only" id="trends-monthly-from-group">
           <label class="filter-label" for="trends-from-month">From month</label>

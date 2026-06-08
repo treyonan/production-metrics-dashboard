@@ -305,7 +305,7 @@ class Rollup:
 
     department_id: str
     department_name: str
-    bucket_label: str  # YYYY-MM for monthly, YYYY for yearly
+    bucket_label: str  # YYYY-MM-DD daily, YYYY-MM monthly, YYYY yearly
     total_tons: float
     total_runtime_hours: float
     report_count: int
@@ -514,9 +514,9 @@ async def get_rollup(
     Raises:
         ValueError -- if from_month > to_month.
     """
-    if bucket not in ("monthly", "yearly"):
+    if bucket not in ("daily", "monthly", "yearly"):
         raise ValueError(
-            f"bucket must be 'monthly' or 'yearly'; got {bucket!r}."
+            f"bucket must be 'daily', 'monthly', or 'yearly'; got {bucket!r}."
         )
     if from_date > to_date:
         raise ValueError(
@@ -535,11 +535,13 @@ async def get_rollup(
         if from_date <= r.prod_date.date() <= to_date
     ]
 
-    # Group by (department_id, bucket-label). Bucket label is YYYY-MM
-    # for monthly, YYYY for yearly.
+    # Group by (department_id, bucket-label). Bucket label is
+    # YYYY-MM-DD for daily, YYYY-MM for monthly, YYYY for yearly.
     grouped: dict[tuple[str, str], list[ProductionReportRow]] = defaultdict(list)
     for r in rows:
-        if bucket == "yearly":
+        if bucket == "daily":
+            label = f"{r.prod_date.year:04d}-{r.prod_date.month:02d}-{r.prod_date.day:02d}"
+        elif bucket == "yearly":
             label = f"{r.prod_date.year:04d}"
         else:
             label = f"{r.prod_date.year:04d}-{r.prod_date.month:02d}"
@@ -625,7 +627,7 @@ async def get_rollup(
 @dataclass(frozen=True)
 class CircuitBucketEntry:
     """One per-(circuit-or-line, bucket) aggregate."""
-    bucket_label: str  # YYYY-MM for monthly, YYYY for yearly
+    bucket_label: str  # YYYY-MM-DD daily, YYYY-MM monthly, YYYY yearly
     total_tons: float
     runtime_hours: float
     avg_tph: float | None
@@ -772,9 +774,9 @@ async def get_circuit_rollup(
     Raises:
         ValueError -- if from_month > to_month.
     """
-    if bucket not in ("monthly", "yearly"):
+    if bucket not in ("daily", "monthly", "yearly"):
         raise ValueError(
-            f"bucket must be 'monthly' or 'yearly'; got {bucket!r}."
+            f"bucket must be 'daily', 'monthly', or 'yearly'; got {bucket!r}."
         )
     if from_date > to_date:
         raise ValueError(
@@ -836,7 +838,9 @@ async def get_circuit_rollup(
 
             circuit_node_per_report: list[tuple[str, dict[str, Any] | None, datetime]] = []
             for r in dept_rows:
-                if bucket == "yearly":
+                if bucket == "daily":
+                    label = f"{r.prod_date.year:04d}-{r.prod_date.month:02d}-{r.prod_date.day:02d}"
+                elif bucket == "yearly":
                     label = f"{r.prod_date.year:04d}"
                 else:
                     label = f"{r.prod_date.year:04d}-{r.prod_date.month:02d}"
@@ -851,10 +855,13 @@ async def get_circuit_rollup(
                     continue
                 line_node_per_report: list[tuple[str, dict[str, Any] | None, datetime]] = []
                 for r in dept_rows:
-                    if bucket == "yearly":
-                        label = f"{r.prod_date.year:04d}"
+                    pd = r.prod_date
+                    if bucket == "daily":
+                        label = f"{pd.year:04d}-{pd.month:02d}-{pd.day:02d}"
+                    elif bucket == "yearly":
+                        label = f"{pd.year:04d}"
                     else:
-                        label = f"{r.prod_date.year:04d}-{r.prod_date.month:02d}"
+                        label = f"{pd.year:04d}-{pd.month:02d}"
                     cnode = (r.payload or {}).get("Metrics", {}).get("Circuit", {}).get(cid) or {}
                     lnode = cnode.get("Line", {}).get(lid) if isinstance(cnode, dict) else None
                     line_node_per_report.append((label, lnode, r.prod_date))

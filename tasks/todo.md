@@ -3712,3 +3712,119 @@ pages now participate:
   sentence since at least 2026-04-23 (predates this session).
   Re-stitch if anyone remembers what the original text said.
 
+
+## Phase 29 -- Production Charts: add "Day" (daily-range) View (IMPLEMENTED 2026-06-08, browser QA pending)
+
+Add a third bucket regime to the Production Charts (in-page "Trends")
+View selector: **Day**, letting an operator pick a from/to **date**
+range and see per-day bars -- same machinery as Monthly/Yearly, daily
+granularity. Decisions confirmed with Trey: **max range 31 days**;
+**default window last 14 days** ending today.
+
+Why this is small: the bucket is already a parametric
+`Literal` on `/rollup/{bucket}` + `/circuit-rollup/{bucket}`; the
+service computes `bucket_label` in-process (no SQL change -- daily is
+`YYYY-MM-DD`); the frontend render is already bucket-agnostic (sorts
+`bucket_label` lexicographically, which holds for `YYYY-MM-DD`). The
+Phase 18 comment already anticipated "future buckets ... extend the"
+pattern.
+
+### Backend -- routes (`backend/app/api/routes/production_report.py`)
+- [x] `BucketLiteral = Literal["daily", "monthly", "yearly"]` (was monthly/yearly)
+- [x] `_MAX_BUCKETS`: add `"daily": 31`
+- [x] `_bucket_count`: add daily branch -> `(to_d - from_d).days + 1`
+- [x] Refresh `Path(...)` + route `description` text to mention daily / YYYY-MM-DD
+
+### Backend -- service (`backend/app/services/production_report.py`)
+- [x] `get_rollup`: relax guard `bucket not in (...)` to include "daily";
+      add label branch `elif bucket == "daily": f"{y:04d}-{m:02d}-{d:02d}"`
+- [x] `get_circuit_rollup`: same guard relax + both label sites
+      (the two `if bucket == "yearly"` blocks) get a daily branch
+
+### Frontend -- markup (`frontend/index.html`)
+- [x] Add `<button data-bucket="daily">Day</button>` to `#trends-bucket-toggle`
+      (leftmost: Day | Monthly | Yearly -- finest granularity first)
+- [x] Two `trends-control-group trends-daily-only` blocks with
+      `<input type="date" id="trends-from-day">` / `trends-to-day`
+
+### Frontend -- logic (`frontend/app.js`)
+- [x] `_setActiveTrendsBucket`: accept "daily" in the guard
+- [x] `_applyBucketUi`: toggle `.trends-daily-only` (shown iff bucket==="daily")
+- [x] `_trendsRange`: daily branch reads the two date inputs ->
+      `{ bucket: "daily", from_date, to_date }`
+- [x] `populateTrendsRangeDefaults`: default the date inputs to
+      [today-13d .. today] (last 14 days inclusive)
+- [x] `wireTrendsControls`: add `trends-from-day`/`trends-to-day` to the
+      change-listener id list
+- [x] `node --check frontend/app.js` after edits (per lessons)
+
+### Tests (`backend/tests/`)
+- [x] `api/test_production_report.py`: daily envelope-shape happy path
+      (`bucket == "daily"`, label matches `^\d{4}-\d{2}-\d{2}$`),
+      31-day cap rejects a 32-day window (422)
+- [x] `services/test_rollup.py` + `services/test_circuit_rollup.py`:
+      daily `bucket_label` format. Assertions as invariants (regex),
+      not literal-date snapshots.
+
+### Verification
+- [x] `cd backend && pytest` (sandbox is 3.10; Trey's Windows 3.12 venv
+      is authoritative -- flag for him to confirm)
+- [x] `ruff check . && ruff format .` on touched backend files
+- [x] `node --check frontend/app.js`
+- [x] Manual browser QA flagged to Trey: Day toggle shows date pickers,
+      fetch fires on change, bars render per-day, x-axis sorts ascending,
+      Excel export "Bucket" column carries YYYY-MM-DD, deep-link
+      `?site_id=` preserved, theme-toggle re-render keeps daily data.
+
+### Out of scope (not doing unless asked)
+- No SQL/query-file changes (bucketing stays in-process).
+- No new chart types; daily reuses the existing per-bucket bar render.
+- Export filename scheme unchanged (already timestamp-based).
+
+
+### Verification outcome (2026-06-08)
+- `node --check frontend/app.js` -> PASS.
+- `py_compile` clean on all touched backend + test files.
+- `ruff check` (project ruff.toml): my changes add **zero** new lint
+  errors. Measured delta vs HEAD per file = 0 (one transient E501 from
+  the deepest daily-label line was fixed with a local `pd = r.prod_date`
+  alias). Pre-existing E501/E741 in these files are unchanged baseline.
+- `ruff format`: repo is NOT format-clean at HEAD (every touched file
+  already carries format hunks the team tolerates). Did NOT run a
+  repo-wide `ruff format` (would churn unrelated lines). The one new
+  test (`test_circuit_rollup_daily_buckets_per_day`) deliberately mirrors
+  the file's existing compact multi-arg style for sibling-consistency.
+- Full `pytest` suite could NOT run in the sandbox: `app/core/snapshot.py`
+  uses PEP 695 generics (`class Snapshot[T]:`) + `from datetime import UTC`,
+  both 3.11/3.12-only; sandbox is 3.10 and there's no network path to
+  fetch 3.12. **Trey's Windows 3.12 venv remains authoritative** for the
+  api-level TestClient tests.
+- Core daily logic WAS verified under 3.10 (with a startup shim for
+  `datetime.UTC`) by driving `get_rollup` + `get_circuit_rollup` directly
+  with the real test fixtures: daily labels = YYYY-MM-DD, monthly/yearly
+  regression intact, bad-bucket guard raises. All passed.
+
+### Browser QA checklist for Trey (run on dev)
+- [ ] Production Charts -> View shows **Day | Monthly | Yearly**; Day is leftmost.
+- [ ] Selecting Day reveals two `type=date` pickers (From/To), defaulting
+      to the last 14 days; Monthly/Yearly pickers hide.
+- [ ] Changing either date fires an immediate refetch (no 30s wait).
+- [ ] Per-day bars render; x-axis is in ascending date order.
+- [ ] A >31-day span is rejected (422 surfaced as the trends error bar).
+- [ ] Excel export "Bucket" column carries YYYY-MM-DD for the daily view.
+- [ ] Deep-link `?site_id=` is preserved when switching to/within Day view.
+- [ ] Theme toggle while on Day view keeps the daily data (no blank panels).
+- [ ] Choice of Day persists across reload (localStorage `pmd-trends-bucket`).
+
+### Phase 29 follow-ups (2026-06-08, post-QA from Trey)
+- **Friendly Day-cap banner**: `refreshTrends` now pre-validates the
+  daily range client-side (mirrors backend `_MAX_BUCKETS["daily"] = 31`).
+  >31 days -> "Day view is limited to 31 days. Pick a shorter range.";
+  inverted range -> "To date must be on or after From date." No request
+  is fired in either case, so the raw `HTTP 422` URL no longer surfaces.
+  Verified day-count math: 2026-05-08..2026-06-08 = 32 days -> banner;
+  31-day span fetches.
+- **Label rename for consistency with Day**: View toggle now reads
+  **Day | Month | Year** (was Monthly/Yearly). `data-bucket` values
+  ("monthly"/"yearly") unchanged -- pure label change, backend untouched.
+- `node --check frontend/app.js` -> PASS.

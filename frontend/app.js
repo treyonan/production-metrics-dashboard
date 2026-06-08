@@ -182,12 +182,12 @@
   let _activeTrendsTab = "overview";
   // Phase 18: which bucket the Trends view currently shows. Persists in
   // localStorage so the choice carries across reloads. Toggles between
-  // "monthly" and "yearly"; future buckets (weekly/quarterly) extend the
-  // Literal in the backend route -- this state goes wherever they go.
+  // "daily", "monthly", and "yearly"; future buckets (weekly/quarterly)
+  // extend the Literal in the backend route -- this state goes with them.
   let _activeTrendsBucket = "monthly";
   try {
     const _storedBucket = localStorage.getItem("pmd-trends-bucket");
-    if (_storedBucket === "monthly" || _storedBucket === "yearly") {
+    if (_storedBucket === "daily" || _storedBucket === "monthly" || _storedBucket === "yearly") {
       _activeTrendsBucket = _storedBucket;
     }
   } catch (_e) { /* localStorage unavailable in some embeds */ }
@@ -2210,6 +2210,20 @@
     if (fromInput) fromInput.value = `${fromY}-${pad2(fromM)}`;
     if (toInput) toInput.value = `${toY}-${pad2(toM)}`;
 
+    // Phase 29: default daily range = last 14 days inclusive
+    // (today-13 .. today). Local date components -- avoids the UTC
+    // off-by-one that toISOString() causes in evening Central hours.
+    const _isoDay = (d) =>
+      `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+    const fromDayInput = $("trends-from-day");
+    const toDayInput = $("trends-to-day");
+    if (toDayInput && !toDayInput.value) toDayInput.value = _isoDay(now);
+    if (fromDayInput && !fromDayInput.value) {
+      const f = new Date(now);
+      f.setDate(f.getDate() - 13);
+      fromDayInput.value = _isoDay(f);
+    }
+
     // Phase 18: populate yearly selects with 2020..currentYear.
     // Default selection: last 5 years ending at current year.
     const fromYearSel = $("trends-from-year");
@@ -2240,7 +2254,8 @@
 
   function wireTrendsControls() {
     const monthInputs = ["trends-from-month", "trends-to-month",
-                         "trends-from-year", "trends-to-year"];
+                         "trends-from-year", "trends-to-year",
+                         "trends-from-day", "trends-to-day"];
     const onChange = () => {
       if (currentView === "trends" && currentSiteId) refreshTrends();
     };
@@ -2275,7 +2290,7 @@
   // Phase 18: switch between Monthly and Yearly bucket modes. Persists
   // to localStorage so the choice survives reloads.
   function _setActiveTrendsBucket(bucket) {
-    if (bucket !== "monthly" && bucket !== "yearly") return;
+    if (bucket !== "daily" && bucket !== "monthly" && bucket !== "yearly") return;
     if (bucket === _activeTrendsBucket) return;
     _activeTrendsBucket = bucket;
     try { localStorage.setItem("pmd-trends-bucket", bucket); } catch (_e) {}
@@ -2298,6 +2313,9 @@
       const on = btn.dataset.bucket === bucket;
       btn.classList.toggle("on", on);
       btn.setAttribute("aria-selected", on ? "true" : "false");
+    }
+    for (const elx of document.querySelectorAll(".trends-daily-only")) {
+      elx.style.display = bucket === "daily" ? "" : "none";
     }
     for (const elx of document.querySelectorAll(".trends-monthly-only")) {
       elx.style.display = bucket === "monthly" ? "" : "none";
@@ -2331,6 +2349,17 @@
   }
 
   function _trendsRange() {
+    if (_activeTrendsBucket === "daily") {
+      // <input type="date"> value is already YYYY-MM-DD (local-date based).
+      const fromDay = ($("trends-from-day") || {}).value || "";
+      const toDay = ($("trends-to-day") || {}).value || "";
+      if (!fromDay || !toDay) return null;
+      return {
+        bucket: "daily",
+        from_date: fromDay,
+        to_date: toDay,
+      };
+    }
     if (_activeTrendsBucket === "yearly") {
       const fromY = parseInt(($("trends-from-year") || {}).value || "0", 10);
       const toY = parseInt(($("trends-to-year") || {}).value || "0", 10);
@@ -2359,6 +2388,25 @@
     if (!currentSiteId) return;
     const range = _trendsRange();
     if (!range) return;
+
+    // Phase 29: client-side guard for the Day view so an oversized or
+    // inverted range shows a friendly banner instead of a raw HTTP 422.
+    // Mirrors the backend daily cap (_MAX_BUCKETS["daily"] = 31).
+    if (range.bucket === "daily") {
+      const fromMs = Date.parse(`${range.from_date}T00:00:00`);
+      const toMs = Date.parse(`${range.to_date}T00:00:00`);
+      if (Number.isFinite(fromMs) && Number.isFinite(toMs)) {
+        if (toMs < fromMs) {
+          _showTrendsError("To date must be on or after From date.");
+          return;
+        }
+        const dayCount = Math.round((toMs - fromMs) / 86400000) + 1;
+        if (dayCount > 31) {
+          _showTrendsError("Day view is limited to 31 days. Pick a shorter range.");
+          return;
+        }
+      }
+    }
 
     const status = $("trends-status");
     if (status) status.textContent = "Loading...";

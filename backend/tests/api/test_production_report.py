@@ -447,3 +447,82 @@ def test_rollup_unknown_site_returns_empty(client) -> None:
     assert body["rollups"] == []
 
 
+
+
+# ---- /rollup/daily (Phase 29) -----------------------------------------
+
+
+def test_rollup_daily_returns_envelope_shape(client) -> None:
+    """Phase 29: daily bucket happy path over a sub-31-day window.
+
+    Site 101 sample data carries consecutive daily reports across early
+    April 2026, so this window yields several daily buckets.
+    """
+    resp = client.get(
+        "/api/production-report/rollup/daily",
+        params={
+            "site_id": "101",
+            "from_date": "2026-04-01",
+            "to_date": "2026-04-22",
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["site_id"] == "101"
+    assert body["bucket"] == "daily"
+    assert body["from_date"] == "2026-04-01"
+    assert body["to_date"] == "2026-04-22"
+    assert isinstance(body["rollups"], list)
+    assert len(body["rollups"]) > 0
+
+
+def test_rollup_daily_bucket_label_is_ymd(client) -> None:
+    """Phase 29: every daily bucket_label is YYYY-MM-DD (invariant, not a
+    specific-date snapshot)."""
+    import re as _re
+
+    resp = client.get(
+        "/api/production-report/rollup/daily",
+        params={
+            "site_id": "101",
+            "from_date": "2026-04-01",
+            "to_date": "2026-04-22",
+        },
+    )
+    body = resp.json()
+    assert body["rollups"]
+    for r in body["rollups"]:
+        assert _re.match(r"^\d{4}-\d{2}-\d{2}$", r["bucket_label"]), r["bucket_label"]
+
+
+def test_rollup_rejects_oversized_daily_window(client) -> None:
+    """Phase 29: a 32-day window exceeds the 31-daily-bucket cap -> 422."""
+    resp = client.get(
+        "/api/production-report/rollup/daily",
+        params={
+            "site_id": "101",
+            "from_date": "2026-03-01",
+            "to_date": "2026-04-01",
+        },
+    )
+    assert resp.status_code == 422
+
+
+def test_circuit_rollup_daily_bucket_label_is_ymd(client) -> None:
+    """Phase 29: circuit-rollup daily buckets also use YYYY-MM-DD labels."""
+    import re as _re
+
+    resp = client.get(
+        "/api/production-report/circuit-rollup/daily",
+        params={
+            "site_id": "101",
+            "from_date": "2026-04-01",
+            "to_date": "2026-04-22",
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    for dept in body["departments"]:
+        for circuit in dept["circuits"]:
+            for b in circuit["buckets"]:
+                assert _re.match(r"^\d{4}-\d{2}-\d{2}$", b["bucket_label"]), b["bucket_label"]
