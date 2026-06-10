@@ -2928,7 +2928,7 @@
         labels: months,
         datasets: [buildCircuitDataset((e) => e.avg_yield, baseColor)],
         yLabel: "Yield",
-        yFormat: (v) => `${fmt1(v)}%`,
+        yFormat: (v) => `${v.toFixed(2)}`,        
         chartType: "bar",
       }));
 
@@ -2968,7 +2968,7 @@
         labels: months,
         datasets: buildPerLineDatasets((e) => e.avg_yield),
         yLabel: "Yield",
-        yFormat: (v) => `${fmt1(v)}%`,
+        yFormat: (v) => `${v.toFixed(2)}`,  
         chartType: "bar",
       }));
     } else {
@@ -2981,7 +2981,7 @@
         labels: months,
         datasets: [buildCircuitDataset((e) => e.total_tons, baseColor)],
         yLabel: "Tons",
-        yFormat: (v) => `${fmtInt(v)} t`,
+        yFormat: (v) => `${v.toFixed(2)}`,  
         chartType: "bar",
       }));
       grid.appendChild(_renderTrendPanel({
@@ -3001,7 +3001,7 @@
         labels: months,
         datasets: [buildCircuitDataset((e) => e.avg_yield, baseColor)],
         yLabel: "Yield",
-        yFormat: (v) => `${fmt1(v)}%`,
+        yFormat: (v) => `${v.toFixed(2)}`,  
         chartType: "bar",
       }));
     }
