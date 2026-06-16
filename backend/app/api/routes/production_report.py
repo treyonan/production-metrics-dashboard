@@ -446,6 +446,8 @@ def _to_pyd_circuit_entry(
         runtime_hours=e.runtime_hours,
         avg_tph=e.avg_tph,
         avg_yield=e.avg_yield,
+        avg_performance=e.avg_performance,             # Phase 32
+        avg_availability=e.avg_availability,           # Phase 32
         report_count=e.report_count,
         calcs=e.calcs,                                  # Phase 22
         calcs_labels=_resolve_labels_for_calcs(         # Phase 25

@@ -473,3 +473,64 @@ async def test_circuit_rollup_daily_buckets_per_day() -> None:
     assert [m.bucket_label for m in main.buckets] == ["2026-04-01", "2026-04-02"]
     assert main.buckets[0].avg_tph == pytest.approx(200.0)
     assert main.buckets[1].avg_tph == pytest.approx(300.0)
+
+
+@pytest.mark.asyncio
+async def test_circuit_performance_aggregated_only_when_present() -> None:
+    """Phase 32: a circuit node carrying Performance (value + Calcs entry)
+    yields a non-null avg_performance (simple mean); a circuit without it
+    stays None. Availability is None for both here."""
+    circuit_r1 = {
+        "A": {
+            "Description": "57s", "Total": 750.0, "Runtime": 2.0, "Yield": 1.0,
+            "Performance": 40.0,
+            "Calcs": {
+                "Total": {"Formula": "C4+C5"},
+                "Performance": {"Formula": "(57s Total/57s Runtime)/57s Ideal Rate"},
+            },
+        },
+        "B": {
+            "Description": "Crusher Run", "Total": 130.0, "Runtime": 1.0, "Yield": 1.0,
+            "Calcs": {"Total": {"Formula": "C8 Total"}},
+        },
+    }
+    circuit_r2 = {
+        "A": {**circuit_r1["A"], "Performance": 60.0},
+        "B": circuit_r1["B"],
+    }
+    rows = [
+        _row(row_id=1, prod_date=datetime(2026, 4, 1), circuit=circuit_r1),
+        _row(row_id=2, prod_date=datetime(2026, 4, 2), circuit=circuit_r2),
+    ]
+    depts = await get_circuit_rollup(
+        _FakeSource(rows), site_id="101", bucket="monthly",
+        from_date=date(2026, 4, 1), to_date=date(2026, 4, 30),
+    )
+    circuits = {c.description: c for c in depts[0].circuits}
+    a = circuits["57s"].buckets[0]
+    b = circuits["Crusher Run"].buckets[0]
+    assert a.avg_performance == pytest.approx(50.0)   # mean(40, 60)
+    assert b.avg_performance is None                  # never reported
+    assert a.avg_availability is None and b.avg_availability is None
+    # Performance also flows into calcs, which is the frontend's gate.
+    assert a.calcs is not None and "Performance" in a.calcs
+
+
+@pytest.mark.asyncio
+async def test_circuit_availability_aggregated_when_present() -> None:
+    """Phase 32: Availability is aggregated when a circuit node carries it."""
+    circuit = {
+        "A": {
+            "Description": "57s", "Total": 100.0, "Runtime": 1.0, "Yield": 1.0,
+            "Availability": 80.0,
+            "Calcs": {"Availability": {"Formula": "..."}},
+        },
+    }
+    rows = [_row(row_id=1, prod_date=datetime(2026, 4, 1), circuit=circuit)]
+    depts = await get_circuit_rollup(
+        _FakeSource(rows), site_id="101", bucket="monthly",
+        from_date=date(2026, 4, 1), to_date=date(2026, 4, 30),
+    )
+    a = depts[0].circuits[0].buckets[0]
+    assert a.avg_availability == pytest.approx(80.0)
+    assert a.avg_performance is None

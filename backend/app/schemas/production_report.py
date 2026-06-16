@@ -379,6 +379,23 @@ class CircuitBucketEntry(BaseModel):
             "Yield value."
         ),
     )
+    avg_performance: float | None = Field(
+        default=None,
+        description=(
+            "Phase 32. Simple mean of per-report node.Performance (percent). "
+            "Null when no node in the bucket carries a Performance value -- "
+            "the frontend renders a Performance chart for the circuit/line "
+            "only when this (and a Performance Calcs entry) is present."
+        ),
+    )
+    avg_availability: float | None = Field(
+        default=None,
+        description=(
+            "Phase 32. Simple mean of per-report node.Availability (percent). "
+            "Null when no node in the bucket carries an Availability value. "
+            "Gated the same way as avg_performance on the frontend."
+        ),
+    )
     report_count: int = Field(description="Number of reports contributing to this bucket.")
     calcs: dict[str, str] | None = Field(
         default=None,

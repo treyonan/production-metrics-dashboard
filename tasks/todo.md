@@ -4007,3 +4007,53 @@ returns JSON; (3) SQL account already has EXECUTE on the SP.
 - [ ] >366-day window -> friendly 422 surfaced (not a blank file).
 - [ ] Switching site then exporting pulls the new site's departments.
 - [ ] SP/SQL down -> button shows an error, no blank download.
+
+## Phase 32 -- Conditional circuit/line Performance + Availability charts (IMPLEMENTED 2026-06-08, browser QA pending)
+
+On the Production Charts page, a circuit (or line) now gets a Performance
+and/or Availability chart IFF that metric is present in the node -- gated
+on the node's `Calcs` block (the config-driven "what to show" signal).
+Driven by the updated payload: Circuit A ("57s") carries Performance
+(value 39.09 + a Performance Calcs entry) -> gets a 4th chart; its lines
+and the other circuits (no Performance calc) are unchanged.
+
+### Backend
+- `_circuit_node_aggregate`: new `avg_performance` + `avg_availability`
+  (simple mean of node Performance/Availability, None when no node carries
+  the field). Added to `CircuitBucketEntry` dataclass, Pydantic schema,
+  and the `_to_pyd_circuit_entry` route mapping. `calcs`/`calcs_labels`
+  already carried Performance/Availability through (the extractor walks all
+  Calcs keys), so titles/formulas came for free.
+
+### Frontend (`_renderCircuitSection`)
+- Shared `appendCircuitExtraMetrics()` helper appends a circuit-level
+  Performance/Availability panel only when `_calcsLatestEntry(circuit.buckets,
+  metric)` is truthy. Called after the Yield panel in BOTH the with-lines
+  and line-less branches.
+- Per-line "Performance/Availability by Line" panels appended only when
+  ANY line's Calcs carries the metric (scope = circuits + lines, per Trey).
+- yLabel "%", percent y-format.
+
+### Data
+- `context/sample-data/production-report/payload-example.json` restored to
+  the up-to-date content Trey provided (the disk copy had read/write
+  truncation churn on the mount; rewritten in append-chunks, now valid JSON,
+  more compact formatting but identical data). Windows copy is the
+  formatting source of truth.
+
+### Verification
+- Backend logic verified via standalone driver under the 3.10 shim:
+  circuit A avg_performance = mean(40,60) = 50.0; circuit B (no Performance)
+  -> None; Availability path -> 80.0; lines without the metric -> None
+  (unaffected); Performance present in `calcs` (the frontend gate).
+- New service tests in `tests/services/test_circuit_rollup.py` (run on
+  Trey's 3.12 venv).
+- `ruff check` delta vs HEAD = 0 on every touched file; `node --check` PASS;
+  braces/parens balanced.
+
+### Browser QA for Trey
+- [ ] Circuit "57s" shows a Performance chart after Yield; other circuits don't.
+- [ ] Lines (57-1/57-2) unchanged (Total/TPH/Yield only).
+- [ ] Performance chart title/formula resolve from the Performance Calcs entry.
+- [ ] A circuit/line WITH Availability in Calcs would show an Availability
+      chart (none in current data).

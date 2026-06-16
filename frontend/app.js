@@ -2860,6 +2860,30 @@
     // but kept in the signature for future-proofing.)
     const baseColor = "#ffde74";
 
+    // Phase 32: append a circuit-level Performance / Availability chart
+    // ONLY when the circuit's Calcs carries that metric (the config-driven
+    // signal). Data comes from the avg_performance / avg_availability bucket
+    // fields. Shared by the with-lines and line-less branches below.
+    const appendCircuitExtraMetrics = () => {
+      const extras = [
+        { metric: "Performance", fallback: "Average Performance", get: (e) => e.avg_performance },
+        { metric: "Availability", fallback: "Average Availability", get: (e) => e.avg_availability },
+      ];
+      for (const x of extras) {
+        if (!_calcsLatestEntry(circuit.buckets || [], x.metric)) continue;
+        grid.appendChild(_renderTrendPanel({
+          title: _calcsLabelLatest(circuit.buckets || [], x.metric, x.fallback),
+          subtitle: "",
+          calcsLine: _singleCalcsLine(circuit.buckets || [], x.metric, x.metric),
+          labels: months,
+          datasets: [buildCircuitDataset(x.get, baseColor)],
+          yLabel: "%",
+          yFormat: (v) => `${v.toFixed(1)}%`,
+          chartType: "bar",
+        }));
+      }
+    };
+
     if (hasLines) {
       // Build per-line datasets once -- reused across the three
       // paired-bar panels (TPH/Yield/Tons by Line).
@@ -2932,6 +2956,8 @@
         chartType: "bar",
       }));
 
+      appendCircuitExtraMetrics();
+
       grid.appendChild(_renderTrendPanel({
         title: _calcsLabelLatest(circuit.buckets || [], "Total", "Total Tons") + " by Line",
         subtitle: "",
@@ -2971,6 +2997,29 @@
         yFormat: (v) => `${v.toFixed(2)}`,  
         chartType: "bar",
       }));
+
+      // Phase 32: per-line Performance / Availability "by Line" charts,
+      // shown only when a line's Calcs carries the metric (none in the
+      // common case, where lines report just Total/Rate/Yield).
+      for (const _x of [
+        { metric: "Performance", fallback: "Average Performance", get: (e) => e.avg_performance },
+        { metric: "Availability", fallback: "Average Availability", get: (e) => e.avg_availability },
+      ]) {
+        if (!(circuit.lines || []).some((l) => _calcsLatestEntry(l.buckets || [], _x.metric))) continue;
+        grid.appendChild(_renderTrendPanel({
+          title: _calcsLabelLatest(circuit.buckets || [], _x.metric, _x.fallback) + " by Line",
+          subtitle: "",
+          calcsLine: _multiCalcsLine(
+            (circuit.lines || []).map((l) => ({ label: l.description || l.line_id, buckets: l.buckets || [] })),
+            _x.metric
+          ),
+          labels: months,
+          datasets: buildPerLineDatasets(_x.get),
+          yLabel: "%",
+          yFormat: (v) => `${v.toFixed(1)}%`,
+          chartType: "bar",
+        }));
+      }
     } else {
       // Line-less circuit: 3 single-series panels.
       // Order (left-to-right): Total Tons | Average TPH | Average Yield.
@@ -3004,6 +3053,8 @@
         yFormat: (v) => `${v.toFixed(2)}`,  
         chartType: "bar",
       }));
+
+      appendCircuitExtraMetrics();
     }
   }
 

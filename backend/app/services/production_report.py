@@ -637,6 +637,11 @@ class CircuitBucketEntry:
     runtime_hours: float
     avg_tph: float | None
     avg_yield: float | None
+    # Phase 32: per-node Performance / Availability means. None when no
+    # node in the bucket carries the field; the frontend renders a chart
+    # for these only when present (gated by the node's Calcs block).
+    avg_performance: float | None
+    avg_availability: float | None
     report_count: int
     # Phase 22: latest report's node.Calcs in this bucket. None if absent.
     calcs: dict[str, str] | None
@@ -724,6 +729,16 @@ def _circuit_node_aggregate(
             [_coerce_finite_float(n.get("Yield")) for n in nodes]
         )
 
+        # Phase 32: per-node Performance / Availability means. None when
+        # no node carries the field (e.g. circuits that aren't configured
+        # to report Performance). Same simple-mean / drop-None rule.
+        avg_performance = _mean_or_none(
+            [_coerce_finite_float(n.get("Performance")) for n in nodes]
+        )
+        avg_availability = _mean_or_none(
+            [_coerce_finite_float(n.get("Availability")) for n in nodes]
+        )
+
         # Phase 22: latest node's Calcs (latest by prod_date).
         latest_node, _ = max(pairs, key=lambda p: p[1])
         latest_calcs_block = latest_node.get("Calcs")
@@ -741,6 +756,8 @@ def _circuit_node_aggregate(
                 runtime_hours=runtime_hours,
                 avg_tph=avg_tph,
                 avg_yield=avg_yield,
+                avg_performance=avg_performance,
+                avg_availability=avg_availability,
                 report_count=len(nodes),
                 calcs=latest_calcs,
                 calcs_verbose=latest_calcs_verbose,
