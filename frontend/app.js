@@ -3087,13 +3087,80 @@
         // the DOM when Chart.js measures it. Otherwise width/height
         // can come back as 0.
         setTimeout(() => {
+          // Phase 33: draw the value above each bar (bar charts only).
+          // Inline Chart.js plugin -- no extra dependency. Uses the
+          // panel's yFormat so labels read the same as the axis/tooltip.
+          const barValueLabels = {
+            id: "barValueLabels",
+            afterDatasetsDraw(c) {
+              if (_type !== "bar") return;
+              const ctx = c.ctx;
+              ctx.save();
+              ctx.fillStyle = colors.ink;
+              ctx.font = "600 10px system-ui, sans-serif";
+              c.data.datasets.forEach((ds, di) => {
+                const meta = c.getDatasetMeta(di);
+                if (meta.hidden) return;
+                meta.data.forEach((bar, i) => {
+                  const v = ds.data[i];
+                  if (v === null || v === undefined || Number.isNaN(v)) return;
+                  // Drop the unit suffix -- the axis already carries it. Strip
+                  // any trailing non-numeric chars from the formatted value
+                  // (" t", " tph", "%"); pure-number formats are untouched.
+                  const text = String(yFormat ? yFormat(v) : v).replace(/[^0-9.\-]+$/, "");
+                  const tw = ctx.measureText(text).width;
+                  const barW = (bar.width != null)
+                    ? bar.width
+                    : (bar.getProps ? bar.getProps(["width"], true).width : 0);
+                  if (tw + 2 <= barW) {
+                    // Fits horizontally above the bar.
+                    ctx.textAlign = "center";
+                    ctx.textBaseline = "bottom";
+                    ctx.fillText(text, bar.x, bar.y - 3);
+                  } else {
+                    // Too wide for a narrow/grouped bar -- rotate vertical
+                    // (90deg CCW, reads bottom-to-top) so it never overlaps
+                    // the neighbouring bar's label.
+                    ctx.save();
+                    ctx.translate(bar.x, bar.y - 4);
+                    ctx.rotate(-Math.PI / 2);
+                    ctx.textAlign = "left";
+                    ctx.textBaseline = "middle";
+                    ctx.fillText(text, 0, 0);
+                    ctx.restore();
+                  }
+                });
+              });
+              ctx.restore();
+            },
+          };
+          // Reserve enough headroom for the tallest data label even when
+          // it rotates vertical (a rotated label's height == its horizontal
+          // text width). Prevents clipping when the max bar reaches the
+          // plot ceiling. Sized to the widest label across the datasets.
+          const _lctx = canvas.getContext("2d");
+          _lctx.font = "600 10px system-ui, sans-serif";
+          let _maxLabelW = 0;
+          if (_type === "bar") {
+            for (const _ds of (datasets || [])) {
+              for (const _dv of (_ds.data || [])) {
+                if (_dv === null || _dv === undefined || Number.isNaN(_dv)) continue;
+                const _t = String(yFormat ? yFormat(_dv) : _dv).replace(/[^0-9.\-]+$/, "");
+                const _w = _lctx.measureText(_t).width;
+                if (_w > _maxLabelW) _maxLabelW = _w;
+              }
+            }
+          }
+          const _topPad = _type === "bar" ? Math.min(60, Math.ceil(_maxLabelW) + 8) : 4;
           const chart = new Chart(canvas.getContext("2d"), {
             type: _type,
             data: { labels, datasets },
+            plugins: _type === "bar" ? [barValueLabels] : [],
             options: {
               responsive: true,
               maintainAspectRatio: false,
               animation: false,
+              layout: { padding: { top: _topPad } },
               plugins: {
                 legend: {
                   display: _showLegend,
