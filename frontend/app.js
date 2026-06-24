@@ -1112,20 +1112,24 @@
     // reports have different Site shapes. Column order matches the
     // modal: grouped by base type via _sortSiteKeys (Phase 11.1) so
     // exporters and on-screen viewers see the same field ordering.
+    // Phase 34: Site is now nested (Trucks/Loaders collections, Pit/Shot
+    // groups). Flatten each entry's Site to path-labelled leaf columns
+    // (e.g. "Trucks Truck 0 Operator") and union them -- mirrors the
+    // modal's per-leaf display. Discovery order follows the nested walk.
     const discoveredSiteKeys = [];
     const seenSiteKeys = new Set();
     for (const e of entries) {
       const so = e.payload && e.payload.Metrics && e.payload.Metrics.Site;
       if (so && typeof so === "object") {
-        for (const k of Object.keys(so)) {
-          if (!seenSiteKeys.has(k)) {
-            seenSiteKeys.add(k);
-            discoveredSiteKeys.push(k);
+        for (const [label] of _flattenSiteLeaves(so, "")) {
+          if (!seenSiteKeys.has(label)) {
+            seenSiteKeys.add(label);
+            discoveredSiteKeys.push(label);
           }
         }
       }
     }
-    const siteKeys = _sortSiteKeys(discoveredSiteKeys);
+    const siteKeys = discoveredSiteKeys;
 
     // Phase 19/20: Crusher columns. Discover the union of CrusherN keys
     // across the current selection. Variable count per site; older
@@ -1201,8 +1205,10 @@
           // the column header reads identically to the modal label. A
           // report whose Site lacks a discovered key gets a blank cell
           // (per _siteValueForExport's null-on-missing rule).
+          const _siteLeaves = {};
+          for (const [label, val] of _flattenSiteLeaves(siteObj, "")) _siteLeaves[label] = val;
           for (const sk of siteKeys) {
-            row[_formatSiteLabel(sk)] = _siteValueForExport(siteObj[sk]);
+            row[sk] = _siteValueForExport(_siteLeaves[sk]);
           }
           // Phase 19/20: Crusher columns at the very tail. Three per
           // discovered crusher (Description / Setpoint / Runtime hrs).
@@ -1528,6 +1534,110 @@
     try { return JSON.stringify(v); } catch { return String(v); }
   }
 
+  // --- Phase 34: structure-aware Site rendering -----------------------
+  // The Site payload grew from flat key/value pairs to nested groups:
+  // Trucks/Loaders are collections of like records; Pit/Shot are small
+  // groups (Pit nests Bench_Levels). Render each top-level OBJECT key as
+  // its own sub-section -- a table for a collection of records, a
+  // key/value grid for a flat/mixed group. Top-level SCALAR keys (the
+  // legacy flat shape) still render together in one key/value grid.
+
+  function _isPlainObject(v) {
+    return v !== null && typeof v === "object" && !Array.isArray(v);
+  }
+
+  // "Truck0" -> "Truck 0" (space before a trailing number); names without
+  // a trailing number are left for _formatSiteLabel to title-case.
+  function _humanizeItemKey(key) {
+    return _formatSiteLabel(String(key).replace(/([a-zA-Z])(\d+)$/, "$1_$2"));
+  }
+
+  // True when every value of an object is itself a plain object -- a
+  // collection of like records (Trucks -> {Truck0:{...}, Truck1:{...}}).
+  function _isRecordCollection(v) {
+    if (!_isPlainObject(v)) return false;
+    const vals = Object.values(v);
+    return vals.length > 0 && vals.every(_isPlainObject);
+  }
+
+  // Flatten a (possibly nested) Site sub-object into [label, rawValue]
+  // leaf pairs. Nested keys are path-joined with spaces, e.g.
+  // Bench_Levels.Bench_Selected -> "Bench Levels Bench Selected".
+  function _flattenSiteLeaves(obj, prefix, out) {
+    out = out || [];
+    for (const k of Object.keys(obj)) {
+      const v = obj[k];
+      const label = prefix ? prefix + " " + _formatSiteLabel(k) : _formatSiteLabel(k);
+      if (_isPlainObject(v)) {
+        _flattenSiteLeaves(v, label, out);
+      } else {
+        out.push([label, v]);
+      }
+    }
+    return out;
+  }
+
+  // Render a record-collection (Trucks/Loaders) as a compact table: one
+  // column per field (union across records), one row per item.
+  function _renderSiteTable(collection) {
+    const itemKeys = Object.keys(collection);
+    const fields = [];
+    const seen = new Set();
+    for (const ik of itemKeys) {
+      const rec = collection[ik];
+      if (!_isPlainObject(rec)) continue;
+      for (const f of Object.keys(rec)) {
+        if (!seen.has(f)) { seen.add(f); fields.push(f); }
+      }
+    }
+    const thead = el("thead", {}, [
+      el("tr", {}, [
+        el("th", { class: "dm-site-rowhdr" }, ""),
+        ...fields.map((f) => el("th", {}, _formatSiteLabel(f))),
+      ]),
+    ]);
+    const tbody = el("tbody", {}, itemKeys.map((ik) => {
+      const rec = _isPlainObject(collection[ik]) ? collection[ik] : {};
+      return el("tr", {}, [
+        el("td", { class: "dm-site-rowhdr" }, _humanizeItemKey(ik)),
+        ...fields.map((f) => el("td", {}, _formatSiteValue(rec[f]))),
+      ]);
+    }));
+    return el("div", { class: "dm-site-table-wrap" }, [
+      el("table", { class: "dm-crusher-table dm-site-table" }, [thead, tbody]),
+    ]);
+  }
+
+  // Build the Site section body as a node list of sub-sections.
+  function _renderSiteContent(siteObj) {
+    const nodes = [];
+    const scalarKeys = [];
+    for (const key of _sortSiteKeys(Object.keys(siteObj))) {
+      const v = siteObj[key];
+      if (!_isPlainObject(v)) { scalarKeys.push(key); continue; }
+      nodes.push(el("div", { class: "dm-subsection-label" }, _formatSiteLabel(key)));
+      if (_isRecordCollection(v)) {
+        nodes.push(_renderSiteTable(v));
+      } else {
+        const grid = [];
+        for (const [label, val] of _flattenSiteLeaves(v, "")) {
+          grid.push(el("div", { class: "dm-meta-key" }, label));
+          grid.push(el("div", { class: "dm-meta-value" }, _formatSiteValue(val)));
+        }
+        nodes.push(el("div", { class: "dm-meta dm-site-kv" }, grid));
+      }
+    }
+    if (scalarKeys.length) {
+      const grid = [];
+      for (const key of scalarKeys) {
+        grid.push(el("div", { class: "dm-meta-key" }, _formatSiteLabel(key)));
+        grid.push(el("div", { class: "dm-meta-value" }, _formatSiteValue(siteObj[key])));
+      }
+      nodes.unshift(el("div", { class: "dm-meta dm-site-kv" }, grid));
+    }
+    return nodes;
+  }
+
   // Phase 19/20: Production ID filter helpers. The "PR" branch must
   // exclude PRM matches -- bare "PR..." is one logical group, "PRM..."
   // is a separate group, and "All" is the union.
@@ -1763,7 +1873,7 @@
     const siteObj = entry.payload && entry.payload.Metrics && entry.payload.Metrics.Site;
     const siteSection = [el("div", { class: "dm-section-label" }, "Site")];
     if (siteObj && typeof siteObj === "object" && Object.keys(siteObj).length > 0) {
-      siteSection.push(el("div", { class: "dm-meta" }, _siteMetaRows(siteObj)));
+      for (const _n of _renderSiteContent(siteObj)) siteSection.push(_n);
     } else {
       siteSection.push(el("div", { class: "dm-empty" }, "No site data for this report."));
     }

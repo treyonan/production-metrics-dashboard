@@ -1,36 +1,91 @@
 {
   "Metrics": {
     "Site": {
-      "Loader_Operator_One": "Harry Mauldin",
-      "Shot_Number_One": "None",
-      "Loader_Operator_Two": "Justin Beatley",
-      "Loads_15_Ton": "0",
-      "Shot_Number_Two": "None"
+      "Trucks": {
+        "Truck0": {
+          "Operator": "",
+          "Description": "",
+          "Capacity": "_",
+          "Total": "0",
+          "Product": "_",
+          "Count": "0",
+          "Cycle_Count": "0"
+        },
+        "Truck1": {
+          "Operator": "",
+          "Description": "",
+          "Capacity": "_",
+          "Total": "0",
+          "Product": "_",
+          "Count": "0",
+          "Cycle_Count": "0"
+        },
+        "Truck2": {
+          "Operator": "",
+          "Description": "",
+          "Capacity": "_",
+          "Total": "0",
+          "Product": "_",
+          "Count": "0",
+          "Cycle_Count": "0"
+        }
+      },
+      "Loaders": {
+        "Loader0": {
+          "Operator": "",
+          "Description": "",
+          "Capacity": "_",
+          "Total": "0",
+          "Product": "_",
+          "Count": "0",
+          "Cycle_Count": "0"
+        },
+        "Loader1": {
+          "Operator": "",
+          "Description": "",
+          "Capacity": "0",
+          "Total": "0",
+          "Product": "_",
+          "Count": "0",
+          "Cycle_Count": "0"
+        }
+      },
+      "Pit": {
+        "Description": "_",
+        "Bench_Levels": {
+          "Bench_Selected": "1"
+        }
+      },
+      "Shot": {
+        "Shot_2": "None",
+        "Shot_1": "None",
+        "Shot_Rock_Tons": "_"
+      }
     },
     "C11": {
-      "Availability": 9.8,
-      "Runtime": 1.13,
+      "Availability": 59.65,
+      "Runtime": 6.86,
       "Description": "CR Return",
       "Produced_Item_Description": "SHOT DOWN ROCK",
-      "Belt_Scale_Availability": 100.0,
-      "Rate": 159.62,
-      "Total": 179.88,
+      "Belt_Scale_Availability": 99.67,
+      "Rate": 73.31,
+      "Total": 502.91,
       "Produced_Item_Code": "ST8910",
-      "Performance": 347.01
+      "Performance": 159.37
     },
     "C10": {
-      "Availability": 12.14,
-      "Runtime": 1.4,
+      "Availability": 66.02,
+      "Runtime": 7.59,
       "Description": "Screening 2",
       "Produced_Item_Description": "#4 SCREENINGS",
-      "Belt_Scale_Availability": 100.0,
-      "Rate": 235.21,
-      "Total": 328.31,
+      "Belt_Scale_Availability": 99.95,
+      "Rate": 136.29,
+      "Total": 1034.7,
       "Produced_Item_Code": "ST5100",
-      "Performance": 588.04
+      "Performance": 340.73
     },
     "Crusher1": {
-      "Runtime": 1.9,
+      "Runtime": 7.58,
       "Description": "Kleemann",
       "Setpoint": "2.5-6"
     },
@@ -38,143 +93,257 @@
       "A": {
         "Line": {
           "A": {
-            "Runtime": 1.15,
+            "Runtime": 7.16,
             "Description": "57-2",
             "Calcs": {
-              "Rate": { "Formula": "57-2 Total/57-2 Runtime", "Formula_Verbose": "C4 Total/57-2 Runtime" },
-              "Total": { "Formula": "C4 Total", "Formula_Verbose": "C4 Total" },
-              "Yield": { "Formula": "57-2 Total/Secondary Total", "Formula_Verbose": "C4 Total/(C1+C8-C7)" }
+              "Rate": {
+                "Formula": "57-2 Total/57-2 Runtime",
+                "Formula_Verbose": "C4 Total/57-2 Runtime"
+              },
+              "Total": {
+                "Formula": "C4 Total",
+                "Formula_Verbose": "C4 Total"
+              },
+              "Yield": {
+                "Formula": "57-2 Total/Secondary Total",
+                "Formula_Verbose": "C4 Total/(C1+C8-C7)"
+              }
             },
-            "Rate": 386.98,
-            "Total": 445.0,
-            "Yield": 1.0
+            "Rate": 354.88,
+            "Total": 2539.63,
+            "Yield": 0.31
           },
           "B": {
-            "Runtime": 1.11,
+            "Runtime": 7.07,
             "Description": "57-1",
             "Calcs": {
-              "Rate": { "Formula": "57-1 Total/57-1 Runtime", "Formula_Verbose": "C5 Total/57-1 Runtime" },
-              "Total": { "Formula": "C5 Total", "Formula_Verbose": "C5 Total" },
-              "Yield": { "Formula": "57-1 Total/Secondary Total", "Formula_Verbose": "C5 Total/(C1+C8-C7)" }
+              "Rate": {
+                "Formula": "57-1 Total/57-1 Runtime",
+                "Formula_Verbose": "C5 Total/57-1 Runtime"
+              },
+              "Total": {
+                "Formula": "C5 Total",
+                "Formula_Verbose": "C5 Total"
+              },
+              "Yield": {
+                "Formula": "57-1 Total/Secondary Total",
+                "Formula_Verbose": "C5 Total/(C1+C8-C7)"
+              }
             },
-            "Rate": 275.5,
-            "Total": 305.09,
-            "Yield": 1.0
+            "Rate": 374.08,
+            "Total": 2645.09,
+            "Yield": 0.32
           }
         },
-        "Runtime": 2.26,
+        "Runtime": 14.23,
         "Description": "57s",
         "Calcs": {
-          "Rate": { "Formula": "57-2 Rate+57-1 Rate", "Formula_Verbose": "(C4 Total/57-2 Runtime)+(C5 Total/57-1 Runtime)" },
-          "Total": { "Formula": "57-2 Total+57-1 Total", "Formula_Verbose": "C4+C5" },
-          "Yield": { "Formula": "57s Total/Secondary Total", "Formula_Verbose": "(C4+C5)/(C1+C8-C7)" },
-          "Performance": { "Formula": "(57s Total/57s Runtime)/57s Ideal Rate", "Formula_Verbose": "((C4+C5)/(57-2 Runtime+57-1 Runtime))/57s Ideal Rate" }
+          "Rate": {
+            "Formula": "57-2 Rate+57-1 Rate",
+            "Formula_Verbose": "(C4 Total/57-2 Runtime)+(C5 Total/57-1 Runtime)"
+          },
+          "Total": {
+            "Formula": "57-2 Total+57-1 Total",
+            "Formula_Verbose": "C4+C5"
+          },
+          "Yield": {
+            "Formula": "57s Total/Secondary Total",
+            "Formula_Verbose": "(C4+C5)/(C1+C8-C7)"
+          },
+          "Performance": {
+            "Formula": "(57s Total/57s Runtime)/57s Ideal Rate",
+            "Formula_Verbose": "((C4+C5)/(57-2 Runtime+57-1 Runtime))/57s Ideal Rate"
+          }
         },
-        "Rate": 662.48,
-        "Total": 750.09,
-        "Yield": 1.0,
-        "Performance": 39.09
+        "Rate": 728.96,
+        "Total": 5184.72,
+        "Yield": 0.63,
+        "Performance": 42.87
       },
       "B": {
-        "Runtime": 0.88,
+        "Runtime": 6.89,
         "Description": "Crusher Run",
         "Calcs": {
-          "Rate": { "Formula": "Crusher Run Total/Crusher Run Runtime", "Formula_Verbose": "C8 Total/C8 Runtime" },
-          "Total": { "Formula": "C8 Total", "Formula_Verbose": "C8 Total" },
-          "Yield": { "Formula": "Crusher Run Total/Secondary Total", "Formula_Verbose": "C8 Total/(C1+C8-C7)" }
+          "Rate": {
+            "Formula": "Crusher Run Total/Crusher Run Runtime",
+            "Formula_Verbose": "C8 Total/C8 Runtime"
+          },
+          "Total": {
+            "Formula": "C8 Total",
+            "Formula_Verbose": "C8 Total"
+          },
+          "Yield": {
+            "Formula": "Crusher Run Total/Secondary Total",
+            "Formula_Verbose": "C8 Total/(C1+C8-C7)"
+          }
         },
-        "Rate": 149.03,
-        "Total": 131.5,
-        "Yield": 1.0
+        "Rate": 197.28,
+        "Total": 1360.19,
+        "Yield": 0.17
       },
       "C": {
-        "Runtime": 1.13,
+        "Runtime": 6.86,
         "Description": "CR 57",
         "Calcs": {
-          "Rate": { "Formula": "CR 57 Total/CR 57 Runtime", "Formula_Verbose": "C11 Total/C11 Runtime" },
-          "Total": { "Formula": "C11 Total", "Formula_Verbose": "C11 Total" },
-          "Yield": { "Formula": "CR 57 Total/Secondary Total", "Formula_Verbose": "C11 Total/(C1+C8-C7)" }
+          "Rate": {
+            "Formula": "CR 57 Total/CR 57 Runtime",
+            "Formula_Verbose": "C11 Total/C11 Runtime"
+          },
+          "Total": {
+            "Formula": "C11 Total",
+            "Formula_Verbose": "C11 Total"
+          },
+          "Yield": {
+            "Formula": "CR 57 Total/Secondary Total",
+            "Formula_Verbose": "C11 Total/(C1+C8-C7)"
+          }
         },
-        "Rate": 159.62,
-        "Total": 179.88,
-        "Yield": 1.0
+        "Rate": 73.31,
+        "Total": 502.91,
+        "Yield": 0.06
       },
       "D": {
-        "Runtime": 1.15,
+        "Runtime": 14.78,
         "Description": "Screenings",
         "Calcs": {
-          "Rate": { "Formula": "Screenings Total/Screenings Runtime", "Formula_Verbose": "(C2+C10)/C2 Runtime" },
-          "Total": { "Formula": "C2+C10", "Formula_Verbose": "C2+C10" },
-          "Yield": { "Formula": "Screenings Total/Secondary Total", "Formula_Verbose": "(C2+C10)/(C1+C8-C7)" }
+          "Rate": {
+            "Formula": "Screenings Total/Screenings Runtime",
+            "Formula_Verbose": "(C2+C10)/(C2 Runtime+C10 Runtime)"
+          },
+          "Total": {
+            "Formula": "C2+C10",
+            "Formula_Verbose": "C2+C10"
+          },
+          "Yield": {
+            "Formula": "Screenings Total/Secondary Total",
+            "Formula_Verbose": "(C2+C10)/(C1+C8-C7)"
+          }
         },
-        "Rate": 559.61,
-        "Total": 644.13,
-        "Yield": 1.0
+        "Rate": 202.19,
+        "Total": 2989.05,
+        "Yield": 0.37
       }
     },
     "Crusher2": {
-      "Runtime": 1.9,
+      "Runtime": 7.58,
       "Description": "1316 HSI",
       "Setpoint": "1-3"
     },
     "C1": {
-      "Availability": 10.03, "Runtime": 1.15, "Description": "Kleeman Feed",
-      "Produced_Item_Description": "_", "Belt_Scale_Availability": 99.74,
-      "Rate": 1.73, "Total": 2.0, "Produced_Item_Code": "_", "Performance": 0.18
+      "Availability": 63.5,
+      "Runtime": 7.3,
+      "Description": "Kleeman Feed",
+      "Produced_Item_Description": "_",
+      "Belt_Scale_Availability": 72.53,
+      "Rate": 1470.2,
+      "Total": 10736.0,
+      "Produced_Item_Code": "_",
+      "Performance": 153.47
     },
     "C2": {
-      "Availability": 10.01, "Runtime": 1.15, "Description": "Screening",
-      "Produced_Item_Description": "#4 SCREENINGS", "Belt_Scale_Availability": 100.0,
-      "Rate": 274.38, "Total": 315.82, "Produced_Item_Code": "ST5100", "Performance": 93.97
+      "Availability": 62.53,
+      "Runtime": 7.19,
+      "Description": "Screening",
+      "Produced_Item_Description": "#4 SCREENINGS",
+      "Belt_Scale_Availability": 100.0,
+      "Rate": 271.77,
+      "Total": 1954.34,
+      "Produced_Item_Code": "ST5100",
+      "Performance": 93.07
     },
     "C3": {
-      "Availability": 0.0, "Runtime": 0.0, "Description": "57-2C",
-      "Produced_Item_Description": "_", "Belt_Scale_Availability": 0.0,
-      "Total": 0.0, "Produced_Item_Code": "_"
+      "Availability": 0.0,
+      "Runtime": 0.0,
+      "Description": "57-2C",
+      "Produced_Item_Description": "_",
+      "Belt_Scale_Availability": 0.0,
+      "Total": 0.0,
+      "Produced_Item_Code": "_"
     },
     "C4": {
-      "Availability": 10.0, "Runtime": 1.15, "Description": "57-2",
-      "Produced_Item_Description": "#57", "Belt_Scale_Availability": 100.0,
-      "Rate": 386.98, "Total": 445.0, "Produced_Item_Code": "ST3510", "Performance": 117.27
+      "Availability": 62.23,
+      "Runtime": 7.16,
+      "Description": "57-2",
+      "Produced_Item_Description": "#57",
+      "Belt_Scale_Availability": 99.73,
+      "Rate": 354.88,
+      "Total": 2539.63,
+      "Produced_Item_Code": "ST3510",
+      "Performance": 107.54
     },
     "C5": {
-      "Availability": 9.63, "Runtime": 1.11, "Description": "57-1",
-      "Produced_Item_Description": "#57", "Belt_Scale_Availability": 99.98,
-      "Rate": 275.5, "Total": 305.09, "Produced_Item_Code": "ST3510", "Performance": 83.49
+      "Availability": 61.49,
+      "Runtime": 7.07,
+      "Description": "57-1",
+      "Produced_Item_Description": "#57",
+      "Belt_Scale_Availability": 99.73,
+      "Rate": 374.08,
+      "Total": 2645.09,
+      "Produced_Item_Code": "ST3510",
+      "Performance": 113.36
     },
     "Workcenter": {
-      "Availability": 9.63,
+      "Availability": 61.69,
       "Production_Mode": "2",
-      "Runtime": 1.11,
+      "Runtime": 7.09,
       "Description": "Secondary",
       "Calcs": {
-        "Availability": { "Formula": "(57s Availability*57s Capacity Weight)+(Crusher Run Availability*Crusher Run Capacity Weight)", "Formula_Verbose": "(((57-2 Runtime+57-1 Runtime)/(Secondary Runtime*2))*57s Capacity Weight)+((C8 Runtime/Secondary Runtime)*Crusher Run Capacity Weight)" },
-        "Rate": { "Formula": "Secondary Total/Secondary Runtime", "Formula_Verbose": "(C1+C8-C7)/(((57-2 Runtime+57-1 Runtime)*57s Capacity Weight/2)+(C8 Runtime*Crusher Run Capacity Weight))" },
-        "Total": { "Formula": "C1+C8-C7", "Formula_Verbose": "C1+C8-C7" },
-        "Performance": { "Formula": "(Secondary Total/Secondary Runtime)/Secondary Ideal Rate", "Formula_Verbose": "((C1+C8-C7)/(((57-2 Runtime+57-1 Runtime)*57s Capacity Weight/2)+(C8 Runtime*Crusher Run Capacity Weight)))/Secondary Ideal Rate" }
+        "Availability": {
+          "Formula": "(57s Availability*57s Capacity Weight)+(Crusher Run Availability*Crusher Run Capacity Weight)",
+          "Formula_Verbose": "(((57-2 Runtime+57-1 Runtime)/(Secondary Runtime*2))*57s Capacity Weight)+((C8 Runtime/Secondary Runtime)*Crusher Run Capacity Weight)"
+        },
+        "Rate": {
+          "Formula": "Secondary Total/Secondary Runtime",
+          "Formula_Verbose": "(C1+C8-C7)/(((57-2 Runtime+57-1 Runtime)*57s Capacity Weight/2)+(C8 Runtime*Crusher Run Capacity Weight))"
+        },
+        "Total": {
+          "Formula": "C1+C8-C7",
+          "Formula_Verbose": "C1+C8-C7"
+        },
+        "Performance": {
+          "Formula": "(Secondary Total/Secondary Runtime)/Secondary Ideal Rate",
+          "Formula_Verbose": "((C1+C8-C7)/(((57-2 Runtime+57-1 Runtime)*57s Capacity Weight/2)+(C8 Runtime*Crusher Run Capacity Weight)))/Secondary Ideal Rate"
+        }
       },
       "Start_Time": "06:15:00",
       "Ideal_Rate": 1050.0,
-      "Rate": 115.96,
-      "Total": 128.38,
+      "Rate": 1152.71,
+      "Total": 8177.81,
       "Scheduled_Status": "Scheduled",
-      "Performance": 11.04,
+      "Performance": 109.78,
       "Scheduled_Runtime": 11.5
     },
     "C6": {
-      "Availability": 0.0, "Runtime": 0.0, "Description": "57-1C",
-      "Produced_Item_Description": "_", "Belt_Scale_Availability": 0.0,
-      "Total": 0.0, "Produced_Item_Code": "_"
+      "Availability": 0.0,
+      "Runtime": 0.0,
+      "Description": "57-1C",
+      "Produced_Item_Description": "_",
+      "Belt_Scale_Availability": 0.0,
+      "Total": 0.0,
+      "Produced_Item_Code": "_"
     },
     "C7": {
-      "Availability": 9.8, "Runtime": 1.13, "Description": "Rejects",
-      "Produced_Item_Description": "_", "Belt_Scale_Availability": 100.0,
-      "Rate": 164.13, "Total": 185.0, "Produced_Item_Code": "_", "Performance": 65.13
+      "Availability": 62.0,
+      "Runtime": 7.13,
+      "Description": "Rejects",
+      "Produced_Item_Description": "_",
+      "Belt_Scale_Availability": 99.72,
+      "Rate": 549.59,
+      "Total": 3918.38,
+      "Produced_Item_Code": "_",
+      "Performance": 218.09
     },
     "C8": {
-      "Availability": 7.67, "Runtime": 0.88, "Description": "Crusher Run",
-      "Produced_Item_Description": "1 1/2IN CRUSHER RUN", "Belt_Scale_Availability": 26.61,
-      "Rate": 352.88, "Total": 311.38, "Yield": 1.0, "Produced_Item_Code": "ST5450", "Performance": 383.57
+      "Availability": 59.95,
+      "Runtime": 6.89,
+      "Description": "Crusher Run",
+      "Produced_Item_Description": "1 1/2IN CRUSHER RUN",
+      "Belt_Scale_Availability": 99.67,
+      "Rate": 197.28,
+      "Total": 1360.19,
+      "Yield": 0.17,
+      "Produced_Item_Code": "ST5450",
+      "Performance": 214.43
     }
   }
 }

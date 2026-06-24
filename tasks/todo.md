@@ -4057,3 +4057,44 @@ and the other circuits (no Performance calc) are unchanged.
 - [ ] Performance chart title/formula resolve from the Performance Calcs entry.
 - [ ] A circuit/line WITH Availability in Calcs would show an Availability
       chart (none in current data).
+
+## Phase 34 -- Structure-aware Site rendering (modal + export) (IMPLEMENTED 2026-06-08, browser QA pending)
+
+The Site payload grew from flat key/value pairs to nested groups
+(Trucks/Loaders collections, Pit/Shot groups). The details modal was
+JSON-stringifying the nested objects into raw `{"Truck0":{...}}` blobs.
+
+### Modal (`frontend/app.js`, `_renderSiteContent` + helpers)
+- Shape-detected rendering: a top-level Site key whose value is a
+  collection of like records (Trucks/Loaders) -> compact table (column
+  per field, row per item, item label humanised "Truck0"->"Truck 0");
+  a flat/mixed object (Pit/Shot) -> key/value grid with one level of
+  nesting flattened ("Bench Levels Bench Selected"); legacy top-level
+  scalars -> a grouped key/value grid. Generic, so new Site shapes render
+  without further changes.
+- All rows shown including empty (placeholders -> em-dash via
+  _formatSiteValue), per Trey's request to see the shape with data. Hiding
+  empties is a later decision.
+
+### Export (`shapeAssetRows`)
+- Site columns now come from a recursive leaf-flatten of the nested Site
+  (path-labelled, e.g. "Trucks Truck0 Operator", "Pit Bench Levels Bench
+  Selected") -- mirrors the modal's per-leaf display. 40 leaf columns for
+  the current payload. Discovery unions leaf labels in nested-walk order.
+
+### CSS (`frontend/app.css`)
+- `.dm-subsection-label`, `.dm-site-table-wrap` (overflow-x auto),
+  `.dm-site-table`, `.dm-site-rowhdr`, `.dm-site-kv`. Tables reuse
+  `.dm-crusher-table` styling.
+
+### Verification
+- node --check PASS; app.js + app.css brace/paren balanced.
+- Pure-logic simulation against payload-example.json: Trucks/Loaders ->
+  TABLE, Pit/Shot -> KEY/VALUE; 40 export leaf columns with correct labels.
+
+### Browser QA for Trey
+- [ ] Modal Site section: Trucks + Loaders as tables, Pit + Shot as
+      key/value, empties shown as em-dash.
+- [ ] Wide truck table scrolls horizontally inside the modal if needed.
+- [ ] XLSX export carries the flattened Site leaf columns.
+- [ ] Legacy flat-Site payloads (if any) still render as key/value.
