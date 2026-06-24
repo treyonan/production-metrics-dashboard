@@ -106,7 +106,7 @@
               },
               "Yield": {
                 "Formula": "57-2 Total/Secondary Total",
-                "Formula_Verbose": "C4 Total/(C1+C8-C7)"
+                "Formula_Verbose": "C4 Total/(C1\u002BC8-C7)"
               }
             },
             "Rate": 354.88,
@@ -127,7 +127,7 @@
               },
               "Yield": {
                 "Formula": "57-1 Total/Secondary Total",
-                "Formula_Verbose": "C5 Total/(C1+C8-C7)"
+                "Formula_Verbose": "C5 Total/(C1\u002BC8-C7)"
               }
             },
             "Rate": 374.08,
@@ -139,20 +139,20 @@
         "Description": "57s",
         "Calcs": {
           "Rate": {
-            "Formula": "57-2 Rate+57-1 Rate",
-            "Formula_Verbose": "(C4 Total/57-2 Runtime)+(C5 Total/57-1 Runtime)"
+            "Formula": "57-2 Rate\u002B57-1 Rate",
+            "Formula_Verbose": "(C4 Total/57-2 Runtime)\u002B(C5 Total/57-1 Runtime)"
           },
           "Total": {
-            "Formula": "57-2 Total+57-1 Total",
-            "Formula_Verbose": "C4+C5"
+            "Formula": "57-2 Total\u002B57-1 Total",
+            "Formula_Verbose": "C4\u002BC5"
           },
           "Yield": {
             "Formula": "57s Total/Secondary Total",
-            "Formula_Verbose": "(C4+C5)/(C1+C8-C7)"
+            "Formula_Verbose": "(C4\u002BC5)/(C1\u002BC8-C7)"
           },
           "Performance": {
             "Formula": "(57s Total/57s Runtime)/57s Ideal Rate",
-            "Formula_Verbose": "((C4+C5)/(57-2 Runtime+57-1 Runtime))/57s Ideal Rate"
+            "Formula_Verbose": "((C4\u002BC5)/(57-2 Runtime\u002B57-1 Runtime))/57s Ideal Rate"
           }
         },
         "Rate": 728.96,
@@ -174,7 +174,7 @@
           },
           "Yield": {
             "Formula": "Crusher Run Total/Secondary Total",
-            "Formula_Verbose": "C8 Total/(C1+C8-C7)"
+            "Formula_Verbose": "C8 Total/(C1\u002BC8-C7)"
           }
         },
         "Rate": 197.28,
@@ -195,7 +195,7 @@
           },
           "Yield": {
             "Formula": "CR 57 Total/Secondary Total",
-            "Formula_Verbose": "C11 Total/(C1+C8-C7)"
+            "Formula_Verbose": "C11 Total/(C1\u002BC8-C7)"
           }
         },
         "Rate": 73.31,
@@ -208,15 +208,15 @@
         "Calcs": {
           "Rate": {
             "Formula": "Screenings Total/Screenings Runtime",
-            "Formula_Verbose": "(C2+C10)/(C2 Runtime+C10 Runtime)"
+            "Formula_Verbose": "(C2\u002BC10)/(C2 Runtime\u002BC10 Runtime)"
           },
           "Total": {
-            "Formula": "C2+C10",
-            "Formula_Verbose": "C2+C10"
+            "Formula": "C2\u002BC10",
+            "Formula_Verbose": "C2\u002BC10"
           },
           "Yield": {
             "Formula": "Screenings Total/Secondary Total",
-            "Formula_Verbose": "(C2+C10)/(C1+C8-C7)"
+            "Formula_Verbose": "(C2\u002BC10)/(C1\u002BC8-C7)"
           }
         },
         "Rate": 202.19,
@@ -289,20 +289,20 @@
       "Description": "Secondary",
       "Calcs": {
         "Availability": {
-          "Formula": "(57s Availability*57s Capacity Weight)+(Crusher Run Availability*Crusher Run Capacity Weight)",
-          "Formula_Verbose": "(((57-2 Runtime+57-1 Runtime)/(Secondary Runtime*2))*57s Capacity Weight)+((C8 Runtime/Secondary Runtime)*Crusher Run Capacity Weight)"
+          "Formula": "(57s Availability*57s Capacity Weight)\u002B(Crusher Run Availability*Crusher Run Capacity Weight)",
+          "Formula_Verbose": "(((57-2 Runtime\u002B57-1 Runtime)/(Secondary Runtime*2))*57s Capacity Weight)\u002B((C8 Runtime/Secondary Runtime)*Crusher Run Capacity Weight)"
         },
         "Rate": {
           "Formula": "Secondary Total/Secondary Runtime",
-          "Formula_Verbose": "(C1+C8-C7)/(((57-2 Runtime+57-1 Runtime)*57s Capacity Weight/2)+(C8 Runtime*Crusher Run Capacity Weight))"
+          "Formula_Verbose": "(C1\u002BC8-C7)/(((57-2 Runtime\u002B57-1 Runtime)*57s Capacity Weight/2)\u002B(C8 Runtime*Crusher Run Capacity Weight))"
         },
         "Total": {
-          "Formula": "C1+C8-C7",
-          "Formula_Verbose": "C1+C8-C7"
+          "Formula": "C1\u002BC8-C7",
+          "Formula_Verbose": "C1\u002BC8-C7"
         },
         "Performance": {
           "Formula": "(Secondary Total/Secondary Runtime)/Secondary Ideal Rate",
-          "Formula_Verbose": "((C1+C8-C7)/(((57-2 Runtime+57-1 Runtime)*57s Capacity Weight/2)+(C8 Runtime*Crusher Run Capacity Weight)))/Secondary Ideal Rate"
+          "Formula_Verbose": "((C1\u002BC8-C7)/(((57-2 Runtime\u002B57-1 Runtime)*57s Capacity Weight/2)\u002B(C8 Runtime*Crusher Run Capacity Weight)))/Secondary Ideal Rate"
         }
       },
       "Start_Time": "06:15:00",
@@ -321,6 +321,28 @@
       "Belt_Scale_Availability": 0.0,
       "Total": 0.0,
       "Produced_Item_Code": "_"
+    },
+    "Produced_Metrics": {
+      "ST5450": {
+        "Ideal_Rate": 0.0,
+        "Rate": -23.36,
+        "Total": -177.06
+      },
+      "ST5100": {
+        "Ideal_Rate": 0.0,
+        "Rate": 394.32,
+        "Total": 2988.94
+      },
+      "ST3510": {
+        "Ideal_Rate": 0.0,
+        "Rate": 683.86,
+        "Total": 5183.63
+      },
+      "ST8910": {
+        "Ideal_Rate": 0.0,
+        "Rate": -1054.82,
+        "Total": -7995.51
+      }
     },
     "C7": {
       "Availability": 62.0,
