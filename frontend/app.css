@@ -582,7 +582,6 @@ body {
 }
 .chart-subtitle-label {
   color: var(--text-muted);
-  text-transform: uppercase;
   letter-spacing: 0.03em;
   font-weight: 700;
   font-size: 10px;
@@ -696,7 +695,7 @@ body {
 
 /* Section label inside the modal body (Report / Weather / Notes) */
 .dm-section-label {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--text-muted);
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -730,7 +729,7 @@ body {
   padding: 6px 8px;
 }
 .dm-weather-label {
-  font-size: 9px;
+  font-size: 10px;
   color: var(--text-muted);
   letter-spacing: 0.03em;
   margin-bottom: 2px;
@@ -946,7 +945,7 @@ body {
 }
 .vtab-caret {
   margin-left: 4px;
-  font-size: 9px;
+  font-size: 10px;
   line-height: 1;
   opacity: 0.8;
 }
@@ -1080,7 +1079,6 @@ body {
   font-family: inherit;
   font-size: 12px;
   font-weight: 700;
-  text-transform: uppercase;
   letter-spacing: 0.04em;
   border-left: 3px solid transparent;
   border-radius: 0 2px 2px 0;
@@ -1141,7 +1139,6 @@ body {
   font-size: 13px;
   font-weight: 700;
   color: var(--text-strong);
-  text-transform: uppercase;
   letter-spacing: 0.04em;
   /* Wrap naturally onto additional lines if the title is long. */
   white-space: normal;
@@ -1245,6 +1242,8 @@ body {
 .dm-crusher-table td.num {
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+.dm-crusher-table td.num {
   font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
 }
 .dm-crusher-table tbody tr:hover { background: var(--bg-canvas); }
@@ -1291,7 +1290,7 @@ body {
 
 /* Phase 34: structure-aware Site section in the details modal. */
 .dm-subsection-label {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--text-muted);
   font-weight: 700;
   letter-spacing: 0.03em;

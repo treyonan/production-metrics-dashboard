@@ -4098,3 +4098,34 @@ JSON-stringifying the nested objects into raw `{"Truck0":{...}}` blobs.
 - [ ] Wide truck table scrolls horizontally inside the modal if needed.
 - [ ] XLSX export carries the flattened Site leaf columns.
 - [ ] Legacy flat-Site payloads (if any) still render as key/value.
+
+## Phase 35 -- UI typography standardization (all pages) (IMPLEMENTED 2026-06-08, browser QA pending)
+
+Global pass per Trey: one font family, first-letter-cap UI labels, fewer
+font sizes. Data/config text (CHART_LABEL titles, all-caps JSON values,
+ID/number columns) left alone.
+
+- **Font family**: unified to `Arial, Helvetica, sans-serif`. Fixed the
+  timebase page's divergent stack and the bar-value-label plugin's
+  `system-ui`. Monospace kept only on numeric/ID DATA columns.
+- **De-cap (first-letter-cap)** app-wide -- removed `text-transform:
+  uppercase` from every UI-label class (app.css: chart-subtitle-label,
+  trends-tab, trend-panel-title; flow-interval + timebase: panel h2,
+  form/field labels) and title-cased literal-caps labels (index.html
+  sidebar "Time Filter"/"Production ID Filter"/..., timebase brand
+  "Production Metrics"). 0 `text-transform: uppercase` remain.
+- **Crusher Runtime header** -> global font (split the num rule so the
+  header isn't monospace; data cells keep mono + tabular-nums).
+- **Font sizes (conservative)**: modal section/subsection labels 10->12px
+  to match table content (Trey's "Crushers = Crusher 1/2" note); dropped
+  the lone 9px -> 10px. Main 10-13px scale otherwise unchanged.
+
+### Verification
+- node --check app.js PASS; app.css braces balanced; all 5 files' tails
+  intact; 0 uppercase + 0 9px remaining; all font-family unified.
+
+### Browser QA for Trey
+- [ ] Crushers table: Runtime header same font as Description/Setpoint.
+- [ ] "Crushers"/section labels match the table-row text size.
+- [ ] Sidebar headers + chart panel titles + Interval/Time Series pages
+      read in title case (config-sourced chart titles keep their case).

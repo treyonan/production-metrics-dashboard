@@ -3207,7 +3207,7 @@
               const ctx = c.ctx;
               ctx.save();
               ctx.fillStyle = colors.ink;
-              ctx.font = "600 10px system-ui, sans-serif";
+              ctx.font = "600 10px Arial, Helvetica, sans-serif";
               c.data.datasets.forEach((ds, di) => {
                 const meta = c.getDatasetMeta(di);
                 if (meta.hidden) return;
@@ -3249,7 +3249,7 @@
           // text width). Prevents clipping when the max bar reaches the
           // plot ceiling. Sized to the widest label across the datasets.
           const _lctx = canvas.getContext("2d");
-          _lctx.font = "600 10px system-ui, sans-serif";
+          _lctx.font = "600 10px Arial, Helvetica, sans-serif";
           let _maxLabelW = 0;
           if (_type === "bar") {
             for (const _ds of (datasets || [])) {
