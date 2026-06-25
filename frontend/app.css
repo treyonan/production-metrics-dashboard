@@ -700,7 +700,6 @@ body {
   color: var(--text-muted);
   font-weight: 700;
   letter-spacing: 0.04em;
-  text-transform: uppercase;
   margin-bottom: 4px;
 }
 
@@ -733,7 +732,6 @@ body {
 .dm-weather-label {
   font-size: 9px;
   color: var(--text-muted);
-  text-transform: uppercase;
   letter-spacing: 0.03em;
   margin-bottom: 2px;
 }
@@ -866,7 +864,6 @@ body {
 .dm-weather-full-label {
   font-weight: 700;
   letter-spacing: 0.03em;
-  text-transform: uppercase;
   color: var(--text-faint);
   margin-right: 4px;
 }
@@ -1242,7 +1239,6 @@ body {
   color: var(--text-muted);
   font-weight: 600;
   font-size: 11px;
-  text-transform: uppercase;
   letter-spacing: 0.4px;
 }
 .dm-crusher-table th.num,
@@ -1299,7 +1295,6 @@ body {
   color: var(--text-muted);
   font-weight: 700;
   letter-spacing: 0.03em;
-  text-transform: uppercase;
   margin: 8px 0 2px;
 }
 .dm-site-table-wrap { overflow-x: auto; margin: 2px 0 8px; }
