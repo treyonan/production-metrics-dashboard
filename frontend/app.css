@@ -1305,3 +1305,9 @@ body {
   white-space: nowrap;
 }
 .dm-site-kv { margin: 2px 0 8px; }
+
+/* Phase 36: per-collection Aggregation row (Trucks/Loaders totals). */
+.dm-crusher-table tfoot .dm-site-total td {
+  font-weight: 700;
+  border-top: 2px solid var(--border-strong);
+}

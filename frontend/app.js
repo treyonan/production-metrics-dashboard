@@ -1580,7 +1580,14 @@
   // Render a record-collection (Trucks/Loaders) as a compact table: one
   // column per field (union across records), one row per item.
   function _renderSiteTable(collection) {
-    const itemKeys = Object.keys(collection);
+    // An "Aggregation" member (if present) is the per-collection totals
+    // row: pulled out of the item rows and rendered as a footer row so
+    // the totals sit next to the individual Trucks/Loaders. Field columns
+    // come from the item records, so the column set reflects the items
+    // and the totals align under the matching columns.
+    const AGG_KEY = "Aggregation";
+    const itemKeys = Object.keys(collection).filter((k) => k !== AGG_KEY);
+    const agg = _isPlainObject(collection[AGG_KEY]) ? collection[AGG_KEY] : null;
     const fields = [];
     const seen = new Set();
     for (const ik of itemKeys) {
@@ -1603,8 +1610,19 @@
         ...fields.map((f) => el("td", {}, _formatSiteValue(rec[f]))),
       ]);
     }));
+    const children = [thead, tbody];
+    if (agg) {
+      children.push(el("tfoot", {}, [
+        el("tr", { class: "dm-site-total" }, [
+          el("td", { class: "dm-site-rowhdr" }, "Total"),
+          ...fields.map((f) =>
+            el("td", {}, Object.prototype.hasOwnProperty.call(agg, f)
+              ? _formatSiteValue(agg[f]) : "\u2014")),
+        ]),
+      ]));
+    }
     return el("div", { class: "dm-site-table-wrap" }, [
-      el("table", { class: "dm-crusher-table dm-site-table" }, [thead, tbody]),
+      el("table", { class: "dm-crusher-table dm-site-table" }, children),
     ]);
   }
 

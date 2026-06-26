@@ -4129,3 +4129,22 @@ ID/number columns) left alone.
 - [ ] "Crushers"/section labels match the table-row text size.
 - [ ] Sidebar headers + chart panel titles + Interval/Time Series pages
       read in title case (config-sourced chart titles keep their case).
+
+## Phase 36 -- Trucks/Loaders Aggregation totals row (modal) (IMPLEMENTED 2026-06-08, browser QA pending)
+
+The Site payload's Trucks/Loaders collections gained an "Aggregation"
+member with the column totals (Capacity/Total/Count/Cycle_Count).
+- `_renderSiteTable`: pulls the "Aggregation" key out of the item rows and
+  renders it as a bold `tfoot` "Total" row, aligned under the matching
+  columns (item-derived column set; em-dash under non-aggregated columns
+  like Operator/Description/Product). Detection unchanged (collection of
+  records still -> table).
+- CSS: `.dm-site-total td` (bold + top border).
+- Export unchanged: the existing leaf-flatten already emits
+  "Trucks Aggregation Capacity" etc. columns, mirroring the data.
+- Verified: node --check PASS; braces balanced; simulation against the
+  payload shows Loaders Total Capacity = 27 (= 13.5 + 13.5).
+
+### Browser QA for Trey
+- [ ] Trucks/Loaders tables show a bold "Total" row beneath the items.
+- [ ] Totals align under Capacity/Total/Count/Cycle Count; em-dash elsewhere.
