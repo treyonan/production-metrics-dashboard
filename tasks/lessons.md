@@ -293,3 +293,26 @@ truncates). So:
 3. Commit (or snapshot) frequently so git reconstruction
    (`git show HEAD:path` + re-apply the small edit) is the cheap
    recovery path -- which is exactly how app.js was restored here.
+
+### Mount truncation dropped the IIFE `();` -- node --check can't catch it — 2026-07-06
+**Mistake**: After the %/decimal/title edits to `frontend/app.js`, the
+Windows mount truncated the file's tail from `})();` to `})` (and dropped
+the trailing newline). The container was rebuilt from that file; the whole
+app.js is wrapped in an IIFE `(function(){...})()`, so losing the `()` left
+a function that is DEFINED BUT NEVER CALLED. `bootstrap()` never ran ->
+`/api/sites` never fetched -> empty site dropdown -> no SQL data anywhere.
+Trey reported "recompiled container not loading from SQL; site dropdown
+empty." I initially chased the backend (all clean) before diffing the
+committed app.js against the last-good commit and seeing `-})();` / `+})`.
+**Why it happened**: `node --check` PASSES on `(function(){...})` --
+a parenthesized function expression is valid syntax; it just never
+executes. So the usual syntax check gave a false all-clear. The
+truncation nuked only the final 3 chars, which balance-checks and
+`node --check` both miss.
+**Rule**: After ANY edit to `frontend/app.js`, verify the FILE TAIL
+explicitly, not just `node --check`: `tail -c 12 frontend/app.js` must end
+with `})();` (+ newline). Add this to the standard post-write check for
+app.js alongside `node --check` + brace balance. More generally: a green
+`node --check` is necessary but NOT sufficient proof a JS file is intact --
+confirm the expected ending bytes are present. Recovery: `git diff <last-good>`
+on the file surfaces the `})();`->`})` corruption immediately.

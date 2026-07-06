@@ -2636,10 +2636,17 @@
     try {
       // Phase 14b: both rollups in parallel. The dashboard pairs
       // workcenter and circuit views per department in a single render.
+      // Workcenter + circuit rollups are core. The product rollup is
+      // OPTIONAL (only sites emitting Produced_Metrics with Display_Chart
+      // on return products), so its fetch is made non-fatal -- a failure
+      // there degrades to "no product tabs", never blanks the page.
       const [payload, circuitPayload, productPayload] = await Promise.all([
         fetchJSON(rollupUrl),
         fetchJSON(circuitUrl),
-        fetchJSON(productUrl),
+        fetchJSON(productUrl).catch((e) => {
+          console.warn("product-rollup fetch failed; omitting product tabs", e);
+          return null;
+        }),
       ]);
       _lastTrendsPayload = payload;
       _lastTrendsCircuitPayload = circuitPayload;
@@ -3640,4 +3647,4 @@
   }
 
   document.addEventListener("DOMContentLoaded", bootstrap);
-})
+})();
