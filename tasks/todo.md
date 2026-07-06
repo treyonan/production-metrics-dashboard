@@ -4148,3 +4148,85 @@ member with the column totals (Capacity/Total/Count/Cycle_Count).
 ### Browser QA for Trey
 - [ ] Trucks/Loaders tables show a bold "Total" row beneath the items.
 - [ ] Totals align under Capacity/Total/Count/Cycle Count; em-dash elsewhere.
+
+## Phase 37 -- Per-product rollup tabs on Production Charts (PLANNED 2026-06-08)
+
+New per-product dimension parallel to circuits. For a department whose
+reports carry `Metrics.Produced_Metrics` with `Display_Chart: true`, add
+one tab per product (indent 1, under the workcenter/department), labelled
+`Produced_Item_Description`, each with 3 bucketed bar charts: Total Tons,
+TPH, Yield. Re-aggregates on View change (Day/Month/Year). Decisions
+(Trey): key products by `Produced_Item_Code`; show tabs if ANY report in
+the window has Display_Chart=true; keep 3 charts (Yield null-safe). BCQ
+Display_Chart is false for now -> BCQ shows no product tabs.
+
+### Aggregation per (department, product, bucket)
+- Total Tons = SUM of product `Total`
+- TPH = MEAN of product `Rate`
+- Yield = MEAN of product `Yield` (FOR NOW). LATER: SUM(product Total) /
+  workcenter Total over the same bucket -- the workcenter Total per bucket
+  is already computed in get_rollup, so that swap is localized.
+- Products only collected from reports where Produced_Metrics.Display_Chart
+  is true (the "any report" gate falls out of this).
+
+### Backend (mirrors circuit-rollup)
+- [ ] `get_product_rollup(source, *, site_id, bucket, from_date, to_date)`
+      in services/production_report.py: walk payload.Metrics.Produced_Metrics
+      per report; if dict AND Display_Chart truthy, collect ProductN dicts
+      keyed by Produced_Item_Code (label = Produced_Item_Description,
+      latest-wins). Group by (department_id, product_code, bucket_label);
+      sum Total, mean Rate, mean Yield, report_count. Sort products by
+      description. Skip the "Display_Chart" / non-dict keys.
+- [ ] Dataclasses: ProductBucketEntry (bucket_label, total_tons, avg_tph,
+      avg_yield, report_count), ProductRollup (product_code, description,
+      buckets), DepartmentProductRollup (department_id, department_name,
+      products).
+- [ ] Pydantic schemas + `ProductRollupResponse` (site_id, bucket, window,
+      generated_at, departments[]).
+- [ ] Route `GET /api/production-report/product-rollup/{bucket}` --
+      same BucketLiteral / caps / 422-inverted / 503-on-failure as
+      circuit-rollup. No calcs/labels resolution (products have no Calcs).
+
+### Frontend
+- [ ] `refreshTrends`: 3rd parallel fetch of product-rollup; cache
+      `_lastTrendsProductPayload`.
+- [ ] `renderTrends(payload, circuitPayload, productPayload)` -- extend
+      signature; AUDIT all callers (theme-toggle re-render must pass the
+      cached product payload -- per the Phase 14b lesson).
+- [ ] Per department: after circuit tabs, push one product tab (indent 1)
+      per product; build -> `_renderProductSection` (3 single-series bar
+      panels: Total Tons / TPH / Yield, fixed titles, no calcs footnote).
+      Bar value labels apply automatically.
+- [ ] node --check.
+
+### Tests
+- [ ] Service: sum/mean aggregation, key-by-code, Display_Chart gate
+      (false -> no products), bucketing (daily/monthly/yearly labels),
+      Yield null-safe.
+- [ ] Route: 200 shape, gate, inverted/oversized -> 422.
+
+### Out of scope (confirm)
+- Trends XLSX export product sheets -- NOT added now (charts only); can
+  follow later.
+- The final Yield formula (deferred, noted above).
+
+### Phase 37 -- build + verification (2026-06-08)
+- Backend: services get_product_rollup + ProductBucketEntry/ProductRollup/
+  DepartmentProductRollup; Pydantic mirror; route GET
+  /api/production-report/product-rollup/{bucket} (ValueError->422, caps).
+  Frontend: 3rd parallel fetch in refreshTrends, cached
+  _lastTrendsProductPayload, renderTrends(payload,circuit,product) with all
+  3 callers updated (theme + formula re-render paths), product tabs
+  (indent 1) after circuits, _renderProductSection = 3 bar panels.
+- Verified: standalone service driver (sum/mean keyed by code across slots,
+  Display_Chart gate, monthly bucketing, Yield None-safe); new service +
+  api tests; ruff delta 0 on all edited files; py_compile clean; node
+  --check PASS. Trey's 3.12 venv authoritative for the TestClient tests.
+
+### Browser QA for Trey
+- [ ] ARQ site: each product shows a tab at circuit indent under its
+      workcenter, labelled by Produced_Item_Description, with 3 charts
+      (Total Tons / TPH / Yield).
+- [ ] BCQ (Display_Chart false): no product tabs.
+- [ ] Charts re-aggregate on Day/Month/Year switch.
+- [ ] Theme toggle / formula toggle keep product charts (cached payload).

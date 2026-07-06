@@ -42,6 +42,10 @@ from app.schemas.production_report import (
     ProductionReportEntry,
     ProductionReportLatestResponse,
     ProductionReportRangeResponse,
+    ProductBucketEntry as PydProductBucketEntry,
+    ProductRollup as PydProductRollup,
+    ProductRollupResponse,
+    DepartmentProductRollup as PydDepartmentProductRollup,
     RollupEntry,
     RollupResponse,
     RunReportDepartment,
@@ -58,6 +62,7 @@ from app.services.production_report import (
     get_configured_run_report,
     get_latest_date,
     get_latest_per_workcenter,
+    get_product_rollup,
     get_range,
     get_rollup,
 )
@@ -657,6 +662,102 @@ async def run_report_export(
                 department_name=d.department_name,
                 columns=d.columns,
                 rows=d.rows,
+            )
+            for d in depts
+        ],
+    )
+
+
+# ---- /product-rollup/{bucket} (Phase 37) -------------------------------
+
+
+@router.get(
+    "/product-rollup/{bucket}",
+    response_model=ProductRollupResponse,
+    summary="Per-product (Produced_Metrics) rollup, gated by Display_Chart",
+    description=(
+        "Walks payload.Metrics.Produced_Metrics on every production-report "
+        "row in [from_date, to_date]. Only reports whose Produced_Metrics "
+        "carries a truthy Display_Chart flag contribute, so a site with the "
+        "flag off returns no products. Products are keyed by "
+        "Produced_Item_Code and labelled by Produced_Item_Description. "
+        "Per (product, bucket): total_tons = SUM(product.Total), avg_tph = "
+        "MEAN(product.Rate), avg_yield = MEAN(product.Yield). Same bucket "
+        "regimes and caps as the other rollups."
+    ),
+)
+async def product_rollup(
+    production_report: ProductionReportSourceDep,
+    bucket: Annotated[
+        BucketLiteral,
+        Path(description="Bucket regime: 'daily', 'monthly', or 'yearly'."),
+    ],
+    site_id: Annotated[str, Query(description="Site to roll up (required).")],
+    from_date: Annotated[date, Query(description="Inclusive window start, YYYY-MM-DD.")],
+    to_date: Annotated[date, Query(description="Inclusive window end, YYYY-MM-DD.")],
+    department_id: Annotated[
+        str | None,
+        Query(description="Optional filter: roll up only this department_id."),
+    ] = None,
+) -> ProductRollupResponse:
+    if from_date > to_date:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"from_date ({from_date.isoformat()}) must be <= "
+                f"to_date ({to_date.isoformat()})."
+            ),
+        )
+    count = _bucket_count(bucket, from_date, to_date)
+    cap = _MAX_BUCKETS[bucket]
+    if count > cap:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Window too large: {count} {bucket} buckets exceeds the "
+                f"{cap}-bucket cap. Narrow the window."
+            ),
+        )
+    try:
+        depts = await get_product_rollup(
+            production_report,
+            site_id=site_id,
+            bucket=bucket,
+            from_date=from_date,
+            to_date=to_date,
+            department_id=department_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    return ProductRollupResponse(
+        site_id=site_id,
+        bucket=bucket,
+        from_date=from_date,
+        to_date=to_date,
+        department_id=department_id,
+        generated_at=datetime.now(UTC),
+        departments=[
+            PydDepartmentProductRollup(
+                department_id=d.department_id,
+                department_name=d.department_name,
+                products=[
+                    PydProductRollup(
+                        product_code=p.product_code,
+                        description=p.description,
+                        buckets=[
+                            PydProductBucketEntry(
+                                bucket_label=b.bucket_label,
+                                total_tons=b.total_tons,
+                                avg_tph=b.avg_tph,
+                                avg_yield=b.avg_yield,
+                                report_count=b.report_count,
+                            )
+                            for b in p.buckets
+                        ],
+                    )
+                    for p in d.products
+                ],
             )
             for d in depts
         ],

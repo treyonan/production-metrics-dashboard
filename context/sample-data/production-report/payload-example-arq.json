@@ -1,0 +1,180 @@
+{
+  "Metrics": {
+    "Site": {
+      "Trucks": {
+        "Aggregation": {
+          "Capacity": 85,
+          "Dump_Rate": 0,
+          "Rate": 0,
+          "Total": 0,
+          "Cycle_Rate": 0,
+          "Count": 0,
+          "Cycle_Count": 0
+        },
+        "Truck0": {
+          "Operator": "",
+          "Description": "Haul Truck 775",
+          "Capacity": 50,
+          "Total": 0,
+          "Product": 261,
+          "Count": 0,
+          "Cycle_Count": 0
+        },
+        "Truck1": {
+          "Operator": "",
+          "Description": "Rip Rap",
+          "Capacity": 35,
+          "Total": 0,
+          "Product": 0,
+          "Count": 0,
+          "Cycle_Count": 0
+        },
+        "Truck2": {
+          "Operator": "",
+          "Description": "",
+          "Capacity": 0,
+          "Total": 0,
+          "Product": 0,
+          "Count": 0,
+          "Cycle_Count": 0
+        }
+      },
+      "Loaders": {
+        "Aggregation": {
+          "Capacity": 27,
+          "Dump_Rate": 0,
+          "Rate": 0,
+          "Total": 0,
+          "Cycle_Rate": 0,
+          "Count": 0,
+          "Cycle_Count": 0
+        },
+        "Loader0": {
+          "Operator": "",
+          "Description": "",
+          "Capacity": 13.5,
+          "Total": 0,
+          "Product": 0,
+          "Count": 0,
+          "Cycle_Count": 0
+        },
+        "Loader1": {
+          "Operator": "",
+          "Description": "",
+          "Capacity": 13.5,
+          "Total": 0,
+          "Product": 0,
+          "Count": 0,
+          "Cycle_Count": 0
+        }
+      },
+      "Pit": {
+        "Description": "Main Pit",
+        "Bench_Levels": {
+          "Bench_Selected": 1
+        }
+      },
+      "Shot": {
+        "Shot_2": "None",
+        "Shot_1": "None",
+        "Shot_Rock_Tons": 0
+      }
+    },
+    "C3": {
+      "Availability": 0.7,
+      "Runtime": 7.9,
+      "Description": "Primary Feed",
+      "Produced_Item_Description": "_",
+      "Belt_Scale_Availability": 1,
+      "Rate": 176.7,
+      "Ideal_Rate": 83.8,
+      "Total": 2016.6,
+      "Yield": 0.5,
+      "Produced_Item_Code": "_",
+      "Performance": 3.1
+    },
+    "C4": {
+      "Availability": 0.4,
+      "Runtime": 4.9,
+      "Description": "Primary Surge",
+      "Produced_Item_Description": "10IN SURGE",
+      "Belt_Scale_Availability": 1,
+      "Rate": 156.2,
+      "Ideal_Rate": 350,
+      "Total": 1782.8,
+      "Yield": 1782.8,
+      "Produced_Item_Code": "ST7900",
+      "Performance": 1
+    },
+    "Workcenter": {
+      "Availability": 1,
+      "Production_Mode": "1",
+      "Runtime": 11.4,
+      "Description": "Primary",
+      "Calcs": {
+        "Availability": {
+          "Formula": "Primary Runtime/Primary Scheduled Runtime",
+          "Formula_Verbose": "C1 Runtime/Scheduled Runtime"
+        },
+        "Rate": {
+          "Formula": "Primary Total/Primary Runtime",
+          "Formula_Verbose": "C1 Total/C1 Runtime"
+        },
+        "Total": {
+          "Formula": "C1 Total",
+          "Formula_Verbose": "C1 Total"
+        },
+        "Performance": {
+          "Formula": "(Primary Total/Primary Runtime)/Primary Ideal Rate",
+          "Formula_Verbose": "(C1 Total/C1 Runtime)/Primary Ideal Rate"
+        }
+      },
+      "Start_Time": "04:30:00",
+      "Ideal_Rate": 350,
+      "Rate": 332.9,
+      "Total": 3798.6,
+      "Scheduled_Status": "Scheduled",
+      "Performance": 1,
+      "Scheduled_Runtime": 11.5
+    },
+    "Produced_Metrics": {
+      "Product1": {
+        "Produced_Item_Description": "1 1/2\u0022 CRUSHER RUN",
+        "Ideal_Rate": 140,
+        "Rate": 176.9,
+        "Total": 2016.61,
+        "Yield": 0.5309,
+        "Produced_Item_Code": "ST5450"
+      },
+      "Product0": {
+        "Produced_Item_Description": "10\u0022 SURGE",
+        "Ideal_Rate": 210,
+        "Rate": 156.32,
+        "Total": 1782,
+        "Yield": 0.4691,
+        "Produced_Item_Code": "ST7900"
+      },
+      "Display_Chart": true
+    },
+    "RipRapDoor1": {
+      "Produced_Item_Description": "_",
+      "Rate": 0,
+      "Ideal_Rate": 350,
+      "Total": 0,
+      "Yield": 0
+    },
+    "C1": {
+      "Availability": 1,
+      "Runtime": 11.4,
+      "Description": "Primary Feed",
+      "Produced_Item_Description": "_",
+      "Belt_Scale_Availability": 1,
+      "Rate": 332.9,
+      "Ideal_Rate": 350,
+      "Total": 3798.6,
+      "Yield": 1,
+      "Produced_Item_Code": "_",
+      "Performance": 1
+    }
+  }
+}

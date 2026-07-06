@@ -1007,3 +1007,171 @@ async def get_configured_run_report(
             )
         )
     return out
+
+
+# --- Phase 37: per-product rollup (Produced_Metrics) ---------------------
+#
+# Walks payload.Metrics.Produced_Metrics on each report. Only reports whose
+# Produced_Metrics carries a truthy ``Display_Chart`` flag contribute
+# (so a site with Display_Chart off shows no product tabs). Products are
+# keyed by ``Produced_Item_Code`` (stable across reports; the positional
+# ProductN slot is not) and labelled by ``Produced_Item_Description``.
+
+
+@dataclass(frozen=True)
+class ProductBucketEntry:
+    """One per-(product, bucket) aggregate."""
+    bucket_label: str  # YYYY-MM-DD daily, YYYY-MM monthly, YYYY yearly
+    total_tons: float
+    avg_tph: float | None
+    avg_yield: float | None
+    report_count: int
+
+
+@dataclass(frozen=True)
+class ProductRollup:
+    """A produced item. ``product_code`` is the stable grouping key
+    (e.g. ST7900); ``description`` is the operator-facing tab label."""
+    product_code: str
+    description: str
+    buckets: list[ProductBucketEntry]
+
+
+@dataclass(frozen=True)
+class DepartmentProductRollup:
+    """All chartable products for one department."""
+    department_id: str
+    department_name: str
+    products: list[ProductRollup]
+
+
+def _bucket_label_for(bucket: str, prod_date: datetime) -> str:
+    """YYYY-MM-DD daily, YYYY-MM monthly, YYYY yearly."""
+    if bucket == "daily":
+        return f"{prod_date.year:04d}-{prod_date.month:02d}-{prod_date.day:02d}"
+    if bucket == "yearly":
+        return f"{prod_date.year:04d}"
+    return f"{prod_date.year:04d}-{prod_date.month:02d}"
+
+
+def _display_chart_on(produced_metrics: dict[str, Any]) -> bool:
+    """True when Produced_Metrics.Display_Chart is a truthy flag. Accepts
+    the boolean ``true`` (current payload shape) and common string forms;
+    absent / false / anything else is off."""
+    dc = produced_metrics.get("Display_Chart")
+    if dc is True:
+        return True
+    if isinstance(dc, str):
+        return dc.strip().lower() in ("true", "1", "yes")
+    return False
+
+
+async def get_product_rollup(
+    source: ProductionReportSource,
+    *,
+    site_id: str,
+    bucket: str,
+    from_date: date,
+    to_date: date,
+    department_id: str | None = None,
+) -> list[DepartmentProductRollup]:
+    """Per-(department, product, bucket) rollup of Produced_Metrics.
+
+    Aggregations per (product, bucket):
+      - ``total_tons`` = SUM of per-report product.Total
+      - ``avg_tph``    = MEAN of per-report product.Rate
+      - ``avg_yield``  = MEAN of per-report product.Yield (None-safe;
+                         products without Yield yield None)
+      - ``report_count`` = reports contributing to the bucket
+
+    Only reports whose Produced_Metrics has a truthy ``Display_Chart``
+    contribute; a department with no such reports is omitted entirely.
+
+    Raises ``ValueError`` if ``bucket`` is unknown or ``from_date >
+    to_date``.
+    """
+    if bucket not in ("daily", "monthly", "yearly"):
+        raise ValueError(
+            f"bucket must be 'daily', 'monthly', or 'yearly'; got {bucket!r}."
+        )
+    if from_date > to_date:
+        raise ValueError(
+            f"from_date ({from_date.isoformat()}) must be <= "
+            f"to_date ({to_date.isoformat()})."
+        )
+
+    rows = await source.fetch_rows()
+    rows = [r for r in rows if r.site_id == site_id]
+    if department_id is not None:
+        rows = [r for r in rows if r.department_id == department_id]
+    rows = [r for r in rows if from_date <= r.prod_date.date() <= to_date]
+
+    by_dept: dict[str, list[ProductionReportRow]] = defaultdict(list)
+    for r in rows:
+        by_dept[r.department_id].append(r)
+
+    out: list[DepartmentProductRollup] = []
+    for dept_id in sorted(by_dept.keys()):
+        dept_rows = by_dept[dept_id]
+        dept_name = dept_rows[0].department_name
+
+        # product_code -> latest-seen description (and the date we saw it,
+        # so the freshest description wins across the window).
+        prod_desc: dict[str, str] = {}
+        prod_desc_at: dict[str, datetime] = {}
+        # (product_code, bucket_label) -> list of (total, rate, yield)
+        by_pb: dict[
+            tuple[str, str], list[tuple[float | None, float | None, float | None]]
+        ] = defaultdict(list)
+
+        for r in dept_rows:
+            pm = (r.payload or {}).get("Metrics", {}).get("Produced_Metrics")
+            if not isinstance(pm, dict) or not _display_chart_on(pm):
+                continue
+            label = _bucket_label_for(bucket, r.prod_date)
+            for key, node in pm.items():
+                if key == "Display_Chart" or not isinstance(node, dict):
+                    continue
+                code = node.get("Produced_Item_Code")
+                if code is None or str(code).strip() in ("", "_"):
+                    code = node.get("Produced_Item_Description")
+                if code is None or str(code).strip() == "":
+                    continue
+                code = str(code)
+                desc = str(node.get("Produced_Item_Description") or code)
+                if code not in prod_desc_at or r.prod_date >= prod_desc_at[code]:
+                    prod_desc[code] = desc
+                    prod_desc_at[code] = r.prod_date
+                by_pb[(code, label)].append((
+                    _coerce_finite_float(node.get("Total")),
+                    _coerce_finite_float(node.get("Rate")),
+                    _coerce_finite_float(node.get("Yield")),
+                ))
+
+        if not prod_desc:
+            continue  # no chartable products for this department
+
+        products: list[ProductRollup] = []
+        for code in sorted(prod_desc.keys(), key=lambda c: (prod_desc[c].lower(), c)):
+            labels = sorted({lbl for (c, lbl) in by_pb if c == code})
+            buckets: list[ProductBucketEntry] = []
+            for lbl in labels:
+                triples = by_pb[(code, lbl)]
+                total_tons = sum((t or 0.0) for (t, _r, _y) in triples)
+                avg_tph = _mean_or_none([rt for (_t, rt, _y) in triples])
+                avg_yield = _mean_or_none([y for (_t, _r, y) in triples])
+                buckets.append(ProductBucketEntry(
+                    bucket_label=lbl,
+                    total_tons=total_tons,
+                    avg_tph=avg_tph,
+                    avg_yield=avg_yield,
+                    report_count=len(triples),
+                ))
+            products.append(ProductRollup(
+                product_code=code, description=prod_desc[code], buckets=buckets,
+            ))
+
+        out.append(DepartmentProductRollup(
+            department_id=dept_id, department_name=dept_name, products=products,
+        ))
+    return out

@@ -360,7 +360,9 @@ class RollupResponse(BaseModel):
 class CircuitBucketEntry(BaseModel):
     """One per-(circuit-or-line, month) aggregate on the wire."""
 
-    bucket_label: str = Field(description="Bucket identifier (YYYY-MM-DD daily, YYYY-MM monthly, YYYY yearly).")
+    bucket_label: str = Field(
+        description="Bucket identifier (YYYY-MM-DD daily, YYYY-MM monthly, YYYY yearly)."
+    )
     total_tons: float = Field(description="Sum of node.Total across reports in this month bucket.")
     runtime_hours: float = Field(description="Sum of node.Runtime (decimal hours) across reports.")
     avg_tph: float | None = Field(
@@ -507,4 +509,68 @@ class ConfiguredRunReportResponse(BaseModel):
     generated_at: datetime = Field(description="Server timestamp when the export was assembled.")
     departments: list[RunReportDepartment] = Field(
         description="One entry per department in the site that has reports in the window."
+    )
+
+
+# --- Phase 37: per-product rollup (Produced_Metrics) --------------------
+
+
+class ProductBucketEntry(BaseModel):
+    """One per-(product, bucket) aggregate on the wire."""
+
+    bucket_label: str = Field(description="Bucket identifier (YYYY-MM-DD daily, YYYY-MM monthly, YYYY yearly).")
+    total_tons: float = Field(description="Sum of per-report product.Total across the bucket.")
+    avg_tph: float | None = Field(
+        default=None,
+        description=(
+            "Simple mean of per-report product.Rate. Null when no report has "
+            "a usable Rate."
+        ),
+    )
+    avg_yield: float | None = Field(
+        default=None,
+        description=(
+            "Simple mean of per-report product.Yield (interim). Null when the "
+            "product carries no Yield. Future: SUM(product Total) / workcenter "
+            "Total over the same bucket."
+        ),
+    )
+    report_count: int = Field(description="Number of reports contributing to this bucket.")
+
+
+class ProductRollup(BaseModel):
+    """One produced item across the window."""
+
+    product_code: str = Field(description="Stable grouping key (Produced_Item_Code).")
+    description: str = Field(description="Operator-facing tab label (Produced_Item_Description).")
+    buckets: list[ProductBucketEntry] = Field(
+        default_factory=list,
+        description="Per-bucket aggregates for this product.",
+    )
+
+
+class DepartmentProductRollup(BaseModel):
+    """All chartable products for one department."""
+
+    department_id: str = Field(description="Workcenter / department identifier.")
+    department_name: str = Field(description="Human-readable department name.")
+    products: list[ProductRollup] = Field(
+        default_factory=list,
+        description="Products from reports whose Produced_Metrics.Display_Chart is on.",
+    )
+
+
+class ProductRollupResponse(BaseModel):
+    """Envelope for /api/production-report/product-rollup/{bucket}."""
+
+    site_id: str = Field(description="Echo of the site_id filter.")
+    bucket: str = Field(description="Echo of the bucket path parameter.")
+    from_date: date = Field(description="Inclusive window start (YYYY-MM-DD).")
+    to_date: date = Field(description="Inclusive window end (YYYY-MM-DD).")
+    department_id: str | None = Field(
+        default=None, description="Echo of optional department_id filter."
+    )
+    generated_at: datetime = Field(description="UTC timestamp the response was assembled.")
+    departments: list[DepartmentProductRollup] = Field(
+        description="Per-department product rollup. Empty when no chartable products match."
     )

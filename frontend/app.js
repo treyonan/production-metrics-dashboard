@@ -180,6 +180,9 @@
   // renderTrends -- otherwise the circuit subsections silently
   // disappear when the user flips light/dark while on the Trends tab.
   let _lastTrendsCircuitPayload = null;
+  // Phase 37: cached product-rollup payload (same lifecycle as the
+  // circuit payload -- needed by every re-render-without-fetch path).
+  let _lastTrendsProductPayload = null;
   // Phase 14b restructure: which tab is currently shown on the
   // Trends view. Persists across refresh / theme-toggle re-renders
   // when the same section still exists in the new render; falls
@@ -323,7 +326,7 @@
     applyTheme(getTheme() === "dark" ? "light" : "dark");
     if (_lastPayload) renderData(_lastPayload);
     if (currentView === "trends" && _lastTrendsPayload) {
-      renderTrends(_lastTrendsPayload, _lastTrendsCircuitPayload);
+      renderTrends(_lastTrendsPayload, _lastTrendsCircuitPayload, _lastTrendsProductPayload);
     }
   }
 
@@ -2511,6 +2514,7 @@
     // disabled because rollups.length will be 0.
     _lastTrendsPayload = null;
     _lastTrendsCircuitPayload = null;
+    _lastTrendsProductPayload = null;
     updateExportButtonState();
     if (currentView === "trends" && currentSiteId) refreshTrends();
   }
@@ -2546,7 +2550,7 @@
     try { localStorage.setItem("pmd-trends-formula", mode); } catch (_e) {}
     _applyFormulaUi(mode);
     if (currentView === "trends" && _lastTrendsPayload) {
-      renderTrends(_lastTrendsPayload, _lastTrendsCircuitPayload);
+      renderTrends(_lastTrendsPayload, _lastTrendsCircuitPayload, _lastTrendsProductPayload);
     }
   }
 
@@ -2627,17 +2631,20 @@
       + `&to_date=${encodeURIComponent(range.to_date)}`;
     const rollupUrl  = `/api/production-report/rollup/${range.bucket}${baseQs}`;
     const circuitUrl = `/api/production-report/circuit-rollup/${range.bucket}${baseQs}`;
+    const productUrl = `/api/production-report/product-rollup/${range.bucket}${baseQs}`;
 
     try {
       // Phase 14b: both rollups in parallel. The dashboard pairs
       // workcenter and circuit views per department in a single render.
-      const [payload, circuitPayload] = await Promise.all([
+      const [payload, circuitPayload, productPayload] = await Promise.all([
         fetchJSON(rollupUrl),
         fetchJSON(circuitUrl),
+        fetchJSON(productUrl),
       ]);
       _lastTrendsPayload = payload;
       _lastTrendsCircuitPayload = circuitPayload;
-      renderTrends(payload, circuitPayload);
+      _lastTrendsProductPayload = productPayload;
+      renderTrends(payload, circuitPayload, productPayload);
       updateExportButtonState();
       _clearTrendsError();
       // Status text intentionally cleared on success -- the
@@ -2754,7 +2761,7 @@
     return parts.join("\n");
   }
 
-  function renderTrends(payload, circuitPayload) {
+  function renderTrends(payload, circuitPayload, productPayload) {
     const grid = $("trends-grid");
     const tablist = $("trends-tablist");
     const empty = $("trends-empty-state");
@@ -2841,6 +2848,12 @@
     const circuitsByDeptId = new Map();
     for (const d of circuitDepts) circuitsByDeptId.set(d.department_id, d.circuits || []);
 
+    // Phase 37: per-product tabs (Produced_Metrics). Only present for
+    // departments whose reports had Display_Chart on (the backend gates).
+    const productDepts = (productPayload && productPayload.departments) || [];
+    const productsByDeptId = new Map();
+    for (const d of productDepts) productsByDeptId.set(d.department_id, d.products || []);
+
     deptIds.forEach((dept, idx) => {
       sections.push({
         id: `wc-${dept}`,
@@ -2903,6 +2916,16 @@
           label: circuit.description || circuit.circuit_id,
           indent: 1,
           build: (s) => _renderCircuitSection(s, circuit, months, idx, cidx),
+        });
+      });
+
+      const deptProducts = productsByDeptId.get(dept) || [];
+      deptProducts.forEach((product) => {
+        sections.push({
+          id: `product-${dept}-${product.product_code}`,
+          label: product.description || product.product_code,
+          indent: 1,
+          build: (s) => _renderProductSection(s, product, months),
         });
       });
     });
@@ -3184,6 +3207,42 @@
 
       appendCircuitExtraMetrics();
     }
+  }
+
+  // Phase 37: one product tab's 3 charts (Total Tons / TPH / Yield).
+  // Single-series bars over the same bucket axis as the rest of the page.
+  // No calcs footnote -- Produced_Metrics has no Calcs block.
+  function _renderProductSection(grid, product, months) {
+    const pMap = new Map();
+    for (const b of (product.buckets || [])) pMap.set(b.bucket_label, b);
+    const baseColor = "#ffde74";
+    const build = (extractor) => ({
+      label: product.description || product.product_code,
+      data: months.map((m) => {
+        const e = pMap.get(m);
+        if (!e) return null;
+        const v = extractor(e);
+        return (v === null || v === undefined) ? null : v;
+      }),
+      backgroundColor: baseColor,
+      borderColor: baseColor,
+      borderWidth: 1,
+    });
+    grid.appendChild(_renderTrendPanel({
+      title: "Total Tons", subtitle: "", calcsLine: null, labels: months,
+      datasets: [build((e) => e.total_tons)],
+      yLabel: "Tons", yFormat: (v) => `${fmtInt(v)} t`, chartType: "bar",
+    }));
+    grid.appendChild(_renderTrendPanel({
+      title: "TPH", subtitle: "", calcsLine: null, labels: months,
+      datasets: [build((e) => e.avg_tph)],
+      yLabel: "Tons/hr", yFormat: (v) => `${fmtInt(v)} tph`, chartType: "bar",
+    }));
+    grid.appendChild(_renderTrendPanel({
+      title: "Yield", subtitle: "", calcsLine: null, labels: months,
+      datasets: [build((e) => e.avg_yield)],
+      yLabel: "Yield", yFormat: (v) => `${v.toFixed(2)}`, chartType: "bar",
+    }));
   }
 
   function _renderTrendPanel({ title, subtitle, calcsLine, labels, datasets, yLabel, yFormat, chartType }) {
