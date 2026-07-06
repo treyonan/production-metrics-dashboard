@@ -2892,8 +2892,8 @@
             calcsLine: _singleCalcsLine(_wcBuckets, "Availability", "Availability"),
             labels: months,
             datasets: [buildBarDataset(dept, (r) => r.avg_runtime_pct, idx)],
-            yLabel: "%",
-            yFormat: (v) => `${fmt1(v)}%`,
+            yLabel: "",
+            yFormat: (v) => `${v.toFixed(3)}`,
             chartType: "bar",
           }));
           s.appendChild(_renderTrendPanel({
@@ -2902,8 +2902,8 @@
             calcsLine: _singleCalcsLine(_wcBuckets, "Performance", "Performance"),
             labels: months,
             datasets: [buildBarDataset(dept, (r) => r.avg_performance_pct, idx)],
-            yLabel: "%",
-            yFormat: (v) => `${fmt1(v)}%`,
+            yLabel: "",
+            yFormat: (v) => `${v.toFixed(3)}`,
             chartType: "bar",
           }));
         },
@@ -3028,8 +3028,8 @@
           calcsLine: _singleCalcsLine(circuit.buckets || [], x.metric, x.metric),
           labels: months,
           datasets: [buildCircuitDataset(x.get, baseColor)],
-          yLabel: "%",
-          yFormat: (v) => `${v.toFixed(1)}%`,
+          yLabel: "",
+          yFormat: (v) => `${v.toFixed(3)}`,
           chartType: "bar",
         }));
       }
@@ -3166,8 +3166,8 @@
           ),
           labels: months,
           datasets: buildPerLineDatasets(_x.get),
-          yLabel: "%",
-          yFormat: (v) => `${v.toFixed(1)}%`,
+          yLabel: "",
+          yFormat: (v) => `${v.toFixed(3)}`,
           chartType: "bar",
         }));
       }
@@ -3229,17 +3229,17 @@
       borderWidth: 1,
     });
     grid.appendChild(_renderTrendPanel({
-      title: "Total Tons", subtitle: "", calcsLine: null, labels: months,
+      title: "Total", subtitle: "", calcsLine: null, labels: months,
       datasets: [build((e) => e.total_tons)],
       yLabel: "Tons", yFormat: (v) => `${fmtInt(v)} t`, chartType: "bar",
     }));
     grid.appendChild(_renderTrendPanel({
-      title: "TPH", subtitle: "", calcsLine: null, labels: months,
+      title: "Rate", subtitle: "", calcsLine: null, labels: months,
       datasets: [build((e) => e.avg_tph)],
       yLabel: "Tons/hr", yFormat: (v) => `${fmtInt(v)} tph`, chartType: "bar",
     }));
     grid.appendChild(_renderTrendPanel({
-      title: "Yield", subtitle: "", calcsLine: null, labels: months,
+      title: "Average Yield", subtitle: "", calcsLine: null, labels: months,
       datasets: [build((e) => e.avg_yield)],
       yLabel: "Yield", yFormat: (v) => `${v.toFixed(2)}`, chartType: "bar",
     }));
@@ -3640,4 +3640,4 @@
   }
 
   document.addEventListener("DOMContentLoaded", bootstrap);
-})();
+})
