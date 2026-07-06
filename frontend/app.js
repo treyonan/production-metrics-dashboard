@@ -254,6 +254,10 @@
   };
   const pad2 = (n) => String(n).padStart(2, "0");
   const fmt1 = (v) => (v === null || v === undefined ? "\u2014" : Number(v).toFixed(1));
+  // Production Dashboard only: Availability / Performance arrive as
+  // 0-1 ratios; multiply by 100 for percent display. Null-safe so a
+  // missing value still renders as em-dash rather than 0.
+  const x100 = (v) => (v === null || v === undefined ? v : v * 100);
   const fmtInt = (v) => (v === null || v === undefined ? "\u2014" : Math.round(Number(v)).toString());
   const placeholderize = (s) => (s === "_" || s === "None" || !s ? "\u2014" : s);
   const fmtDate = (iso) => new Date(iso).toLocaleDateString();
@@ -633,23 +637,23 @@
     const itemDesc = placeholderize(m.Produced_Item_Description);
     return el("tr", {}, [
       el("td", {}, label),
-      el("td", {}, fmt1(m.Availability)),
+      el("td", {}, fmt1(x100(m.Availability))),
       el("td", {}, fmt1(m.Runtime)),
-      el("td", {}, m.Performance === null ? "\u2014" : fmt1(m.Performance)),
+      el("td", {}, m.Performance === null ? "\u2014" : fmt1(x100(m.Performance))),
       el("td", {}, item === "\u2014" ? "\u2014" : `${item} (${itemDesc})`),
-      el("td", {}, m.Belt_Scale_Availability === undefined ? "\u2014" : fmt1(m.Belt_Scale_Availability)),
+      el("td", {}, m.Belt_Scale_Availability === undefined ? "\u2014" : fmt1(x100(m.Belt_Scale_Availability))),
     ]);
   }
 
   function kpiGridFromWorkcenter(wc) {
     return el("div", { class: "kg" }, [
-      el("div", { class: "kc " + statusClassForPct(wc.Availability) }, [
+      el("div", { class: "kc " + statusClassForPct(x100(wc.Availability)) }, [
         el("div", { class: "kl" }, "Availability"),
-        el("div", { class: "kv" }, fmt1(wc.Availability) + "%"),
+        el("div", { class: "kv" }, fmt1(x100(wc.Availability)) + "%"),
       ]),
-      el("div", { class: "kc " + statusClassForPct(wc.Performance) }, [
+      el("div", { class: "kc " + statusClassForPct(x100(wc.Performance)) }, [
         el("div", { class: "kl" }, "Performance"),
-        el("div", { class: "kv" }, wc.Performance === null ? "\u2014" : fmt1(wc.Performance) + "%"),
+        el("div", { class: "kv" }, wc.Performance === null ? "\u2014" : fmt1(x100(wc.Performance)) + "%"),
       ]),
       el("div", { class: "kc sk" }, [
         el("div", { class: "kl" }, "Runtime (hours)"),
@@ -751,8 +755,8 @@
       // and the notes block.
       el("td", {}, entry.shift || "\u2014"),
       el("td", {}, weatherSummary(entry)),
-      el("td", {}, fmt1(wc.Availability)),
-      el("td", {}, wc.Performance === null ? "\u2014" : fmt1(wc.Performance)),
+      el("td", {}, fmt1(x100(wc.Availability))),
+      el("td", {}, wc.Performance === null ? "\u2014" : fmt1(x100(wc.Performance))),
       el("td", {}, fmt1(wc.Runtime)),
       el("td", {}, wc.Total === null || wc.Total === undefined ? "\u2014" : fmtInt(wc.Total)),
       el("td", {}, detailsButton(entry)),
