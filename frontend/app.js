@@ -3114,7 +3114,7 @@
         labels: months,
         datasets: [buildCircuitDataset((e) => e.avg_yield, baseColor)],
         yLabel: "Yield",
-        yFormat: (v) => `${v.toFixed(2)}`,        
+        yFormat: (v) => `${v.toFixed(3)}`,        
         chartType: "bar",
       }));
 
@@ -3156,7 +3156,7 @@
         labels: months,
         datasets: buildPerLineDatasets((e) => e.avg_yield),
         yLabel: "Yield",
-        yFormat: (v) => `${v.toFixed(2)}`,  
+        yFormat: (v) => `${v.toFixed(3)}`,  
         chartType: "bar",
       }));
 
@@ -3191,8 +3191,8 @@
         calcsLine: _singleCalcsLine(circuit.buckets || [], "Total", "Total"),
         labels: months,
         datasets: [buildCircuitDataset((e) => e.total_tons, baseColor)],
-        yLabel: "Tons",
-        yFormat: (v) => `${v.toFixed(2)}`,  
+        yLabel: "Tons",         
+        yFormat: (v) => `${fmtInt(v)} t`,
         chartType: "bar",
       }));
       grid.appendChild(_renderTrendPanel({
@@ -3212,7 +3212,7 @@
         labels: months,
         datasets: [buildCircuitDataset((e) => e.avg_yield, baseColor)],
         yLabel: "Yield",
-        yFormat: (v) => `${v.toFixed(2)}`,  
+        yFormat: (v) => `${v.toFixed(3)}`,  
         chartType: "bar",
       }));
 
@@ -3252,7 +3252,7 @@
     grid.appendChild(_renderTrendPanel({
       title: "Average Yield", subtitle: "", calcsLine: null, labels: months,
       datasets: [build((e) => e.avg_yield)],
-      yLabel: "Yield", yFormat: (v) => `${v.toFixed(2)}`, chartType: "bar",
+      yLabel: "Yield", yFormat: (v) => `${v.toFixed(3)}`, chartType: "bar",
     }));
   }
 
