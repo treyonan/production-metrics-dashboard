@@ -4230,3 +4230,108 @@ Display_Chart is false for now -> BCQ shows no product tabs.
 - [ ] BCQ (Display_Chart false): no product tabs.
 - [ ] Charts re-aggregate on Day/Month/Year switch.
 - [ ] Theme toggle / formula toggle keep product charts (cached payload).
+
+## Migration — GitHub -> Azure DevOps (SSH), PLANNED 2026-07-06
+
+Move `origin` from GitHub to Azure DevOps. Keep the deploy flow: dev
+pull/commit/push, prod `git pull`. Only the remote changes.
+
+Decisions: preserve full history; GitHub kept intact but dropped from
+local remotes (safety net); prod authenticates as a DEDICATED Azure
+DevOps SERVICE ACCOUNT; prod pulls MANUALLY (SSH key may have a passphrase).
+
+Azure SSH URL (from Clone -> SSH; %20 = the space in the project name):
+  dolese@vs-ssh.visualstudio.com:v3/dolese/Operational%20Technology/Microservices_2
+
+The commands below run on Trey's machines (the Cowork sandbox has no SSH/
+Azure/prod access). Azure repo currently holds only a throwaway README ->
+force-push overwrites it.
+
+### Prereqs (Azure DevOps web)
+- [ ] Create the dedicated service/build account; add it to the
+      "Operational Technology" project with Read (or Contribute) on Microservices_2.
+
+### Stage 1 — Dev machine (Windows). Reuse the SSH key already registered
+### to your Azure user account (Azure keys are account-scoped, so it
+### already works for Microservices_2).
+    git status                      # clean, on main
+    git remote -v                   # current origin = GitHub
+    ssh -T dolese@vs-ssh.visualstudio.com   # accept host key, confirm auth
+    git remote add azure dolese@vs-ssh.visualstudio.com:v3/dolese/Operational%20Technology/Microservices_2
+    git push azure main --force     # overwrite the README-only history
+    git push azure --tags           # (0 tags now; harmless)
+    # --> VERIFY in the Azure web UI: main + all commits present
+    git remote remove origin        # drop GitHub
+    git remote rename azure origin   # Azure becomes origin
+    git push -u origin main         # set main to track origin/main (Azure)
+    git remote -v                   # origin = Azure only
+    git status                      # 'up to date with origin/main'
+
+### Stage 2 — Production machine (Linux). Service-account identity.
+    ssh-keygen -t ed25519 -C "prod-deploy-microservices2"   # dedicated key (or reuse)
+    cat ~/.ssh/id_ed25519.pub       # add to the SERVICE ACCOUNT: User settings -> SSH public keys
+    ssh -T dolese@vs-ssh.visualstudio.com   # accept host key, confirm auth as service acct
+    cd /path/to/repo
+    git remote set-url origin dolese@vs-ssh.visualstudio.com:v3/dolese/Operational%20Technology/Microservices_2
+    git fetch origin
+    git pull                        # prove the deploy pull works
+    # then the usual docker compose deploy (see docs/server-deployment.md)
+
+### Stage 3 — Cleanup (dev, in repo)
+- [ ] Rewrite docs/server-deployment.md: GitHub PAT/clone -> Azure DevOps
+      SSH (service account, new SSH URL, `ssh -T` check). Claude can do this edit.
+- [ ] Commit + push to Azure.
+
+### Rollback (any time — GitHub is untouched)
+    git remote set-url origin https://github.com/treyonan/production-metrics-dashboard.git
+
+### Notes
+- Fresh-start alternative (if chosen instead of preserve): `git checkout
+  --orphan azure-main && git add -A && git commit -m "Initial (Azure)" &&
+  git branch -M azure-main main` before the force-push. Loses history.
+- ed25519 keys avoid RSA-SHA2 host-algorithm issues on newer OpenSSH.
+- GitHub repo left intact but unused; no longer a local remote.
+
+### ALTERNATIVE — Start FRESH (no history)
+Use this INSTEAD of Stage 1. Prereqs + Stage 3 (cleanup) + Rollback are
+unchanged. KEY difference: prod cutover is different (see below) because
+the fresh Azure history is UNRELATED to prod's existing GitHub clone.
+
+Dev machine (Windows), in the repo working folder:
+    git status                              # clean, on main
+    ssh -T dolese@vs-ssh.visualstudio.com   # confirm Azure SSH auth
+    # 1. New single-commit history; working files unchanged, .gitignore respected:
+    git checkout --orphan azure-fresh
+    git add -A
+    git commit -m "Initial commit (migrated to Azure DevOps)"
+    # 2. Make it main (force-replaces local main; old commits become unreachable):
+    git branch -M main
+    # 3. Push fresh history to Azure (overwrites the README repo):
+    git remote add azure dolese@vs-ssh.visualstudio.com:v3/dolese/Operational%20Technology/Microservices_2
+    git push azure main --force
+    # --> VERIFY in Azure web UI: main has exactly ONE commit, all files present.
+    # 4. Repoint origin to Azure, drop GitHub locally:
+    git remote remove origin
+    git remote rename azure origin
+    git push -u origin main
+    git remote -v                           # origin = Azure only
+
+Prod machine (Linux) — REPLACES Stage 2 for the fresh path. A plain
+`git pull` would fail ("refusing to merge unrelated histories"), so
+either re-clone or hard-reset onto the fresh Azure main:
+    # Option A (cleanest) -- fresh clone into a new dir, then repoint the deploy:
+    git clone dolese@vs-ssh.visualstudio.com:v3/dolese/Operational%20Technology/Microservices_2 <newdir>
+    #   (copy over the prod .env / any untracked config, then deploy from <newdir>)
+    # Option B -- in-place reset of the existing clone:
+    git remote set-url origin dolese@vs-ssh.visualstudio.com:v3/dolese/Operational%20Technology/Microservices_2
+    git fetch origin
+    git reset --hard origin/main            # discards prod's old-history working state
+    #   (prod's .env is gitignored, so it survives the reset)
+
+Fresh-path notes:
+- GitHub keeps its FULL history untouched (we never push the rewritten
+  main to it) -- still the rollback/safety net.
+- Old commits stay as unreachable objects in your LOCAL .git (reflog-
+  recoverable for a while, then gc'd); Azure receives ONLY the 1 commit.
+- Trade-off vs preserve: the prod cutover is messier (re-clone / hard
+  reset instead of a clean `git pull`), and you lose blame/bisect/revert.
