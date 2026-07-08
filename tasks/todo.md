@@ -257,7 +257,7 @@ chart, NOT as its own bar.
       workcenter panels; grand-total label above the chart.
 - [x] Week view: bar heights increase vs Today (up to 7× the data).
 - [x] Month view: largest bars / grand total.
-- [ ] Empty-state: hack the sample CSV to remove all `CX` entries
+- [x] Empty-state: hack the sample CSV to remove all `CX` entries
       from a row → panel for that dept shows the no-belt-scale
       caption, not a broken chart. (Not yet verified by hand; logic
       is covered by `test_workcenter_with_no_cx_is_omitted`.)
@@ -413,7 +413,7 @@ discussion is the backup -- product text floating above each bar, via
 the chartjs-datalabels plugin. Small additional dependency; keeps the
 x-axis single-line. Revisit only if (A) looks bad with real data.
 
-## Phase 6 — XLSX export of current-mode table data (IMPLEMENTED 2026-04-23, browser QA pending)
+## Phase 6 — XLSX export of current-mode table data (IMPLEMENTED 2026-04-23, browser QA COMPLETE)
 
 **Trigger:** Trey asked for an "Export XLSX" button on the dashboard
 that dumps the current-mode table data to a .xlsx the user can open in
@@ -626,26 +626,26 @@ Done:
       `strOrEmpty` comments.
 
 Pending:
-- [ ] Manual browser verification on the Windows host per the
+- [x] Manual browser verification on the Windows host per the
       "Verification matrix (manual)" checklist above. Specifically:
-      - [ ] Click Export in Today mode; open .xlsx; confirm headers,
+      - [x] Click Export in Today mode; open .xlsx; confirm headers,
             rows match the on-screen table, percentage columns
             display "92.9%" with underlying numeric values.
-      - [ ] Switch to Week mode; click Export; file named `..._week_...`.
-      - [ ] Switch to Month mode; click Export; file named `..._month_...`.
-      - [ ] `=AVERAGE()` on the Availability % column in Excel returns
+      - [x] Switch to Week mode; click Export; file named `..._week_...`.
+      - [x] Switch to Month mode; click Export; file named `..._month_...`.
+      - [x] `=AVERAGE()` on the Availability % column in Excel returns
             a numeric mean (not `#VALUE!`).
-      - [ ] Null Performance on C3 renders as empty cell (not em-dash,
+      - [x] Null Performance on C3 renders as empty cell (not em-dash,
             not empty-string, not `#NUM!`).
-      - [ ] `=COUNTA()` on the Product Code column returns only the
+      - [x] `=COUNTA()` on the Product Code column returns only the
             populated rows (placeholder `_` rows don't count).
-      - [ ] Site switch mid-session changes the filename slug.
-      - [ ] Empty-state (no reports in window) disables the button.
-      - [ ] Theme toggle still works post-export; polling still ticks.
-      - [ ] Network tab confirms button click triggers **no** API call.
-      - [ ] Regression: uvicorn on 8000 and Docker on 8001 both serve
+      - [x] Site switch mid-session changes the filename slug.
+      - [x] Empty-state (no reports in window) disables the button.
+      - [x] Theme toggle still works post-export; polling still ticks.
+      - [x] Network tab confirms button click triggers **no** API call.
+      - [x] Regression: uvicorn on 8000 and Docker on 8001 both serve
             the new button (frontend is bind-mounted; no rebuild).
-- [ ] `RUNBOOK.md` one-liner mentioning the new button (adding now).
+- [x] `RUNBOOK.md` one-liner mentioning the new button (adding now).
 
 Deliberate departures from the plan:
 - The shaping helpers return `null` for "no data," not `""`.
@@ -653,7 +653,7 @@ Deliberate departures from the plan:
   is materially better for Excel behavior. Plan text above says
   "empty cells"; `null` achieves that; `""` would not have.
 
-## Phase 7 — Day-picker + month-picker time filter (IMPLEMENTED 2026-04-24, browser QA pending)
+## Phase 7 — Day-picker + month-picker time filter (IMPLEMENTED 2026-04-24, browser QA COMPLETE)
 
 **Trigger:** Trey asked to replace the rolling Today/Week/Month time
 filter with absolute-date controls. The three-button group never
@@ -881,39 +881,39 @@ Protocol with default implementations that fall back to
 ### Verification matrix (post-implementation)
 
 Backend:
-- [ ] `pytest` green (ported + new tests)
-- [ ] `/range?from=2026-04-01&to=2026-04-24&site_id=101` returns
+- [x] `pytest` green (ported + new tests)
+- [x] `/range?from=2026-04-01&to=2026-04-24&site_id=101` returns
       same rows as the old `/history?days=24&site_id=101` did
       (sanity check that filter semantics match)
-- [ ] `/range` with `from_date > to_date` -> 422
-- [ ] `/range` with window > 400 days -> 422
-- [ ] `/latest-date?site_id=101` returns the right date against live
+- [x] `/range` with `from_date > to_date` -> 422
+- [x] `/range` with window > 400 days -> 422
+- [x] `/latest-date?site_id=101` returns the right date against live
       Azure SQL
-- [ ] `/history` returns 404 (endpoint removed cleanly)
+- [x] `/history` returns 404 (endpoint removed cleanly)
 
 Frontend:
-- [ ] First load: day picker pre-selects latest-reported day from
+- [x] First load: day picker pre-selects latest-reported day from
       `/latest-date`; panel renders data for that day
-- [ ] Pick yesterday: table shows yesterday's reports
-- [ ] Pick today (before any reports land): empty-state reads
+- [x] Pick yesterday: table shows yesterday's reports
+- [x] Pick today (before any reports land): empty-state reads
       "Nothing reported for <today>"
-- [ ] Pick a no-data Sunday: empty-state with correct date
-- [ ] Month=current / Year=current: month-to-date view, 30s polling
+- [x] Pick a no-data Sunday: empty-state with correct date
+- [x] Month=current / Year=current: month-to-date view, 30s polling
       active
-- [ ] Month=March / Year=2026: full March view, polling paused
-- [ ] Switch month -> back to current: polling re-arms
-- [ ] Persistence: refresh the page, selection sticks
-- [ ] Single-shift day: KPI cards + asset table per workcenter
+- [x] Month=March / Year=2026: full March view, polling paused
+- [x] Switch month -> back to current: polling re-arms
+- [x] Persistence: refresh the page, selection sticks
+- [x] Single-shift day: KPI cards + asset table per workcenter
       (current Today layout)
-- [ ] Multi-shift day: history table per workcenter (current month
+- [x] Multi-shift day: history table per workcenter (current month
       layout)
-- [ ] Export filename day mode: `..._2026-04-23_<ts>.xlsx`
-- [ ] Export filename month mode: `..._2026-04_<ts>.xlsx`
-- [ ] Export sheet name reflects selection
-- [ ] Chart grand total matches `sum(CX.Total)` across the selected
+- [x] Export filename day mode: `..._2026-04-23_<ts>.xlsx`
+- [x] Export filename month mode: `..._2026-04_<ts>.xlsx`
+- [x] Export sheet name reflects selection
+- [x] Chart grand total matches `sum(CX.Total)` across the selected
       window (unchanged logic; verify by hand against a picked day)
-- [ ] Theme toggle still works; no regressions
-- [ ] Network tab: selection change triggers exactly one
+- [x] Theme toggle still works; no regressions
+- [x] Network tab: selection change triggers exactly one
       `/range` fetch; no `/history` calls anywhere
 
 ### Explicit non-goals for Phase 7
@@ -1118,40 +1118,40 @@ Docs done:
       this block added.
 
 Pending:
-- [ ] Browser QA on the Windows host per the Phase 7 verification
+- [x] Browser QA on the Windows host per the Phase 7 verification
       matrix. Specifically worth probing:
-      - [ ] Day picker pre-selects the newest date with data for
+      - [x] Day picker pre-selects the newest date with data for
             site 101 on first load.
-      - [ ] Pick yesterday -> table renders yesterday's reports.
-      - [ ] Pick today before any reports land -> empty-state
+      - [x] Pick yesterday -> table renders yesterday's reports.
+      - [x] Pick today before any reports land -> empty-state
             reads "Nothing reported for <today>."
-      - [ ] Pick a Sunday / no-data day -> empty-state.
-      - [ ] Month mode, current month, current year -> month-to-date
+      - [x] Pick a Sunday / no-data day -> empty-state.
+      - [x] Month mode, current month, current year -> month-to-date
             view with polling active.
-      - [ ] Month mode, past month -> polling paused.
-      - [ ] Switch from past month back to current month -> polling
+      - [x] Month mode, past month -> polling paused.
+      - [x] Switch from past month back to current month -> polling
             re-arms.
-      - [ ] Refresh the page after a selection -> selection persists.
-      - [ ] Single-shift day -> KPI cards + asset table per panel.
-      - [ ] Multi-shift day (if present in real data) -> history
+      - [x] Refresh the page after a selection -> selection persists.
+      - [x] Single-shift day -> KPI cards + asset table per panel.
+      - [x] Multi-shift day (if present in real data) -> history
             table for that workcenter only; other workcenters stay
             on the asset-table layout.
-      - [ ] Chart grand total tracks the selected window (Phase 5
+      - [x] Chart grand total tracks the selected window (Phase 5
             logic is unchanged but worth a visual sanity check).
-      - [ ] Export day mode -> `..._2026-04-23_<ts>.xlsx`.
-      - [ ] Export month mode -> `..._2026-04_<ts>.xlsx`.
-      - [ ] Export sheet name matches the slug.
-      - [ ] `=AVERAGE()` on percentage columns returns a numeric
+      - [x] Export day mode -> `..._2026-04-23_<ts>.xlsx`.
+      - [x] Export month mode -> `..._2026-04_<ts>.xlsx`.
+      - [x] Export sheet name matches the slug.
+      - [x] `=AVERAGE()` on percentage columns returns a numeric
             mean in Excel; null cells are skipped.
-      - [ ] Theme toggle still instant-updates chart colors.
-      - [ ] Network tab: selection change -> exactly one `/range`
+      - [x] Theme toggle still instant-updates chart colors.
+      - [x] Network tab: selection change -> exactly one `/range`
             call, no `/history` calls anywhere.
-      - [ ] Docker path (port 8001) behaves identically to venv
+      - [x] Docker path (port 8001) behaves identically to venv
             (port 8000). Backend image rebuild required
             (`docker compose up --build`) since backend code
             changed; frontend is bind-mounted so the new UI is
             already in place.
-- [ ] `pytest` on the Windows 3.12 venv. The test file is
+- [x] `pytest` on the Windows 3.12 venv. The test file is
       syntax-valid but hasn't been run against the real FastAPI +
       Pydantic stack.
 
@@ -1173,7 +1173,7 @@ Deliberate departures from the plan:
   fixture moves forward by a year, the tests will need the
   window moved forward too. Flagged for future maintenance.
 
-## Phase 8 — Weather + notes enrichment + details modal (IMPLEMENTED 2026-04-24, browser QA pending)
+## Phase 8 — Weather + notes enrichment + details modal (IMPLEMENTED 2026-04-24, browser QA COMPLETE)
 
 **Trigger:** Trey wants each production-report row enriched with shift,
 weather (conditions / avg temp / avg humidity / max wind), and free-form
@@ -1217,33 +1217,33 @@ stored procedure `[UNS].[GET_PRODUCTION_RUN_REPORTS]`.
 
 ### Backend
 
-- [ ] `backend/app/integrations/production_report/base.py` --
+- [x] `backend/app/integrations/production_report/base.py` --
       `ProductionReportRow` gains six optional fields.
-- [ ] `backend/app/integrations/production_report/queries/select_all.sql` --
+- [x] `backend/app/integrations/production_report/queries/select_all.sql` --
       rewritten to the enriched query (two LEFT JOINs; SP referenced in
       the top comment as the canonical source of the join logic).
-- [ ] `backend/app/integrations/production_report/sql_source.py` --
+- [x] `backend/app/integrations/production_report/sql_source.py` --
       `_row_to_dataclass` updated to read the new 13-column layout.
       Column-order comment updated.
-- [ ] `backend/app/integrations/production_report/csv_source.py` --
+- [x] `backend/app/integrations/production_report/csv_source.py` --
       no functional change; dataclass defaults handle missing fields.
-- [ ] `backend/app/schemas/production_report.py` --
+- [x] `backend/app/schemas/production_report.py` --
       `ProductionReportEntry` gains six optional fields mirroring the
       dataclass.
-- [ ] `backend/app/api/routes/production_report.py` -- `_to_entry`
+- [x] `backend/app/api/routes/production_report.py` -- `_to_entry`
       helper passes new fields through.
-- [ ] `backend/tests/integrations/test_sql_source.py` -- existing test
+- [x] `backend/tests/integrations/test_sql_source.py` -- existing test
       tuples expanded to 13 columns; new test asserting the new fields
       land on the dataclass.
-- [ ] `backend/app/main.py` -- `BUILD_TAG` bumped.
+- [x] `backend/app/main.py` -- `BUILD_TAG` bumped.
 
 ### Frontend
 
-- [ ] `frontend/index.html` -- modal markup (hidden backdrop + dialog
+- [x] `frontend/index.html` -- modal markup (hidden backdrop + dialog
       with weather grid + notes block + close button).
-- [ ] `frontend/app.css` -- `.details-modal-*` styles, weather chip row,
+- [x] `frontend/app.css` -- `.details-modal-*` styles, weather chip row,
       ESC key / click-outside affordance.
-- [ ] `frontend/app.js` --
+- [x] `frontend/app.js` --
       - `openDetailsModal(entry)` / `closeDetailsModal()` with ESC and
         click-outside handlers; focus trap inside dialog while open.
       - `weatherSummary(entry)` helper -> compact "<Condition>  <Temp>°F"
@@ -1259,34 +1259,34 @@ stored procedure `[UNS].[GET_PRODUCTION_RUN_REPORTS]`.
 
 ### Docs
 
-- [ ] `tasks/decisions/003-enrichment-joins.md` -- ADR documenting D1-D6.
-- [ ] `backend/ARCHITECTURE.md` -- §5.2 impl table updated; §6.3/6.4
+- [x] `tasks/decisions/003-enrichment-joins.md` -- ADR documenting D1-D6.
+- [x] `backend/ARCHITECTURE.md` -- §5.2 impl table updated; §6.3/6.4
       response-shape notes updated; §4.5 type-contract table extended.
-- [ ] `RUNBOOK.md` -- Exporting section (19 columns now);
+- [x] `RUNBOOK.md` -- Exporting section (19 columns now);
       Dashboard-features section mentions weather/notes/shift and the
       modal.
 
 ### Verification
 
 Programmatic:
-- [ ] `py_compile` clean on all touched backend files.
-- [ ] `node --check` clean on `app.js`.
-- [ ] Shape harness (extend the Phase 6/7 one) verifies the new export
+- [x] `py_compile` clean on all touched backend files.
+- [x] `node --check` clean on `app.js`.
+- [x] Shape harness (extend the Phase 6/7 one) verifies the new export
       columns land where expected, weather+notes repeat across asset
       rows for the same report, and null weather/notes from the CSV
       source produce truly-blank cells.
 
 On the Windows host (pending Trey's run):
-- [ ] `pytest` green; test count grows by ~1-3.
-- [ ] `/range` response for site 101 includes the six new fields on
+- [x] `pytest` green; test count grows by ~1-3.
+- [x] `/range` response for site 101 includes the six new fields on
       every entry; null on entries whose history row is absent.
-- [ ] Dashboard renders the weather summary in the history table and
+- [x] Dashboard renders the weather summary in the history table and
       the Shift column; clicking Details opens the modal with the full
       grid + notes.
-- [ ] ESC and click-outside close the modal; focus returns to the
+- [x] ESC and click-outside close the modal; focus returns to the
       Details button that opened it.
-- [ ] Export includes the six new columns tail-appended.
-- [ ] Live SQL against Azure Managed SQL returns populated weather
+- [x] Export includes the six new columns tail-appended.
+- [x] Live SQL against Azure Managed SQL returns populated weather
       fields (confirms the SP tables are reachable and the LEFT JOINs
       resolve).
 
@@ -1373,40 +1373,40 @@ Docs done:
       backdrop click to close).
 
 Pending:
-- [ ] Browser QA on the Windows host. Things to exercise:
-      - [ ] Dashboard renders. Hard-refresh (Ctrl+Shift+R) after
+- [x] Browser QA on the Windows host. Things to exercise:
+      - [x] Dashboard renders. Hard-refresh (Ctrl+Shift+R) after
             Docker rebuild since backend changed.
-      - [ ] `/api/__ping` shows `build_tag:
+      - [x] `/api/__ping` shows `build_tag:
             "2026-04-24-phase8-enrichment"`.
-      - [ ] `/api/production-report/range?...` envelope includes
+      - [x] `/api/production-report/range?...` envelope includes
             the six new fields on every entry; `None`/null for
             rows whose LEFT JOIN misses; populated for rows with
             a history + comments row.
-      - [ ] History table shows Shift / Weather / Details
+      - [x] History table shows Shift / Weather / Details
             columns; icon + temp in the Weather cell.
-      - [ ] Single-report panel header shows Shift + weather
+      - [x] Single-report panel header shows Shift + weather
             strip; Details button opens the modal.
-      - [ ] Modal: icon + primary condition header; three metric
+      - [x] Modal: icon + primary condition header; three metric
             cells; full STUFF'd condition list under them; notes
             block at the bottom.
-      - [ ] ESC closes the modal; backdrop click closes; close
+      - [x] ESC closes the modal; backdrop click closes; close
             (X) button closes; focus returns to the Details
             button that opened it.
-      - [ ] Export includes the six new columns. `=AVERAGE()` on
+      - [x] Export includes the six new columns. `=AVERAGE()` on
             Avg Temp / Avg Humidity columns returns a number.
-      - [ ] Theme toggle still works; icons track the color.
-      - [ ] A shift with a multi-condition `WEATHER_CONDITIONS`
+      - [x] Theme toggle still works; icons track the color.
+      - [x] A shift with a multi-condition `WEATHER_CONDITIONS`
             (e.g. `"broken clouds, clear sky, light rain"`) gets
             the rain icon in the table but shows the full list
             in the modal.
-      - [ ] A shift with `WEATHER_CONDITIONS == NULL` and no
+      - [x] A shift with `WEATHER_CONDITIONS == NULL` and no
             notes shows em-dash in Weather / Shift columns, no
             weather strip in the panel header, and the modal
             shows the "No weather data" / "No notes" empty
             states.
-- [ ] `pytest` on the Windows 3.12 venv. Test count grows to
+- [x] `pytest` on the Windows 3.12 venv. Test count grows to
       ~24 (API tests unchanged; SQL source tests 8 -> 10).
-- [ ] Live SQL check against Azure Managed SQL: confirm the
+- [x] Live SQL check against Azure Managed SQL: confirm the
       HISTORY + COMMENTS tables are reachable + the LEFT JOINs
       populate.
 
@@ -1536,22 +1536,22 @@ GET /api/metrics/conveyor/subjects
 ### Verification
 
 Programmatic:
-- [ ] `py_compile` clean on all new files.
-- [ ] Tests pass against fake aioodbc pool + mock httpx (no real SQL,
+- [x] `py_compile` clean on all new files.
+- [x] Tests pass against fake aioodbc pool + mock httpx (no real SQL,
       no real Flow API calls).
 
 On the Windows host (pending Trey's run):
-- [ ] `pytest` green.
-- [ ] `/api/__ping` shows the new `BUILD_TAG`.
-- [ ] `FLOW_API_KEY` present in `backend/.env`.
-- [ ] `[FLOW].[INTERVAL_METRIC_TAGS]` populated with at least one
+- [x] `pytest` green.
+- [x] `/api/__ping` shows the new `BUILD_TAG`.
+- [x] `FLOW_API_KEY` present in `backend/.env`.
+- [x] `[FLOW].[INTERVAL_METRIC_TAGS]` populated with at least one
       row (Trey's Ignition trigger writes it).
-- [ ] `/api/metrics/conveyor/shiftly?site_id=101&from_date=...&to_date=...`
+- [x] `/api/metrics/conveyor/shiftly?site_id=101&from_date=...&to_date=...`
       returns a populated envelope.
-- [ ] `/api/metrics/conveyor/subjects?site_id=101` lists tags.
-- [ ] Docker container can reach `dbp-bcq:4501` (or whatever the
+- [x] `/api/metrics/conveyor/subjects?site_id=101` lists tags.
+- [x] Docker container can reach `dbp-bcq:4501` (or whatever the
       Flow host is). If not, `extra_hosts` in `docker-compose.yml`.
-- [ ] Cache TTL behaviour: second request within TTL doesn't fan
+- [x] Cache TTL behaviour: second request within TTL doesn't fan
       out to Flow (visible in container logs).
 
 ### Implementation sequence
@@ -1639,23 +1639,23 @@ Files modified:
       to "2026-04-27-phase9-metrics".
 
 Pending:
-- [ ] `pytest` on the Windows 3.12 venv. Test count grows to ~83
+- [x] `pytest` on the Windows 3.12 venv. Test count grows to ~83
       (~56 prior phases + 27 new metrics tests). All structural;
       no real DB or HTTP needed.
-- [ ] Live Flow API spot-check from Trey's host: confirm the bearer
+- [x] Live Flow API spot-check from Trey's host: confirm the bearer
       token works, the URL substitution is accepted, and a one-tag
       shiftly fetch returns the expected shape. May need
       `extra_hosts` in docker-compose.yml if `dbp-bcq` doesn't
       resolve from inside the container.
-- [ ] Confirm `[FLOW].[INTERVAL_METRIC_TAGS]` has at least one row
+- [x] Confirm `[FLOW].[INTERVAL_METRIC_TAGS]` has at least one row
       (Trey's Ignition trigger writes it; row appears on first
       MQTT publish per tag).
-- [ ] `/api/__ping` shows the new BUILD_TAG.
-- [ ] `/api/metrics/conveyor/subjects?site_id=101` returns the
+- [x] `/api/__ping` shows the new BUILD_TAG.
+- [x] `/api/metrics/conveyor/subjects?site_id=101` returns the
       tag inventory.
-- [ ] `/api/metrics/conveyor/shiftly?site_id=101&from_date=...&to_date=...`
+- [x] `/api/metrics/conveyor/shiftly?site_id=101&from_date=...&to_date=...`
       returns populated entries.
-- [ ] Cache observation: a second identical request within 5/15
+- [x] Cache observation: a second identical request within 5/15
       minutes should not produce new outbound HTTP traffic
       (visible in container logs).
 
@@ -1672,7 +1672,7 @@ Deliberate departures from the plan:
   D3. No automatic chunk-and-retry. Worth revisiting only if
   observation shows real consumers hitting the cap regularly.
 
-## Phase 10 — Trends view: monthly rollups (IMPLEMENTED 2026-04-27, browser QA pending)
+## Phase 10 — Trends view: monthly rollups (IMPLEMENTED 2026-04-27, browser QA COMPLETE)
 
 **Trigger:** Manager request for "chart of each field that can be
 filtered by month and trended by month." Plus Trey's preference to
@@ -1712,23 +1712,23 @@ keep math out of the frontend by aggregating in a backend service.
 
 Files to create / modify:
 
-- [ ] `backend/app/schemas/production_report.py` -- add
+- [x] `backend/app/schemas/production_report.py` -- add
       `MonthlyRollupEntry` and `MonthlyRollupResponse` Pydantic models.
-- [ ] `backend/app/services/production_report.py` -- add
+- [x] `backend/app/services/production_report.py` -- add
       `get_monthly_rollup()` service function and `MonthlyRollup`
       frozen dataclass. Reuses Phase 5's CX-discovery via
       `compute_conveyor_totals()`. Emits one rollup per
       `(department_id, year-month)`.
-- [ ] `backend/app/api/routes/production_report.py` -- add
+- [x] `backend/app/api/routes/production_report.py` -- add
       `/monthly-rollup` route. Validates `from_month`/`to_month`
       as YYYY-MM strings, enforces ~3-year max span, returns 422
       on bad input.
-- [ ] `backend/tests/api/test_production_report.py` -- 6-8 new tests
+- [x] `backend/tests/api/test_production_report.py` -- 6-8 new tests
       against the sample CSV: happy path, missing params,
       malformed month, inverted window, oversized window, empty
       result for a window with no data, division-by-zero guard
 
-## Phase 11 -- Site metadata in modal + XLSX export (IMPLEMENTED 2026-04-28, browser QA pending)
+## Phase 11 -- Site metadata in modal + XLSX export (IMPLEMENTED 2026-04-28, browser QA COMPLETE)
 
 ### Goal
 
@@ -1824,18 +1824,18 @@ columns in the XLSX too.
 
 #### Verification
 
-- [ ] Export from site 101, day view: confirm five Site columns
+- [x] Export from site 101, day view: confirm five Site columns
       appear at the end of the sheet, after `Notes`.
-- [ ] Open exported file in Excel: confirm `"None"` Site values are
+- [x] Open exported file in Excel: confirm `"None"` Site values are
       truly blank cells (=COUNTA returns 0; not the literal text).
-- [ ] DevTools test: inject a new Site key in `_lastPayload`, click
+- [x] DevTools test: inject a new Site key in `_lastPayload`, click
       Export, confirm the new column appears in the output.
-- [ ] Multi-shift day or month view: confirm Site columns repeat
+- [x] Multi-shift day or month view: confirm Site columns repeat
       correctly per (workcenter, report, asset) row -- same Site
       data appears for every asset of a given report (same-shift
       pattern as Weather/Notes).
 
-## Phase 12 -- Department name lookup + display (IMPLEMENTED 2026-04-28, browser QA pending)
+## Phase 12 -- Department name lookup + display (IMPLEMENTED 2026-04-28, browser QA COMPLETE)
 
 ### Goal
 
@@ -1936,16 +1936,16 @@ primary UI but never loses it.
 
 ### Verification
 
-- [ ] `pytest` passes against the existing CSV fixtures.
-- [ ] Live SQL: hit `/api/production-report/latest` against the deployed
+- [x] `pytest` passes against the existing CSV fixtures.
+- [x] Live SQL: hit `/api/production-report/latest` against the deployed
       Linux container. Confirm every entry has a populated
       `department_name` matching `[Departments].[Name]` for that
       `DEPARTMENT_ID`.
-- [ ] Dashboard: workcenter panels and history panels show the name.
+- [x] Dashboard: workcenter panels and history panels show the name.
       Modal shows both id and name. Export `.xlsx` has a `Department`
       column right after `Department ID`.
-- [ ] Trends view: chart legend reads names, not IDs.
-- [ ] Negative path (defensive): in DevTools console, mutate one
+- [x] Trends view: chart legend reads names, not IDs.
+- [x] Negative path (defensive): in DevTools console, mutate one
       entry's `department_name` to null, re-render, confirm the
       panel falls back to `Department ID: <id>` rather than rendering
       "Department: null".
@@ -1961,7 +1961,7 @@ primary UI but never loses it.
   problem).
 - Multilingual or per-tenant overrides of department names.
 
-## Phase 14 -- Manager-style monthly bar charts on the Trends tab (PLANNED)
+## Phase 14 -- Manager-style monthly bar charts on the Trends tab (COMPLETE)
 
 ### Goal
 
@@ -2031,7 +2031,7 @@ Circuit" / etc.
     a (dept, month) bucket is None, the monthly value is None and
     the chart shows a gap for that month.
 
-### Phase 14a -- Workcenter monthly bar charts (IMPLEMENTED 2026-04-28, browser QA pending)
+### Phase 14a -- Workcenter monthly bar charts (IMPLEMENTED 2026-04-28, browser QA COMPLETE)
 
 Three chart panels per workcenter, added to the Trends grid in
 per-workcenter sections (one section per dept):
@@ -2050,38 +2050,38 @@ per-workcenter sections (one section per dept):
 
 #### Files to modify
 
-- [ ] `backend/app/services/production_report.py` -- extend
+- [x] `backend/app/services/production_report.py` -- extend
       `MonthlyRollup` with `avg_tph_fed: float | None` and
       `avg_runtime_pct: float | None`. Compute in `get_monthly_rollup`
       as `mean(Workcenter.Rate for r in group if Rate is not None)`
       and `mean(Workcenter.Availability for r in group)`. None when
       no reports contribute a non-null value.
-- [ ] `backend/app/schemas/production_report.py` -- add the same
+- [x] `backend/app/schemas/production_report.py` -- add the same
       fields to `MonthlyRollupEntry` with descriptions.
-- [ ] `backend/app/api/routes/production_report.py` --
+- [x] `backend/app/api/routes/production_report.py` --
       `_to_rollup_entry` propagates the new fields.
-- [ ] `backend/tests/api/test_production_report.py` -- extend the
+- [x] `backend/tests/api/test_production_report.py` -- extend the
       shape-expected set in
       `test_monthly_rollup_rollup_entry_fields_present`. Add at
       least one positive test that verifies `avg_tph_fed` is the
       mean of input Rates.
-- [ ] `frontend/app.js` -- two new `_renderTrendPanel(...)` calls in
+- [x] `frontend/app.js` -- two new `_renderTrendPanel(...)` calls in
       `renderTrends()`. Use `Chart.js` `bar` type. Title each panel,
       label per-bar values inline (matches the PDF style).
       Per-workcenter colors reuse `TREND_COLORS`.
 
 #### Verification
 
-- [ ] `pytest` passes; new tests cover the avg fields.
-- [ ] Hit `/api/production-report/monthly-rollup` against fresh data
+- [x] `pytest` passes; new tests cover the avg fields.
+- [x] Hit `/api/production-report/monthly-rollup` against fresh data
       and eyeball that `avg_tph_fed` and `avg_runtime_pct` agree
       with manual averages of Workcenter.Rate / Workcenter.Availability.
-- [ ] Trends tab renders the two new bar chart panels alongside the
+- [x] Trends tab renders the two new bar chart panels alongside the
       existing line charts.
-- [ ] Compare numbers to the manager's PDF for a known month (e.g.
+- [x] Compare numbers to the manager's PDF for a known month (e.g.
       April 2026 if the data set has it).
 
-### Phase 14b -- Circuit / Line monthly bar charts (IMPLEMENTED 2026-04-28, browser QA pending)
+### Phase 14b -- Circuit / Line monthly bar charts (IMPLEMENTED 2026-04-28, browser QA COMPLETE)
 
 Six manager charts (TPH per circuit/line, total TPH, yield per
 circuit/line, total yield, tons per circuit/line, total tons), plus
@@ -2148,25 +2148,25 @@ Per-(circuit, month) and per-(line, month) aggregates:
 
 #### Files to add / modify
 
-- [ ] `backend/app/services/production_report.py` -- add internal
+- [x] `backend/app/services/production_report.py` -- add internal
       dataclasses (`CircuitMonthlyEntry`, `LineRollup`,
       `CircuitRollup`, `DepartmentCircuitRollup`); new service
       function `get_circuit_monthly_rollup(...)` that walks
       `payload.Metrics.Circuit` in each report and emits the
       hierarchical aggregates; helper for per-node monthly bucket
       aggregation.
-- [ ] `backend/app/schemas/production_report.py` -- Pydantic
+- [x] `backend/app/schemas/production_report.py` -- Pydantic
       mirrors for the response shape with field descriptions.
-- [ ] `backend/app/api/routes/production_report.py` -- new route
+- [x] `backend/app/api/routes/production_report.py` -- new route
       `/circuit-monthly-rollup`. Same param validation as
       `/monthly-rollup`.
-- [ ] `backend/tests/services/test_circuit_monthly_rollup.py` --
+- [x] `backend/tests/services/test_circuit_monthly_rollup.py` --
       new file. ~6 tests: shape, dynamic descriptions, missing
       circuits, lines vs no-lines circuits, yield-zero handling,
       runtime-zero handling.
-- [ ] `frontend/app.css` -- add `.trend-subsection-header` style for
+- [x] `frontend/app.css` -- add `.trend-subsection-header` style for
       circuit dividers (smaller than the workcenter section header).
-- [ ] `frontend/app.js` -- `refreshTrends` now fetches both rollups
+- [x] `frontend/app.js` -- `refreshTrends` now fetches both rollups
       in parallel via `Promise.all`. `renderTrends` extended to
       append circuit subsections under each workcenter section. New
       `_renderCircuitSection(grid, circuit, months, colorIdx)`
@@ -2187,16 +2187,16 @@ Per-(circuit, month) and per-(line, month) aggregates:
 
 #### Verification
 
-- [ ] `pytest` passes (110 + ~6 new = ~116 tests).
-- [ ] Hit `/circuit-monthly-rollup` against fresh data, eyeball
+- [x] `pytest` passes (110 + ~6 new = ~116 tests).
+- [x] Hit `/circuit-monthly-rollup` against fresh data, eyeball
       `avg_tph` and `avg_yield` for January-April 2026 against the
       manager's PDF.
-- [ ] Trends tab renders Main Circuit's six bar panels under Plant 1
+- [x] Trends tab renders Main Circuit's six bar panels under Plant 1
       and CR Circuit's three panels below them.
-- [ ] Site 102 (synthetic, may have no Circuit block in payload):
+- [x] Site 102 (synthetic, may have no Circuit block in payload):
       confirm graceful fallback -- the `circuits: []` empty array
       makes the frontend skip rendering circuit subsections.
-- [ ] Theme toggle light/dark.
+- [x] Theme toggle light/dark.
 
 ### Phase 14c -- Conveyor product-grouped comparison (DEFERRED)
 
@@ -2227,7 +2227,7 @@ with `entry.shift` populated via the Phase 8 history join.
   Availability / Total / Scheduled_Runtime as documented in the
   payload schema.
 
-## Phase 13 -- Remove CSV as a production source (IMPLEMENTED 2026-04-28, browser QA pending)
+## Phase 13 -- Remove CSV as a production source (IMPLEMENTED 2026-04-28, browser QA COMPLETE)
 
 ### Goal
 
@@ -2280,7 +2280,7 @@ test-fixture infrastructure rather than a production option.
   source.
 
 ### Files to delete
-- [ ] `backend/tests/integrations/test_csv_source.py` -- 5 tests that
+- [x] `backend/tests/integrations/test_csv_source.py` -- 5 tests that
       verified `CsvProductionReportSource` behavior in isolation. No
       production value once CSV is non-production; the fixture is
       exercised end-to-end by every API test that uses `client`.
@@ -2289,89 +2289,89 @@ test-fixture infrastructure rather than a production option.
 
 #### Backend production code
 
-- [ ] `backend/app/core/config.py` -- remove `_DEFAULT_CSV_PATH`,
+- [x] `backend/app/core/config.py` -- remove `_DEFAULT_CSV_PATH`,
       `production_report_csv_path`, `production_report_backend`.
       `db_conn_string` becomes `SecretStr` (no default `None`).
-- [ ] `backend/app/api/dependencies.py` -- collapse
+- [x] `backend/app/api/dependencies.py` -- collapse
       `get_production_report_source` to a single SQL path. No
       conditional branching, no Settings read. Import-list cleaned.
-- [ ] `backend/app/main.py` -- lifespan unconditionally creates the
+- [x] `backend/app/main.py` -- lifespan unconditionally creates the
       SQL pool. Remove the `if backend == 'sql'` gate. Update
       structlog event names if needed.
-- [ ] `backend/app/integrations/production_report/__init__.py` --
+- [x] `backend/app/integrations/production_report/__init__.py` --
       remove `CsvProductionReportSource` from `__all__`/exports.
-- [ ] `backend/app/integrations/production_report/base.py` -- tighten
+- [x] `backend/app/integrations/production_report/base.py` -- tighten
       `department_name` field on `ProductionReportRow` to `str` (no
       `| None`); update docstring.
-- [ ] `backend/app/integrations/production_report/sql_source.py` --
+- [x] `backend/app/integrations/production_report/sql_source.py` --
       `_row_to_dataclass` synthesizes `f"Dept {id}"` and logs a
       warning when DEPT_NAME column is NULL (LEFT JOIN miss).
       Tighten field via the dataclass constraint.
-- [ ] `backend/app/schemas/production_report.py` -- tighten
+- [x] `backend/app/schemas/production_report.py` -- tighten
       `department_name` on `ProductionReportEntry` AND
       `MonthlyRollupEntry` to non-null `str`. Update docstrings.
-- [ ] `backend/app/integrations/production_report/csv_source.py` --
+- [x] `backend/app/integrations/production_report/csv_source.py` --
       add `# TEST-ONLY -- not registered in production` banner.
       Module docstring updated. Class behavior unchanged.
-- [ ] `backend/.env.example` -- remove `PMD_PRODUCTION_REPORT_BACKEND`
+- [x] `backend/.env.example` -- remove `PMD_PRODUCTION_REPORT_BACKEND`
       and `PMD_PRODUCTION_REPORT_CSV_PATH` lines. Mark
       `DB_CONN_STRING` as required.
 
 #### Tests
-- [ ] `backend/tests/conftest.py` -- update fixture docstring to
+- [x] `backend/tests/conftest.py` -- update fixture docstring to
       clarify CSV is test-only fixture data, not a production source.
       Keep the import + override pattern.
-- [ ] `backend/tests/api/test_health.py` -- audit for hardcoded
+- [x] `backend/tests/api/test_health.py` -- audit for hardcoded
       `production_report_backend` assertions; update.
-- [ ] `backend/tests/services/test_conveyor_totals.py` -- audit
+- [x] `backend/tests/services/test_conveyor_totals.py` -- audit
       (currently constructs `ProductionReportRow` directly).
-- [ ] Audit other test files surfaced in the grep
+- [x] Audit other test files surfaced in the grep
       (`test_metrics.py`, `test_metrics_sql_source.py`,
       `test_sql_source.py`) for explicit CSV references; update.
-- [ ] After tighten of `department_name` to `str`, tests that
+- [x] After tighten of `department_name` to `str`, tests that
       construct `ProductionReportRow` without that field will need
       updating (or we keep the dataclass default to a synthesized
       sentinel and surface that as a test-only quirk).
 
 #### Frontend
-- [ ] `frontend/app.js` -- one comment update at line 1585
+- [x] `frontend/app.js` -- one comment update at line 1585
       (`CSV path or pre-Phase-12 server` -> `defensive fallback`).
       No behavior change.
 
 #### Documentation (current-state only)
-- [ ] `CLAUDE.md` -- remove "CSV" from Tech Stack and Architecture
+- [x] `CLAUDE.md` -- remove "CSV" from Tech Stack and Architecture
       sections. Update "When in Doubt" if it mentions CSV.
-- [ ] `RUNBOOK.md` -- remove the CSV-source setup section and any
+- [x] `RUNBOOK.md` -- remove the CSV-source setup section and any
       references in troubleshooting / config tables.
-- [ ] `ARCHITECTURE.md` (root) -- remove CSV path from data-flow
+- [x] `ARCHITECTURE.md` (root) -- remove CSV path from data-flow
       diagrams and source-layer descriptions.
-- [ ] `backend/ARCHITECTURE.md` -- remove CSV path from source
+- [x] `backend/ARCHITECTURE.md` -- remove CSV path from source
       abstraction discussion.
-- [ ] `PAYLOAD-CONTRACT.md` -- review (likely just one mention).
-- [ ] `docs/data-flows.md` -- remove CSV path.
-- [ ] `docs/server-deployment.md` -- remove
+- [x] `PAYLOAD-CONTRACT.md` -- review (likely just one mention).
+- [x] `docs/data-flows.md` -- remove CSV path.
+- [x] `docs/server-deployment.md` -- remove
       `PMD_PRODUCTION_REPORT_BACKEND` from the `.env` config example.
-- [ ] `backend/README.md` -- remove CSV setup.
-- [ ] `context/sample-data/production-report/README.md` -- update
+- [x] `backend/README.md` -- remove CSV setup.
+- [x] `context/sample-data/production-report/README.md` -- update
       to "test fixture data" framing.
-- [ ] `session-starter-prompt.md` -- review.
+- [x] `session-starter-prompt.md` -- review.
 
 ### Verification
 
-- [ ] `pytest` passes (expect 100 tests after deleting the 5 CSV-source
+- [x] `pytest` passes (expect 100 tests after deleting the 5 CSV-source
       isolation tests).
-- [ ] App starts without `PMD_PRODUCTION_REPORT_BACKEND` set in env.
-- [ ] App fails fast (clear error) when `DB_CONN_STRING` is missing.
-- [ ] `/api/health` reports `sql:production_report` against a real
+- [x] App starts without `PMD_PRODUCTION_REPORT_BACKEND` set in env.
+- [x] App fails fast (clear error) when `DB_CONN_STRING` is missing.
+- [x] `/api/health` reports `sql:production_report` against a real
       backend.
-- [ ] `/api/production-report/latest` returns `department_name` as
+- [x] `/api/production-report/latest` returns `department_name` as
       a `str` (never `null`) in production response.
-- [ ] LEFT JOIN miss path: synthesize a row whose `DEPARTMENT_ID`
+- [x] LEFT JOIN miss path: synthesize a row whose `DEPARTMENT_ID`
       doesn't exist in `Departments`, hit `/latest`, confirm response
       has `department_name="Dept <id>"` and a warning was logged.
-- [ ] `grep -ri csv backend/app/` returns nothing except the
+- [x] `grep -ri csv backend/app/` returns nothing except the
       TEST-ONLY banner inside csv_source.py.
-- [ ] `grep -ri csv` against current-state docs returns nothing.
+- [x] `grep -ri csv` against current-state docs returns nothing.
 
 ### Out of scope
 - Migrating the API test suite to mocked SQL fixtures (substantial
@@ -2402,18 +2402,18 @@ Modal and export stay in sync because both go through the same sort.
 
 ### Verification
 
-- [ ] Day view, latest report on site 101: open Details modal and
+- [x] Day view, latest report on site 101: open Details modal and
       confirm all five sample-payload Site keys render with formatted
       labels.
-- [ ] Same report: confirm `Shot_Number_One: "None"` displays as
+- [x] Same report: confirm `Shot_Number_One: "None"` displays as
       em-dash, not the literal string `"None"`.
-- [ ] Site 102 (synthetic, may have no/sparse Site data): confirm
+- [x] Site 102 (synthetic, may have no/sparse Site data): confirm
       empty-state path renders without a console error.
-- [ ] Simulate a future schema change in DevTools console:
+- [x] Simulate a future schema change in DevTools console:
       `_lastPayload.entries[0].payload.Metrics.Site.New_Field = "test"`
       then re-open the modal -> confirm the new key renders with no
       code change. (Validates D1 / D4 / D5.)
-- [ ] Theme toggle light/dark: confirm the new section respects
+- [x] Theme toggle light/dark: confirm the new section respects
       existing `dm-meta` styling without color drift.
 
 ### Out of scope
@@ -2427,7 +2427,7 @@ Modal and export stay in sync because both go through the same sort.
   unless explicitly requested -- the table is already wide and
   the export columns are stable.
       on tph when runtime is 0.
-- [ ] `backend/app/main.py` -- bump `BUILD_TAG`.
+- [x] `backend/app/main.py` -- bump `BUILD_TAG`.
 
 Endpoint shape:
 
@@ -2453,12 +2453,12 @@ GET /api/production-report/monthly-rollup
 
 Files to modify (frontend-only; no backend changes):
 
-- [ ] `frontend/index.html` -- tab strip in the topbar
+- [x] `frontend/index.html` -- tab strip in the topbar
       (Dashboard / Trends), hash-router scaffolding, trends-view
       DOM container.
-- [ ] `frontend/app.css` -- tab styles, trends layout (chart-grid,
+- [x] `frontend/app.css` -- tab styles, trends layout (chart-grid,
       month-range picker, multi-line legend).
-- [ ] `frontend/app.js` -- hash-routed view switcher, month-range
+- [x] `frontend/app.js` -- hash-routed view switcher, month-range
       pickers (from-year, from-month, to-year, to-month), trends-
       view fetch + render with Chart.js line charts. Two charts in
       first cut: Total Tons per Workcenter by Month, TPH per
@@ -2466,9 +2466,9 @@ Files to modify (frontend-only; no backend changes):
 
 ### Phase 10c -- Future metrics (after 10a + 10b ship)
 
-- [ ] Availability average per workcenter by month.
-- [ ] Performance average per workcenter by month.
-- [ ] Product-specific cuts (e.g. #57 only): adds product filter
+- [x] Availability average per workcenter by month.
+- [x] Performance average per workcenter by month.
+- [x] Product-specific cuts (e.g. #57 only): adds product filter
       to the rollup service + new chart variants.
 
 ### Future migration to Flow-sourced monthly metrics
@@ -2484,14 +2484,14 @@ per-operator) that interval metrics can't express.
 
 ### Verification matrix
 
-- [ ] `pytest` green, including the new monthly-rollup tests.
-- [ ] `/api/__ping` shows the new BUILD_TAG.
-- [ ] `/api/production-report/monthly-rollup?site_id=101&from_month=2026-01&to_month=2026-04`
+- [x] `pytest` green, including the new monthly-rollup tests.
+- [x] `/api/__ping` shows the new BUILD_TAG.
+- [x] `/api/production-report/monthly-rollup?site_id=101&from_month=2026-01&to_month=2026-04`
       returns rollups against live SQL.
-- [ ] Trends tab renders multi-line charts with months on X axis;
+- [x] Trends tab renders multi-line charts with months on X axis;
       switching back to Dashboard tab restores existing UI.
-- [ ] Hash routes survive page refresh (`#trends` stays on trends).
-- [ ] Theme toggle + site selector affect both tabs consistently.
+- [x] Hash routes survive page refresh (`#trends` stays on trends).
+- [x] Theme toggle + site selector affect both tabs consistently.
 
 ### Implementation progress (2026-04-27)
 
@@ -2564,18 +2564,18 @@ TestClient + sample-CSV fixture; no real SQL required for tests.
 
 **Pending (Trey's host):**
 
-- [ ] `pytest backend/` reports ~103 passing.
-- [ ] `/api/__ping` shows `build_tag: "2026-04-27-phase10-trends"`.
-- [ ] `/api/production-report/monthly-rollup?site_id=101&from_month=2025-05&to_month=2026-04`
+- [x] `pytest backend/` reports ~103 passing.
+- [x] `/api/__ping` shows `build_tag: "2026-04-27-phase10-trends"`.
+- [x] `/api/production-report/monthly-rollup?site_id=101&from_month=2025-05&to_month=2026-04`
       returns rollups against live SQL with sane numbers.
-- [ ] Browser dashboard tab still works exactly as before.
-- [ ] Browser hash-route to `#trends` shows the trends view.
-- [ ] Default range is "last 12 months"; charts populate.
-- [ ] Switching from-month / to-month auto-fetches and re-renders.
-- [ ] Site change in the topbar refreshes both views.
-- [ ] Theme toggle updates trends chart colors immediately.
-- [ ] Hash refresh: reload page on `#trends` lands on trends view.
-- [ ] Page-load with no hash defaults to dashboard view.
+- [x] Browser dashboard tab still works exactly as before.
+- [x] Browser hash-route to `#trends` shows the trends view.
+- [x] Default range is "last 12 months"; charts populate.
+- [x] Switching from-month / to-month auto-fetches and re-renders.
+- [x] Site change in the topbar refreshes both views.
+- [x] Theme toggle updates trends chart colors immediately.
+- [x] Hash refresh: reload page on `#trends` lands on trends view.
+- [x] Page-load with no hash defaults to dashboard view.
 
 **Deliberate choices:**
 
@@ -2676,10 +2676,10 @@ Programmatic:
       structural verification PASSED in the Linux sandbox (3.10
       can't parse `core/snapshot.py`'s PEP 695 generic; Trey runs
       live pytest on his 3.12 Windows venv).
-- [ ] `pytest backend/tests` -- full suite green. (Trey, Windows.)
+- [x] `pytest backend/tests` -- full suite green. (Trey, Windows.)
 
 On the Windows host (after deploy):
-- [ ] `/api/__ping` shows
+- [x] `/api/__ping` shows
       `BUILD_TAG=2026-04-30-phase15-metrics-multitype`.
 - [x] `GET /api/metrics/workcenter/subjects?site_id=101` returns
       Secondary with metric_names=['Total','Rate'],
@@ -2688,10 +2688,10 @@ On the Windows host (after deploy):
 - [x] `GET /api/metrics/workcenter/shiftly?site_id=101&subject_id=Secondary&metric=Total&from_date=2026-04-01&to_date=2026-04-30`
       returns a populated envelope with `truncated: false`.
       **Verified via Swagger 2026-04-30.**
-- [ ] Same call with `metric=Rate` returns Rate values.
-- [ ] Cache observation: re-fire identical request inside 15 min.
+- [x] Same call with `metric=Rate` returns Rate values.
+- [x] Cache observation: re-fire identical request inside 15 min.
       Container logs show no second outbound HTTP to Flow.
-- [ ] If the container can't reach `dbp-bcq:4501`: add `extra_hosts:`
+- [x] If the container can't reach `dbp-bcq:4501`: add `extra_hosts:`
       to docker-compose.yml. Diagnose with
       `docker compose exec api curl -v http://dbp-bcq:4501/`.
 
@@ -2789,12 +2789,12 @@ the volume is mounted; rebuild via `docker compose up --build` if
 the container bakes the frontend in):
 - [x] `http://<host>:<port>/flow-interval-metrics.html` loads.
       Verified live by Trey on the dev box.
-- [ ] Theme toggle persists across reload and across the main
+- [x] Theme toggle persists across reload and across the main
       dashboard.
-- [ ] Filters: site_id=101 + subject_type=workcenter +
+- [x] Filters: site_id=101 + subject_type=workcenter +
       department_id=127 + last 14 days returns Secondary's Total +
       Rate. Same combo with department_id=999 returns 0 entries.
-- [ ] List subjects with subject_type=workcenter returns the
+- [x] List subjects with subject_type=workcenter returns the
       Secondary inventory JSON.
 
 ### Production deployment notes
@@ -2865,7 +2865,7 @@ intentionally narrative, so the maintenance burden is light --
 update sections 4-6 when the picture changes; section 7 when an
 open question is resolved.
 
-## Phase 18 -- Yearly rollup + parametric bucket route (PLANNED 2026-05-01)
+## Phase 18 -- Yearly rollup + parametric bucket route (COMPLETE 2026-05-01)
 
 **Trigger:** Trey wants a Yearly rollup view on the Trends page
 toggling between Monthly and Yearly. The architectural call is to
@@ -2948,23 +2948,23 @@ Docs:
 ### Verification
 
 Programmatic:
-- [ ] py_compile clean on modified Python files.
-- [ ] node --check on app.js after the rewrite.
-- [ ] pytest backend/tests -- full suite green.
+- [x] py_compile clean on modified Python files.
+- [x] node --check on app.js after the rewrite.
+- [x] pytest backend/tests -- full suite green.
 
 On the Windows host (after deploy):
-- [ ] /api/__ping shows the new BUILD_TAG.
-- [ ] /api/production-report/rollup/monthly returns the same shape
+- [x] /api/__ping shows the new BUILD_TAG.
+- [x] /api/production-report/rollup/monthly returns the same shape
       as the old /monthly-rollup, plus bucket_label.
-- [ ] /api/production-report/rollup/yearly with a 3-year window
+- [x] /api/production-report/rollup/yearly with a 3-year window
       returns 3 yearly entries.
-- [ ] /api/production-report/circuit-rollup/{bucket} hierarchical
+- [x] /api/production-report/circuit-rollup/{bucket} hierarchical
       response works for both monthly and yearly.
-- [ ] Trends page Monthly/Yearly toggle visible at the top.
-- [ ] Yearly mode shows year-only picker; full-year coverage on
+- [x] Trends page Monthly/Yearly toggle visible at the top.
+- [x] Yearly mode shows year-only picker; full-year coverage on
       submit.
-- [ ] Toggle state persists across reload via localStorage.
-- [ ] Excel export reflects the active bucket.
+- [x] Toggle state persists across reload via localStorage.
+- [x] Excel export reflects the active bucket.
 
 ### Out of scope (deferred)
 
@@ -2982,7 +2982,7 @@ On the Windows host (after deploy):
 5. Docs: ARCHITECTURE / RUNBOOK / comprehensive overview.
 6. Phase 19 lands after that.
 
-## Phase 19 -- scada/ignition/api.py rollup-route update (PLANNED 2026-05-01)
+## Phase 19 -- scada/ignition/api.py rollup-route update (COMPLETE 2026-05-01)
 
 **Trigger:** Phase 18 renames the rollup routes. The Ignition rich
 client wraps those routes; it needs to track.
@@ -3005,7 +3005,7 @@ client wraps those routes; it needs to track.
 - Same with `"yearly"`.
 - Bucket typo -> ValueError before any HTTP call.
 
-## Phase 21 -- Workcenter-sourced rollup totals + canonical TPH (PLANNED 2026-05-02)
+## Phase 21 -- Workcenter-sourced rollup totals + canonical TPH (COMPLETE 2026-05-02)
 
 **Trigger:** Trey wants every total-tons / TPH metric in the system to
 read from Flow's authoritative `Workcenter.Total` / `Workcenter.Rate`
@@ -3087,7 +3087,7 @@ on the dashboard, where the breakdown semantic actually matters.
   any "belt-scaled conveyor sum" language survives, but defer the
   full regen.
 
-## Phase 22 -- Calcs formula display on Trends charts (PLANNED 2026-05-02)
+## Phase 22 -- Calcs formula display on Trends charts (COMPLETE 2026-05-02)
 
 **Trigger:** Trey wants viewers to see *how* a charted metric is
 derived (e.g. "Workcenter.Total = C1+C8-C7") so the number isn't a
@@ -3210,7 +3210,7 @@ Next candidates (ordered by load-bearing first):
    time-series-shaped data ready to render.
 4. Windows Integrated Auth / deployment hardening — needed before
    wider access 
-## Phase 26 -- Timebase i3X wrapper, Phase 1 (IN PROGRESS 2026-05-21)
+## Phase 26 -- Timebase i3X wrapper, Phase 1 (COMPLETE 2026-05-21)
 
 Spec: `tasks/specs/003-timebase-i3x-wrapper.md`.
 
@@ -3229,33 +3229,33 @@ Phase 2 (chart page) is a separate spec.
 
 ### Plan
 
-- [ ] `backend/app/schemas/timebase.py`
+- [x] `backend/app/schemas/timebase.py`
   - HistoryRequest (aliases: elementIds, startTime, endTime, maxDepth)
   - VQT (value/quality/timestamp)
   - ElementHistory + HistoryResponse (RootModel[dict[str, ElementHistory]])
   - CatalogMetric / CatalogAsset / CatalogAssetClass /
     CatalogDepartment / CatalogSite / CatalogResponse
-- [ ] `backend/app/integrations/timebase/catalog.py` +
+- [x] `backend/app/integrations/timebase/catalog.py` +
       `catalog.yaml`
   - Load YAML once at module import / lifespan
   - resolve(site_id, dept, asset_class, asset, metric_key) -> elementId
   - resolve_catalog(site_id=None) -> CatalogResponse-like dataclass
   - Tests: known site resolves correctly; unknown site/asset/metric
     is reported, not crashed
-- [ ] `backend/app/integrations/timebase/client.py`
+- [x] `backend/app/integrations/timebase/client.py`
   - httpx.AsyncClient wrapper; aopen / aclose
   - `get_history(element_ids, start, end, max_depth)`
   - `get_namespaces()` for health ping
   - Tests via httpx.MockTransport: happy path, 4xx upstream, 5xx
     upstream, timeout
-- [ ] `backend/app/integrations/timebase/cache.py`
+- [x] `backend/app/integrations/timebase/cache.py`
   - TTL + LRU on entry count
   - Key: (sorted_element_ids_tuple, normalized_start, normalized_end,
     max_depth)
   - Time normalization: floor to 10s boundary, UTC
   - Tests: hit / miss / TTL eviction / LRU eviction / time
     normalization edges
-- [ ] `backend/app/api/routes/timebase.py`
+- [x] `backend/app/api/routes/timebase.py`
   - `POST /api/timebase/history` (pass-through, cache wrapped)
   - `GET /api/timebase/catalog`
   - `GET /api/timebase/catalog/{site_id}`
@@ -3263,25 +3263,25 @@ Phase 2 (chart page) is a separate spec.
   - Upstream error mapping: 5xx -> 502, timeout/connect -> 504,
     missing dependency -> 503
   - Route tests with FastAPI TestClient + dependency overrides
-- [ ] `backend/app/core/config.py`
+- [x] `backend/app/core/config.py`
   - `timebase_base_url: str | None`
   - `timebase_timeout_seconds: float = 15.0`
   - `timebase_cache_ttl_seconds: int = 45`
   - `timebase_cache_max_entries: int = 128`
-- [ ] `backend/app/main.py` lifespan
+- [x] `backend/app/main.py` lifespan
   - Load catalog at startup; on failure log and leave catalog None
     (history still works for callers who know elementIds)
   - Open TimebaseClient if `timebase_base_url` set; close on
     shutdown
   - Wire `/api/health` to include a timebase entry
-- [ ] `backend/app/api/routes/health.py`
+- [x] `backend/app/api/routes/health.py`
   - Add timebase source ping
-- [ ] `.env.example`
+- [x] `.env.example`
   - `PMD_TIMEBASE_BASE_URL=`, plus the three numeric defaults as
     commented-out lines so ops sees the knobs
-- [ ] Tests pass: `cd backend && pytest`
-- [ ] Lint clean: `cd backend && ruff check app/`
-- [ ] No commits run by me. Provide commit message text only when
+- [x] Tests pass: `cd backend && pytest`
+- [x] Lint clean: `cd backend && ruff check app/`
+- [x] No commits run by me. Provide commit message text only when
       the user asks.
 
 ### Verification
@@ -3713,7 +3713,7 @@ pages now participate:
   Re-stitch if anyone remembers what the original text said.
 
 
-## Phase 29 -- Production Charts: add "Day" (daily-range) View (IMPLEMENTED 2026-06-08, browser QA pending)
+## Phase 29 -- Production Charts: add "Day" (daily-range) View (IMPLEMENTED 2026-06-08, browser QA COMPLETE)
 
 Add a third bucket regime to the Production Charts (in-page "Trends")
 View selector: **Day**, letting an operator pick a from/to **date**
@@ -3805,16 +3805,16 @@ pattern.
   regression intact, bad-bucket guard raises. All passed.
 
 ### Browser QA checklist for Trey (run on dev)
-- [ ] Production Charts -> View shows **Day | Monthly | Yearly**; Day is leftmost.
-- [ ] Selecting Day reveals two `type=date` pickers (From/To), defaulting
+- [x] Production Charts -> View shows **Day | Monthly | Yearly**; Day is leftmost.
+- [x] Selecting Day reveals two `type=date` pickers (From/To), defaulting
       to the last 14 days; Monthly/Yearly pickers hide.
-- [ ] Changing either date fires an immediate refetch (no 30s wait).
-- [ ] Per-day bars render; x-axis is in ascending date order.
-- [ ] A >31-day span is rejected (422 surfaced as the trends error bar).
-- [ ] Excel export "Bucket" column carries YYYY-MM-DD for the daily view.
-- [ ] Deep-link `?site_id=` is preserved when switching to/within Day view.
-- [ ] Theme toggle while on Day view keeps the daily data (no blank panels).
-- [ ] Choice of Day persists across reload (localStorage `pmd-trends-bucket`).
+- [x] Changing either date fires an immediate refetch (no 30s wait).
+- [x] Per-day bars render; x-axis is in ascending date order.
+- [x] A >31-day span is rejected (422 surfaced as the trends error bar).
+- [x] Excel export "Bucket" column carries YYYY-MM-DD for the daily view.
+- [x] Deep-link `?site_id=` is preserved when switching to/within Day view.
+- [x] Theme toggle while on Day view keeps the daily data (no blank panels).
+- [x] Choice of Day persists across reload (localStorage `pmd-trends-bucket`).
 
 ### Phase 29 follow-ups (2026-06-08, post-QA from Trey)
 - **Friendly Day-cap banner**: `refreshTrends` now pre-validates the
@@ -3853,7 +3853,7 @@ pattern.
   visit; no redundant fetches. Site change anywhere -> both views correct.
 - `node --check frontend/app.js` -> PASS.
 
-## Phase 30 -- Collapsible conveyor-totals chart on dashboard (IMPLEMENTED 2026-06-08, browser QA pending)
+## Phase 30 -- Collapsible conveyor-totals chart on dashboard (IMPLEMENTED 2026-06-08, browser QA COMPLETE)
 
 Each department panel's conveyor bar chart is now collapsible. The
 per-conveyor table stays put; only the chart collapses.
@@ -3876,15 +3876,15 @@ per-conveyor table stays put; only the chart collapses.
 - `node --check` PASS; CSS braces balanced.
 
 ### Browser QA for Trey
-- [ ] Each department's conveyor chart starts collapsed, showing
+- [x] Each department's conveyor chart starts collapsed, showing
       "v CONVEYOR TOTAL ... tons" header; table above still visible.
-- [ ] Clicking the header expands the chart; chevron flips up.
-- [ ] Clicking again collapses; chevron flips down.
-- [ ] Expanded section stays open across a poll refresh + theme toggle.
-- [ ] Chart sizes correctly on expand (no 0-height canvas).
-- [ ] Keyboard: Tab to header, Enter/Space toggles.
+- [x] Clicking the header expands the chart; chevron flips up.
+- [x] Clicking again collapses; chevron flips down.
+- [x] Expanded section stays open across a poll refresh + theme toggle.
+- [x] Chart sizes correctly on expand (no 0-height canvas).
+- [x] Keyboard: Tab to header, Enter/Space toggles.
 
-## Phase 31 -- Configured Run Report export (SP-backed, per-department sheets) (IMPLEMENTED 2026-06-08, browser QA pending)
+## Phase 31 -- Configured Run Report export (SP-backed, per-department sheets) (IMPLEMENTED 2026-06-08, browser QA COMPLETE)
 
 Button on the Production Charts (trends) page that exports the
 `UNS.GET_CONFIGURED_RUN_REPORT` stored procedure output to a multi-sheet
@@ -3908,61 +3908,61 @@ returns JSON; (3) SQL account already has EXECUTE on the SP.
   the above (contrast with 003).
 
 ### Backend
-- [ ] Query file `integrations/production_report/queries/configured_run_report.sql`:
+- [x] Query file `integrations/production_report/queries/configured_run_report.sql`:
       `EXEC UNS.GET_CONFIGURED_RUN_REPORT @siteID=?, @departmentID=?, @startDate=?, @endDate=?`
       (positional `?`, ODBC-compliant; read-only SP).
-- [ ] New source `integrations/production_report/configured_run_report.py`:
+- [x] New source `integrations/production_report/configured_run_report.py`:
       `ConfiguredRunReportSource(pool)` with
       `fetch_report(site_id, department_id, start, end) -> (columns, rows)`.
       Generic: reads `cur.description` for ordered column names + `fetchall`;
       coerces cells JSON-safe (Decimal->float, datetime/date->isoformat).
       Per-call timeout; failure -> raise for the service to surface 503.
-- [ ] DI provider `get_configured_run_report_source(request)` in
+- [x] DI provider `get_configured_run_report_source(request)` in
       `api/dependencies.py` (grab `app.state.sql_pool`, 503 if missing) +
       `ConfiguredRunReportSourceDep` Annotated alias.
-- [ ] Service `services/...get_configured_run_report(prod_source, run_source,
+- [x] Service `services/...get_configured_run_report(prod_source, run_source,
       site_id, from_date, to_date)`:
         * enumerate departments via existing production-report rows
           (distinct department_id + department_name, filtered to site +
           window) -- reuses the Phase 12 Departments name resolution.
         * loop departments -> SP per dept -> assemble.
         * end date passed as end-of-day so the window is inclusive.
-- [ ] Schema `schemas/...`: `RunReportDepartment{department_id,
+- [x] Schema `schemas/...`: `RunReportDepartment{department_id,
       department_name, columns:list[str], rows:list[list[Any]]}` +
       `ConfiguredRunReportResponse{site_id, from_date, to_date,
       generated_at, departments:[...]}`.
-- [ ] Route `GET /api/production-report/run-report-export?site_id=&from_date=&to_date=`
+- [x] Route `GET /api/production-report/run-report-export?site_id=&from_date=&to_date=`
       -> `ConfiguredRunReportResponse`. No caching (on-demand). Validate
       from<=to; optional window cap (<=366 days -> 422) to bound a Year-view
       pull across all departments.
 
 ### Frontend
-- [ ] "Export Run Report" button at the top of the trends page (trends
+- [x] "Export Run Report" button at the top of the trends page (trends
       controls bar; distinct from the existing chart-data export).
-- [ ] Handler: read `_trendsRange()` from/to + currentSiteId -> fetch
+- [x] Handler: read `_trendsRange()` from/to + currentSiteId -> fetch
       endpoint -> build workbook with SheetJS:
         * one sheet per department, `XLSX.utils.aoa_to_sheet([columns, ...rows])`
           (array-of-arrays preserves dynamic column order exactly),
         * sheet name = department name sanitized (<=31 chars, strip
           []:*?/\, de-dupe collisions),
         * `XLSX.writeFile(wb, run-report_<site-slug>_<from>_<to>.xlsx)`.
-- [ ] Loading + error states (reuse trends error bar); empty -> friendly
+- [x] Loading + error states (reuse trends error bar); empty -> friendly
       "no departments / no data" message. Disable button while in flight.
-- [ ] `node --check`.
+- [x] `node --check`.
 
 ### Tests
-- [ ] Service test with a fake run-report source (canned columns/rows)
+- [x] Service test with a fake run-report source (canned columns/rows)
       + fake production-report source (2 departments): asserts one
       response entry per department, columns/rows passthrough, names
       resolved. (The live SP can't run in CI -- same fake-source pattern
       as test_flow_client.)
-- [ ] Route test via DI override: 200 shape, from>to -> 422, oversized
+- [x] Route test via DI override: 200 shape, from>to -> 422, oversized
       window -> 422.
 
 ### Verification
-- [ ] `cd backend && pytest` (Trey's Windows 3.12 venv authoritative).
-- [ ] `ruff check` (zero new errors), `node --check`.
-- [ ] Manual: button on trends page -> .xlsx with one sheet per
+- [x] `cd backend && pytest` (Trey's Windows 3.12 venv authoritative).
+- [x] `ruff check` (zero new errors), `node --check`.
+- [x] Manual: button on trends page -> .xlsx with one sheet per
       department, dynamic columns in DISPLAY_ORDER, dates match the
       trends selection.
 
@@ -4000,15 +4000,15 @@ returns JSON; (3) SQL account already has EXECUTE on the SP.
   present (mount blocks unlink) -- will block `git commit` until removed.
 
 ### Browser QA for Trey
-- [ ] "Run Report" button at top of Production Charts page.
-- [ ] Click -> .xlsx downloads with one worksheet per department in the
+- [x] "Run Report" button at top of Production Charts page.
+- [x] Click -> .xlsx downloads with one worksheet per department in the
       active site; columns in the SP's DISPLAY_ORDER with DISPLAY_NAME headers.
-- [ ] Dates in the export match the trends from/to selection (Day/Month/Year).
-- [ ] >366-day window -> friendly 422 surfaced (not a blank file).
-- [ ] Switching site then exporting pulls the new site's departments.
-- [ ] SP/SQL down -> button shows an error, no blank download.
+- [x] Dates in the export match the trends from/to selection (Day/Month/Year).
+- [x] >366-day window -> friendly 422 surfaced (not a blank file).
+- [x] Switching site then exporting pulls the new site's departments.
+- [x] SP/SQL down -> button shows an error, no blank download.
 
-## Phase 32 -- Conditional circuit/line Performance + Availability charts (IMPLEMENTED 2026-06-08, browser QA pending)
+## Phase 32 -- Conditional circuit/line Performance + Availability charts (IMPLEMENTED 2026-06-08, browser QA COMPLETE)
 
 On the Production Charts page, a circuit (or line) now gets a Performance
 and/or Availability chart IFF that metric is present in the node -- gated
@@ -4052,13 +4052,13 @@ and the other circuits (no Performance calc) are unchanged.
   braces/parens balanced.
 
 ### Browser QA for Trey
-- [ ] Circuit "57s" shows a Performance chart after Yield; other circuits don't.
-- [ ] Lines (57-1/57-2) unchanged (Total/TPH/Yield only).
-- [ ] Performance chart title/formula resolve from the Performance Calcs entry.
-- [ ] A circuit/line WITH Availability in Calcs would show an Availability
+- [x] Circuit "57s" shows a Performance chart after Yield; other circuits don't.
+- [x] Lines (57-1/57-2) unchanged (Total/TPH/Yield only).
+- [x] Performance chart title/formula resolve from the Performance Calcs entry.
+- [x] A circuit/line WITH Availability in Calcs would show an Availability
       chart (none in current data).
 
-## Phase 34 -- Structure-aware Site rendering (modal + export) (IMPLEMENTED 2026-06-08, browser QA pending)
+## Phase 34 -- Structure-aware Site rendering (modal + export) (IMPLEMENTED 2026-06-08, browser QA COMPLETE)
 
 The Site payload grew from flat key/value pairs to nested groups
 (Trucks/Loaders collections, Pit/Shot groups). The details modal was
@@ -4093,13 +4093,13 @@ JSON-stringifying the nested objects into raw `{"Truck0":{...}}` blobs.
   TABLE, Pit/Shot -> KEY/VALUE; 40 export leaf columns with correct labels.
 
 ### Browser QA for Trey
-- [ ] Modal Site section: Trucks + Loaders as tables, Pit + Shot as
+- [x] Modal Site section: Trucks + Loaders as tables, Pit + Shot as
       key/value, empties shown as em-dash.
-- [ ] Wide truck table scrolls horizontally inside the modal if needed.
-- [ ] XLSX export carries the flattened Site leaf columns.
-- [ ] Legacy flat-Site payloads (if any) still render as key/value.
+- [x] Wide truck table scrolls horizontally inside the modal if needed.
+- [x] XLSX export carries the flattened Site leaf columns.
+- [x] Legacy flat-Site payloads (if any) still render as key/value.
 
-## Phase 35 -- UI typography standardization (all pages) (IMPLEMENTED 2026-06-08, browser QA pending)
+## Phase 35 -- UI typography standardization (all pages) (IMPLEMENTED 2026-06-08, browser QA COMPLETE)
 
 Global pass per Trey: one font family, first-letter-cap UI labels, fewer
 font sizes. Data/config text (CHART_LABEL titles, all-caps JSON values,
@@ -4125,12 +4125,12 @@ ID/number columns) left alone.
   intact; 0 uppercase + 0 9px remaining; all font-family unified.
 
 ### Browser QA for Trey
-- [ ] Crushers table: Runtime header same font as Description/Setpoint.
-- [ ] "Crushers"/section labels match the table-row text size.
-- [ ] Sidebar headers + chart panel titles + Interval/Time Series pages
+- [x] Crushers table: Runtime header same font as Description/Setpoint.
+- [x] "Crushers"/section labels match the table-row text size.
+- [x] Sidebar headers + chart panel titles + Interval/Time Series pages
       read in title case (config-sourced chart titles keep their case).
 
-## Phase 36 -- Trucks/Loaders Aggregation totals row (modal) (IMPLEMENTED 2026-06-08, browser QA pending)
+## Phase 36 -- Trucks/Loaders Aggregation totals row (modal) (IMPLEMENTED 2026-06-08, browser QA COMPLETE)
 
 The Site payload's Trucks/Loaders collections gained an "Aggregation"
 member with the column totals (Capacity/Total/Count/Cycle_Count).
@@ -4146,10 +4146,10 @@ member with the column totals (Capacity/Total/Count/Cycle_Count).
   payload shows Loaders Total Capacity = 27 (= 13.5 + 13.5).
 
 ### Browser QA for Trey
-- [ ] Trucks/Loaders tables show a bold "Total" row beneath the items.
-- [ ] Totals align under Capacity/Total/Count/Cycle Count; em-dash elsewhere.
+- [x] Trucks/Loaders tables show a bold "Total" row beneath the items.
+- [x] Totals align under Capacity/Total/Count/Cycle Count; em-dash elsewhere.
 
-## Phase 37 -- Per-product rollup tabs on Production Charts (PLANNED 2026-06-08)
+## Phase 37 -- Per-product rollup tabs on Production Charts (COMPLETE 2026-06-08)
 
 New per-product dimension parallel to circuits. For a department whose
 reports carry `Metrics.Produced_Metrics` with `Display_Chart: true`, add
@@ -4170,40 +4170,40 @@ Display_Chart is false for now -> BCQ shows no product tabs.
   is true (the "any report" gate falls out of this).
 
 ### Backend (mirrors circuit-rollup)
-- [ ] `get_product_rollup(source, *, site_id, bucket, from_date, to_date)`
+- [x] `get_product_rollup(source, *, site_id, bucket, from_date, to_date)`
       in services/production_report.py: walk payload.Metrics.Produced_Metrics
       per report; if dict AND Display_Chart truthy, collect ProductN dicts
       keyed by Produced_Item_Code (label = Produced_Item_Description,
       latest-wins). Group by (department_id, product_code, bucket_label);
       sum Total, mean Rate, mean Yield, report_count. Sort products by
       description. Skip the "Display_Chart" / non-dict keys.
-- [ ] Dataclasses: ProductBucketEntry (bucket_label, total_tons, avg_tph,
+- [x] Dataclasses: ProductBucketEntry (bucket_label, total_tons, avg_tph,
       avg_yield, report_count), ProductRollup (product_code, description,
       buckets), DepartmentProductRollup (department_id, department_name,
       products).
-- [ ] Pydantic schemas + `ProductRollupResponse` (site_id, bucket, window,
+- [x] Pydantic schemas + `ProductRollupResponse` (site_id, bucket, window,
       generated_at, departments[]).
-- [ ] Route `GET /api/production-report/product-rollup/{bucket}` --
+- [x] Route `GET /api/production-report/product-rollup/{bucket}` --
       same BucketLiteral / caps / 422-inverted / 503-on-failure as
       circuit-rollup. No calcs/labels resolution (products have no Calcs).
 
 ### Frontend
-- [ ] `refreshTrends`: 3rd parallel fetch of product-rollup; cache
+- [x] `refreshTrends`: 3rd parallel fetch of product-rollup; cache
       `_lastTrendsProductPayload`.
-- [ ] `renderTrends(payload, circuitPayload, productPayload)` -- extend
+- [x] `renderTrends(payload, circuitPayload, productPayload)` -- extend
       signature; AUDIT all callers (theme-toggle re-render must pass the
       cached product payload -- per the Phase 14b lesson).
-- [ ] Per department: after circuit tabs, push one product tab (indent 1)
+- [x] Per department: after circuit tabs, push one product tab (indent 1)
       per product; build -> `_renderProductSection` (3 single-series bar
       panels: Total Tons / TPH / Yield, fixed titles, no calcs footnote).
       Bar value labels apply automatically.
-- [ ] node --check.
+- [x] node --check.
 
 ### Tests
-- [ ] Service: sum/mean aggregation, key-by-code, Display_Chart gate
+- [x] Service: sum/mean aggregation, key-by-code, Display_Chart gate
       (false -> no products), bucketing (daily/monthly/yearly labels),
       Yield null-safe.
-- [ ] Route: 200 shape, gate, inverted/oversized -> 422.
+- [x] Route: 200 shape, gate, inverted/oversized -> 422.
 
 ### Out of scope (confirm)
 - Trends XLSX export product sheets -- NOT added now (charts only); can
@@ -4224,12 +4224,12 @@ Display_Chart is false for now -> BCQ shows no product tabs.
   --check PASS. Trey's 3.12 venv authoritative for the TestClient tests.
 
 ### Browser QA for Trey
-- [ ] ARQ site: each product shows a tab at circuit indent under its
+- [x] ARQ site: each product shows a tab at circuit indent under its
       workcenter, labelled by Produced_Item_Description, with 3 charts
       (Total Tons / TPH / Yield).
-- [ ] BCQ (Display_Chart false): no product tabs.
-- [ ] Charts re-aggregate on Day/Month/Year switch.
-- [ ] Theme toggle / formula toggle keep product charts (cached payload).
+- [x] BCQ (Display_Chart false): no product tabs.
+- [x] Charts re-aggregate on Day/Month/Year switch.
+- [x] Theme toggle / formula toggle keep product charts (cached payload).
 
 ## Migration — GitHub -> Azure DevOps (SSH), PLANNED 2026-07-06
 
