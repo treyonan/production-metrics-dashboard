@@ -4462,3 +4462,17 @@ Workcenter.Runtime_Percent), and reworked the Production Charts XLSX export.
   kept (still power the per-workcenter sheets). node --check clean; -49 lines.
 - Left `_activeTrendsTab = "overview"` as-is: it's a functional sentinel that
   resolves to the first real tab, not tied to the export sheet.
+
+### Trends charts: positive-only bars (2026-07-09)
+Extended the _renderTrendPanel day-slot filter from "drop null/non-numeric"
+to "keep only POSITIVE values": 0, negatives, null and non-numeric are all
+treated as no-data. Non-positive values are nulled out (no 0-height bar, incl.
+individual series inside a kept multi-series day), then day-slots with no
+positive series are dropped. Bucket-agnostic -- applies to Day / Month / Year
+views and all metric charts (workcenter / circuit / per-line / product), since
+they all render through _renderTrendPanel. Verified via node logic test (9).
+
+NOTE (deploy): frontend/ is volume-mounted in docker-compose (live on refresh);
+the backend is baked into the image, so backend changes need `docker compose up
+--build`. This is why the Runtime_Percent chart (backend avg_runtime_percent)
+didn't appear until a rebuild while frontend-only changes showed instantly.
