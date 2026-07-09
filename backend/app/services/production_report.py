@@ -472,6 +472,40 @@ def _mean_or_none(values: list[float | None]) -> float | None:
     return sum(usable) / len(usable)
 
 
+# Phase 38: Production ID (PR / PRM) filter. Mirrors the frontend's
+# _matchesProdIdFilter EXACTLY so the dashboard table and the charts
+# agree on what each selection includes:
+#   "PRM"        -> prod_id starts with "PRM"
+#   "PR"         -> prod_id starts with "PR" AND NOT "PRM"
+#   None / "all" -> no filtering
+_PROD_ID_FILTERS = ("all", "PR", "PRM")
+
+
+def _validate_prod_id_filter(prod_filter: str | None) -> None:
+    """Raise ValueError for an unrecognised PR/PRM selection."""
+    if prod_filter is not None and prod_filter not in _PROD_ID_FILTERS:
+        raise ValueError(
+            f"prod_id_filter must be one of {_PROD_ID_FILTERS}; got {prod_filter!r}."
+        )
+
+
+def _matches_prod_id_filter(prod_id: str, prod_filter: str | None) -> bool:
+    """True if ``prod_id`` passes the PR/PRM selection.
+
+    ``None`` and ``"all"`` accept everything. ``"PR"`` deliberately
+    excludes the ``PRM`` prefix (bare "PR..." is one logical group,
+    "PRM..." another), matching the frontend semantics.
+    """
+    if prod_filter is None or prod_filter == "all":
+        return True
+    p = prod_id or ""
+    if prod_filter == "PRM":
+        return p.startswith("PRM")
+    if prod_filter == "PR":
+        return p.startswith("PR") and not p.startswith("PRM")
+    return True
+
+
 async def get_rollup(
     source: ProductionReportSource,
     *,
@@ -480,6 +514,7 @@ async def get_rollup(
     from_date: date,
     to_date: date,
     department_id: str | None = None,
+    prod_id_filter: str | None = None,
 ) -> list[Rollup]:
     """Compute per-(department, month) rollups across the window.
 
@@ -539,6 +574,13 @@ async def get_rollup(
         r for r in rows
         if from_date <= r.prod_date.date() <= to_date
     ]
+
+    _validate_prod_id_filter(prod_id_filter)
+    if prod_id_filter is not None and prod_id_filter != "all":
+        rows = [
+            r for r in rows
+            if _matches_prod_id_filter(r.prod_id, prod_id_filter)
+        ]
 
     # Group by (department_id, bucket-label). Bucket label is
     # YYYY-MM-DD for daily, YYYY-MM for monthly, YYYY for yearly.
@@ -774,6 +816,7 @@ async def get_circuit_rollup(
     from_date: date,
     to_date: date,
     department_id: str | None = None,
+    prod_id_filter: str | None = None,
 ) -> list[DepartmentCircuitRollup]:
     """Compute hierarchical (department -> circuit -> [lines]) monthly
     rollups across the window. Each report's payload is walked for its
@@ -814,6 +857,13 @@ async def get_circuit_rollup(
         r for r in rows
         if from_date <= r.prod_date.date() <= to_date
     ]
+
+    _validate_prod_id_filter(prod_id_filter)
+    if prod_id_filter is not None and prod_id_filter != "all":
+        rows = [
+            r for r in rows
+            if _matches_prod_id_filter(r.prod_id, prod_id_filter)
+        ]
 
     # Group reports by department_id.
     by_dept: dict[str, list[ProductionReportRow]] = defaultdict(list)
@@ -1074,6 +1124,7 @@ async def get_product_rollup(
     from_date: date,
     to_date: date,
     department_id: str | None = None,
+    prod_id_filter: str | None = None,
 ) -> list[DepartmentProductRollup]:
     """Per-(department, product, bucket) rollup of Produced_Metrics.
 
@@ -1105,6 +1156,13 @@ async def get_product_rollup(
     if department_id is not None:
         rows = [r for r in rows if r.department_id == department_id]
     rows = [r for r in rows if from_date <= r.prod_date.date() <= to_date]
+
+    _validate_prod_id_filter(prod_id_filter)
+    if prod_id_filter is not None and prod_id_filter != "all":
+        rows = [
+            r for r in rows
+            if _matches_prod_id_filter(r.prod_id, prod_id_filter)
+        ]
 
     by_dept: dict[str, list[ProductionReportRow]] = defaultdict(list)
     for r in rows:

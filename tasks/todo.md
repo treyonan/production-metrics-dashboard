@@ -4335,3 +4335,78 @@ Fresh-path notes:
   recoverable for a while, then gc'd); Azure receives ONLY the 1 commit.
 - Trade-off vs preserve: the prod cutover is messier (re-clone / hard
   reset instead of a clean `git pull`), and you lose blame/bisect/revert.
+
+## Phase 38 -- PR/PRM Production ID filter applies to Production Charts aggregations (PLANNED 2026-07-09)
+
+Bug (verified 2026-07-09): the Production ID filter (all / PR / PRM) is
+CLIENT-SIDE only -- `_matchesProdIdFilter` filters the dashboard's per-asset
+table rows by prod_id prefix, and `_setActiveProdIdFilter` re-renders only
+when currentView === "dashboard". The Production Charts (trends) page
+aggregates SERVER-SIDE: get_rollup / get_circuit_rollup / get_product_rollup
+and get_configured_run_report each do `source.fetch_rows()` then filter only
+by site_id / department_id / date window -- never by prod_id. So every chart
+(and the Run Report export) sums PR + PRM together regardless of the toggle.
+Each ProductionReportRow carries `prod_id`, so a server-side filter is feasible.
+
+Decisions (Trey 2026-07-09): (1) filter ALL FOUR aggregations incl. the
+Configured Run Report export; (2) surface the PR/PRM control on the charts
+page too. Filter semantics mirror the JS exactly: "PRM" -> startswith("PRM");
+"PR" -> startswith("PR") AND NOT startswith("PRM"); "all"/omitted -> no filter.
+
+### Backend -- services/production_report.py
+- [ ] `_matches_prod_id_filter(prod_id, prod_filter)` module helper mirroring JS.
+- [ ] Add `prod_id_filter: str | None = None` to get_rollup, get_circuit_rollup,
+      get_product_rollup, get_configured_run_report. Validate in {None,"all",
+      "PR","PRM"} else ValueError. Apply AFTER the existing site/dept/date row
+      filters: `rows = [r for r in rows if _matches_prod_id_filter(r.prod_id, f)]`.
+
+### Backend -- api/routes/production_report.py
+- [ ] Add `prod_id_filter: str | None = Query(None, ...)` to the 4 endpoints
+      (/rollup/{bucket}, /circuit-rollup/{bucket}, /product-rollup/{bucket},
+      /run-report-export); pass to the service. ValueError -> 422 (mirror the
+      existing bucket-validation error mapping on each route).
+- [ ] (Optional, low-risk) echo `prod_id_filter` on the 3 rollup response
+      schemas for QA visibility.
+
+### Frontend -- index.html
+- [ ] Add a "Production ID" control group inside `.trends-controls`
+      (id `trends-prodid-filter`, 3 buttons data-prodid all/PR/PRM), styled
+      like the existing bucket/formula toggles.
+
+### Frontend -- app.js
+- [ ] refreshTrends: append `&prod_id_filter=<f>` to baseQs when
+      _activeProdIdFilter !== "all" (covers all 3 rollup URLs at once).
+- [ ] exportRunReport: append the same to its query string.
+- [ ] _applyProdIdFilterUi: update BOTH `#prodid-filter .gb` and
+      `#trends-prodid-filter .gb` so the two selectors stay in sync.
+- [ ] Wire click listeners on `#trends-prodid-filter .gb` -> _setActiveProdIdFilter.
+- [ ] _setActiveProdIdFilter: when currentView === "trends" && currentSiteId,
+      call refreshTrends() (server refetch). Keep the dashboard client-side path.
+- [ ] Trends XLSX export inherits the filter automatically (derives from the
+      now-filtered _lastTrendsPayload) -- satisfies "export mirrors display".
+
+### Tests
+- [ ] Service: PR excludes PRM, PRM-only, all/None unchanged -- for all 4 fns.
+- [ ] Route: prod_id_filter=PR/PRM constrains counts; invalid -> 422; omitted
+      -> unchanged (backward compatible).
+
+### Verification (per lessons)
+- [ ] ruff check/format delta 0; py_compile clean; pytest on Trey's 3.12 venv
+      (TestClient authoritative).
+- [ ] node --check frontend/app.js AND `tail -c 12` ends with `})();`; wc -l +
+      tail sanity after every write (mount-truncation guard).
+- [ ] Browser QA: toggle PR/PRM on Production Charts -> workcenter/circuit/
+      product charts + Run Report export all re-aggregate; control mirrors the
+      dashboard selector; theme/formula toggle keeps the filtered payload.
+
+### Phase 38 scope FINAL (2026-07-09, Trey)
+- Filter applies to the THREE rollup aggregations only: get_rollup (workcenter),
+  get_circuit_rollup, get_product_rollup -- and their routes /rollup, /circuit-
+  rollup, /product-rollup.
+- Run Report export: NO change. PR vs PRM there are per-prod-id line items, not
+  aggregations, so both are displayed. get_configured_run_report /
+  /run-report-export left untouched; NO stored-procedure change (earlier
+  "@prodID SP param" idea dropped).
+- Frontend: PR/PRM control added to the charts toolbar (#trends-prodid-filter),
+  both selectors kept in sync, filter threaded into the 3 rollup fetches only,
+  refreshTrends() refetch on filter change when currentView==="trends".

@@ -188,21 +188,9 @@
       <div class="sb">
         <div class="sh">Production ID Filter</div>
         <div class="sd">
-          <div class="gbr" id="prodid-filter" role="tablist" aria-label="Production ID prefix filter">
-            <button type="button" class="gb on" data-prodid="all" role="tab" aria-selected="true">All</button>
-            <button type="button" class="gb"    data-prodid="PR"  role="tab" aria-selected="false">PR</button>
+          <div class="gbr" id="prodid-filter" role="tablist" aria-label="Production ID filter">
+            <button type="button" class="gb on" data-prodid="PR"  role="tab" aria-selected="true">PR</button>
             <button type="button" class="gb"    data-prodid="PRM" role="tab" aria-selected="false">PRM</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="sb">
-        <div class="sh">Status Filter</div>
-        <div class="sd">
-          <div class="gbr" id="status-filter" role="tablist" aria-label="Workcenter status filter">
-            <button type="button" class="gb on" data-status="all" role="tab" aria-selected="true">All</button>
-            <button type="button" class="gb"    data-status="Scheduled" role="tab" aria-selected="false">Scheduled</button>
-            <button type="button" class="gb"    data-status="Unscheduled" role="tab" aria-selected="false">Unscheduled</button>
           </div>
         </div>
       </div>
@@ -246,6 +234,13 @@
             <button type="button" class="bucket-btn"    data-bucket="daily"   role="tab" aria-selected="false">Day</button>
             <button type="button" class="bucket-btn on" data-bucket="monthly" role="tab" aria-selected="true">Month</button>
             <button type="button" class="bucket-btn"    data-bucket="yearly"  role="tab" aria-selected="false">Year</button>
+          </div>
+        </div>
+        <div class="trends-control-group">
+          <label class="filter-label">Production ID</label>
+          <div class="trends-bucket-toggle" id="trends-prodid-filter" role="tablist" aria-label="Production ID filter">
+            <button type="button" class="bucket-btn on" data-prodid="PR"  role="tab" aria-selected="true">PR</button>
+            <button type="button" class="bucket-btn"    data-prodid="PRM" role="tab" aria-selected="false">PRM</button>
           </div>
         </div>
         <div class="trends-control-group trends-daily-only" id="trends-daily-from-group" style="display:none">

@@ -316,3 +316,24 @@ app.js alongside `node --check` + brace balance. More generally: a green
 `node --check` is necessary but NOT sufficient proof a JS file is intact --
 confirm the expected ending bytes are present. Recovery: `git diff <last-good>`
 on the file surfaces the `})();`->`})` corruption immediately.
+
+### device_bash git leaves an un-removable .git/index.lock on this mount — 2026-07-09
+**Mistake**: Ran a full-tree `git diff --stat` via device_bash during Phase 38
+verification. Git tried to refresh the index (the repo's .gitattributes
+normalizes CRLF->LF on many files, so a full-tree stat rewrites index
+entries), created `.git/index.lock`, then failed to unlink it: this Cowork
+device mount forbids unlink/rm ("Operation not permitted"). A stale
+index.lock left behind would make Trey's next NATIVE (Windows) `git` refuse
+with "Another git process seems to be running / remove .git/index.lock".
+**Why it happened**: device_bash operates on the Windows folder through a
+bridge mount that allows create/rename but NOT unlink. Git's normal
+create-lock-then-unlink dance can't complete its cleanup. Targeted git reads
+(`git status -s <file>`, `git diff <one-file>`) didn't trigger it; the
+full-tree diff touching all the CRLF-normalized files did.
+**Rule**: On this mount, prefer NARROW git commands via device_bash (scope to
+specific paths) and avoid full-tree index-refreshing ops. If a git call warns
+"unable to unlink .git/index.lock", clear it as the LAST action with
+`mv .git/index.lock .git/<somename>` (rename works; rm/unlink doesn't) and
+verify absence with `ls` (NOT another git call, which re-creates it). Leftover
+renamed artifacts in .git/ are harmless (git only honors the exact name
+`index.lock`) but can only be deleted from Trey's native environment.

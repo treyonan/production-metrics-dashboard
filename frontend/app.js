@@ -212,18 +212,12 @@
     }
   } catch (_e) { /* localStorage unavailable in some embeds */ }
 
-  // Phase 19/20: Production ID prefix filter for the dashboard's
-  // per-workcenter tables and Excel export. Three states:
-  //   "all" -- show all rows (default)
-  //   "PR"  -- show rows whose prod_id starts with PR but not PRM
-  //   "PRM" -- show rows whose prod_id starts with PRM
-  let _activeProdIdFilter = "all";
-  try {
-    const _storedProdId = localStorage.getItem("pmd-prodid-filter");
-    if (_storedProdId === "all" || _storedProdId === "PR" || _storedProdId === "PRM") {
-      _activeProdIdFilter = _storedProdId;
-    }
-  } catch (_e) {}
+  // Phase 38: ONE shared Production ID filter driving BOTH the dashboard
+  // and the Production Charts page, kept in sync. PR/PRM only -- no "all".
+  //   "PR"  -- prod_id starts with PR but not PRM
+  //   "PRM" -- prod_id starts with PRM
+  // Not persisted: always defaults to "PR" on a fresh load / navigation back.
+  let _activeProdIdFilter = "PR";
 
   // Phase 23: Workcenter Scheduled_Status filter. "all" / "Scheduled"
   // / "Unscheduled". Note: PRM-prefixed reports have null Status, so
@@ -506,23 +500,16 @@
         onSelectionChanged();
       });
     }
-    // Phase 19/20: Production ID prefix filter. Client-side; no
-    // refetch on toggle. Sync visible state to the saved filter on
-    // every wire call (boot + any later re-wire).
-    for (const btn of document.querySelectorAll("#prodid-filter .gb")) {
+    // Phase 38: one shared PR/PRM Production ID filter driving BOTH the
+    // dashboard sidebar control and the Production Charts control, wired
+    // together so they stay in sync. Re-applied on boot + every re-wire.
+    for (const btn of document.querySelectorAll(
+        "#prodid-filter .gb, #trends-prodid-filter .bucket-btn")) {
       btn.addEventListener("click", () => {
         _setActiveProdIdFilter(btn.dataset.prodid);
       });
     }
     _applyProdIdFilterUi(_activeProdIdFilter);
-
-    // Phase 23: Status filter. Same wire pattern.
-    for (const btn of document.querySelectorAll("#status-filter .gb")) {
-      btn.addEventListener("click", () => {
-        _setActiveStatusFilter(btn.dataset.status);
-      });
-    }
-    _applyStatusFilterUi(_activeStatusFilter);
     const dayInput = $("day-date");
     if (dayInput) {
       dayInput.addEventListener("change", () => {
@@ -865,7 +852,7 @@
       const desc = active.length ? active.join(" + ") : "current filters";
       empty.textContent =
         `No reports match ${desc} for ${selectionLabel(currentSelection)}. ` +
-        `Adjust the filters in the sidebar (set either to All) to widen the view.`;
+        `Switch the Production ID (PR / PRM) to see the other report type.`;
       $("refresh-lbl").textContent =
         `Refreshed ${new Date(payload.generated_at).toLocaleTimeString()} (filtered)`;
       return;
@@ -1758,21 +1745,24 @@
   }
 
   function _setActiveProdIdFilter(filter) {
-    if (filter !== "all" && filter !== "PR" && filter !== "PRM") return;
+    if (filter !== "PR" && filter !== "PRM") return;
     if (filter === _activeProdIdFilter) return;
     _activeProdIdFilter = filter;
-    try { localStorage.setItem("pmd-prodid-filter", filter); } catch (_e) {}
     _applyProdIdFilterUi(filter);
-    // Re-render with the new filter from the cached payload (no
-    // network refetch needed -- filtering is purely client-side).
+    // Dashboard: re-render from the cached payload (client-side filter).
     if (currentView === "dashboard" && _lastPayload) {
       renderData(_lastPayload);
       updateExportButtonState();
     }
+    // Production Charts: aggregations are server-side, so refetch.
+    if (currentView === "trends" && currentSiteId) {
+      refreshTrends();
+    }
   }
 
   function _applyProdIdFilterUi(filter) {
-    for (const btn of document.querySelectorAll("#prodid-filter .gb")) {
+    for (const btn of document.querySelectorAll(
+        "#prodid-filter .gb, #trends-prodid-filter .bucket-btn")) {
       const on = btn.dataset.prodid === filter;
       btn.classList.toggle("on", on);
       btn.setAttribute("aria-selected", on ? "true" : "false");
@@ -2632,7 +2622,8 @@
     const baseQs =
         `?site_id=${encodeURIComponent(currentSiteId)}`
       + `&from_date=${encodeURIComponent(range.from_date)}`
-      + `&to_date=${encodeURIComponent(range.to_date)}`;
+      + `&to_date=${encodeURIComponent(range.to_date)}`
+      + `&prod_id_filter=${encodeURIComponent(_activeProdIdFilter)}`;
     const rollupUrl  = `/api/production-report/rollup/${range.bucket}${baseQs}`;
     const circuitUrl = `/api/production-report/circuit-rollup/${range.bucket}${baseQs}`;
     const productUrl = `/api/production-report/product-rollup/${range.bucket}${baseQs}`;

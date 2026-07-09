@@ -390,6 +390,13 @@ async def rollup(
         str | None,
         Query(description="Optional filter: roll up only this department_id."),
     ] = None,
+    prod_id_filter: Annotated[
+        str | None,
+        Query(description=(
+            "Optional Production ID filter: 'PR' (excludes PRM) or 'PRM'. "
+            "Omit or 'all' for no filtering."
+        )),
+    ] = None,
 ) -> RollupResponse:
     if from_date > to_date:
         raise HTTPException(
@@ -418,6 +425,7 @@ async def rollup(
             from_date=from_date,
             to_date=to_date,
             department_id=department_id,
+            prod_id_filter=prod_id_filter,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -544,6 +552,13 @@ async def circuit_rollup(
         str | None,
         Query(description="Optional filter: roll up only this department_id."),
     ] = None,
+    prod_id_filter: Annotated[
+        str | None,
+        Query(description=(
+            "Optional Production ID filter: 'PR' (excludes PRM) or 'PRM'. "
+            "Omit or 'all' for no filtering."
+        )),
+    ] = None,
 ) -> CircuitRollupResponse:
     if from_date > to_date:
         raise HTTPException(
@@ -568,6 +583,7 @@ async def circuit_rollup(
             from_date=from_date,
             to_date=to_date,
             department_id=department_id,
+            prod_id_filter=prod_id_filter,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -699,6 +715,13 @@ async def product_rollup(
         str | None,
         Query(description="Optional filter: roll up only this department_id."),
     ] = None,
+    prod_id_filter: Annotated[
+        str | None,
+        Query(description=(
+            "Optional Production ID filter: 'PR' (excludes PRM) or 'PRM'. "
+            "Omit or 'all' for no filtering."
+        )),
+    ] = None,
 ) -> ProductRollupResponse:
     if from_date > to_date:
         raise HTTPException(
@@ -726,6 +749,7 @@ async def product_rollup(
             from_date=from_date,
             to_date=to_date,
             department_id=department_id,
+            prod_id_filter=prod_id_filter,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
