@@ -321,6 +321,7 @@ def _to_rollup_entry(
         avg_tph_fed=r.avg_tph_fed,                     # Phase 14a
         avg_runtime_pct=r.avg_runtime_pct,             # Phase 14a
         avg_performance_pct=r.avg_performance_pct,     # Phase 14a
+        avg_runtime_percent=r.avg_runtime_percent,
         calcs=r.calcs,                                  # Phase 22
         calcs_labels=_resolve_labels_for_calcs(         # Phase 25
             r.calcs, labels, site_id, dept_id, "Workcenter", "Workcenter",

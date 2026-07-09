@@ -299,6 +299,15 @@ class RollupEntry(BaseModel):
             "the bucket has a non-null Performance value."
         ),
     )
+    avg_runtime_percent: float | None = Field(
+        default=None,
+        description=(
+            "Simple arithmetic mean of per-report "
+            "Workcenter.Runtime_Percent across the bucket (drops null / "
+            "non-numeric reports). Drives the Runtime_Percent workcenter "
+            "bar chart. Null when no report in the bucket has a usable value."
+        ),
+    )
     calcs: dict[str, str] | None = Field(
         default=None,
         description=(

@@ -329,6 +329,7 @@ class Rollup:
     avg_tph_fed: float | None
     avg_runtime_pct: float | None
     avg_performance_pct: float | None
+    avg_runtime_percent: float | None
 
 
 def _runtime_hours_from_workcenter(wc: Any) -> float:
@@ -462,6 +463,18 @@ def _avg_performance_for_report(wc: Any) -> float | None:
     if not isinstance(wc, dict):
         return None
     return _coerce_finite_float(wc.get("Performance"))
+
+
+def _avg_runtime_percent_for_report(wc: Any) -> float | None:
+    """Per-report Runtime_Percent, mean-aggregated across the bucket.
+
+    Reads ``Workcenter.Runtime_Percent`` directly (no fallback chain).
+    Returns None when the workcenter block is missing or the value is
+    null / non-numeric, so the mean drops it like the other averages.
+    """
+    if not isinstance(wc, dict):
+        return None
+    return _coerce_finite_float(wc.get("Runtime_Percent"))
 
 
 def _mean_or_none(values: list[float | None]) -> float | None:
@@ -624,6 +637,7 @@ async def get_rollup(
         avg_tph_fed = _mean_or_none([_avg_tph_fed_for_report(wc) for wc in wcs])
         avg_runtime_pct = _mean_or_none([_avg_runtime_pct_for_report(wc) for wc in wcs])
         avg_performance_pct = _mean_or_none([_avg_performance_for_report(wc) for wc in wcs])
+        avg_runtime_percent = _mean_or_none([_avg_runtime_percent_for_report(wc) for wc in wcs])
 
         # Phase 12: lift department_name off any row in the group. All
         # rows in a (dept_id, month) bucket share the same dept_id and
@@ -653,6 +667,7 @@ async def get_rollup(
                 avg_tph_fed=avg_tph_fed,
                 avg_runtime_pct=avg_runtime_pct,
                 avg_performance_pct=avg_performance_pct,
+                avg_runtime_percent=avg_runtime_percent,
                 calcs=latest_calcs,
                 calcs_verbose=latest_calcs_verbose,
             )

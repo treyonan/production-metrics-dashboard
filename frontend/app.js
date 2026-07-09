@@ -2212,7 +2212,6 @@
     retunePolling();
   }
 
-
   // --- Phase 10b: Trends view ----------------------------------------
   //
   // Hash-routed. #trends shows multi-month line charts of monthly
@@ -2221,22 +2220,6 @@
   // and feeds Chart.js. When Flow eventually publishes monthly aggregate
   // measures, the swap happens inside the backend service; this code
   // doesn\'t need to change.
-
-  // Distinct colors for multi-line charts. Workcenter N gets the Nth
-  // entry (modulo). Picked to read in both light and dark themes.
-  // Dolese brand chart palette: 4 primaries at 100% + the same 4 at
-  // 60% opacity (pre-computed as flat hex against a white chart bg).
-  // Cycled by series index across workcenters / circuits / lines.
-  const TREND_COLORS = [
-    "#00502f",  // brand green
-    "#ffde74",  // brand yellow
-    "#45545f",  // brand slate
-    "#2d2926",  // brand off-black
-    "#669682",  // brand green 60%
-    "#ffebab",  // brand yellow 60%
-    "#8f999f",  // brand slate 60%
-    "#817e7c",  // brand off-black 60%
-  ];
 
   function _destroyTrendCharts() {
     for (const c of _trendChartInstances) {
@@ -2800,24 +2783,6 @@
       return deptName(name, dept);
     };
 
-    const buildDatasets = (extractor) => deptIds.map((dept, idx) => {
-      const data = months.map((m) => {
-        const r = byDept.get(dept).get(m);
-        if (!r) return null;
-        const v = extractor(r);
-        return (v === null || v === undefined) ? null : v;
-      });
-      return {
-        label: deptLabel(dept),
-        data,
-        borderColor: TREND_COLORS[idx % TREND_COLORS.length],
-        backgroundColor: TREND_COLORS[idx % TREND_COLORS.length],
-        spanGaps: false,
-        tension: 0.2,
-        pointRadius: 3,
-      };
-    });
-
     // Brand-yellow single-series bars across every workcenter and
     // circuit chart. idx kept in the signature for backward compat but
     // unused -- the visual differentiator across charts is the title +
@@ -2908,6 +2873,21 @@
             yFormat: (v) => `${v.toFixed(3)}`,
             chartType: "bar",
           }));
+          // Runtime_Percent: workcenter-only metric, rendered only when the
+          // rollup carries it (mean of Workcenter.Runtime_Percent). Title
+          // resolves from the Calcs label like the others; decimal, no %.
+          if ([..._wcBuckets.values()].some((r) => r.avg_runtime_percent != null)) {
+            s.appendChild(_renderTrendPanel({
+              title: _calcsLabelLatest(_wcBuckets, "Runtime_Percent", "Runtime Percent"),
+              subtitle: "",
+              calcsLine: _singleCalcsLine(_wcBuckets, "Runtime_Percent", "Runtime_Percent"),
+              labels: months,
+              datasets: [buildBarDataset(dept, (r) => r.avg_runtime_percent, idx)],
+              yLabel: "",
+              yFormat: (v) => `${v.toFixed(3)}`,
+              chartType: "bar",
+            }));
+          }
         },
       });
 
@@ -3419,7 +3399,6 @@
   // --- Phase 14e: Trends data export ----------------------------------
   //
   // Builds a multi-sheet XLSX from the cached Trends payloads:
-  //   * Overview          -- cross-workcenter monthly rollup
   //   * <workcenter name> -- per-workcenter monthly metrics
   //   * <circuit name>    -- per-circuit (with optional per-line) monthly metrics
   // Frontend-only; no backend round-trip. Reuses the same SheetJS
@@ -3562,43 +3541,42 @@
 
       const wb = XLSX.utils.book_new();
 
-      // ---- Overview sheet (mirrors the cross-workcenter line charts).
-      const overviewRows = rollups.map((r) => ({
-        "Bucket":             r.bucket_label,
-        "Workcenter":         labelFor(r.department_id),
-        "Total Tons":         numOrEmpty(r.total_tons),
-        "Avg TPH Fed":        numOrEmpty(r.avg_tph_fed),
-        "Avg Runtime %":      numOrEmpty(r.avg_runtime_pct),
-        "Avg Performance %":  numOrEmpty(r.avg_performance_pct),
-        "Reports":            r.report_count,
-      }));
-      _appendSheet(wb, overviewRows, {
-        "Total Tons": "#,##0",
-        "Avg TPH Fed": "0.0",
-        "Avg Runtime %": '0.0"%"',
-        "Avg Performance %": '0.0"%"',
-      }, "Overview");
+      // ---- Metric spec for the per-workcenter sheets.
+      // Header text = the resolved chart title (Calcs label, else fallback);
+      // values are decimals with NO % symbol. Total is a sum, the rest means.
+      // Runtime_Percent is workcenter-only and is included only where the
+      // rollup actually carries it. Add/remove entries here to control which
+      // workcenter metrics get exported.
+      const WC_METRICS = [
+        { key: "Total",           field: "total_tons",          fallback: "Total Tons",           fmt: "#,##0", always: true },
+        { key: "Rate",            field: "avg_tph_fed",         fallback: "Average TPH",          fmt: "0.0",   always: true },
+        { key: "Availability",    field: "avg_runtime_pct",     fallback: "Average Availability", fmt: "0.000", always: true },
+        { key: "Performance",     field: "avg_performance_pct", fallback: "Average Performance",  fmt: "0.000", always: true },
+        { key: "Runtime_Percent", field: "avg_runtime_percent", fallback: "Runtime Percent",      fmt: "0.000", always: false },
+      ];
+      const metricsFor = (rows) =>
+        WC_METRICS.filter((m) => m.always || rows.some((r) => r[m.field] != null));
 
       // ---- Per-workcenter sheets, each followed by its circuit sheets.
       deptIds.forEach((dept) => {
-        const wcRows = rollups
-          .filter((r) => r.department_id === dept)
-          .map((r) => ({
-            "Bucket":               r.bucket_label,
-            "Total Tons":           numOrEmpty(r.total_tons),
-            "Total Runtime (hours)": numOrEmpty(r.total_runtime_hours),
-            "Avg TPH Fed":          numOrEmpty(r.avg_tph_fed),
-            "Avg Runtime %":        numOrEmpty(r.avg_runtime_pct),
-            "Avg Performance %":    numOrEmpty(r.avg_performance_pct),
-            "Reports":              r.report_count,
-          }));
-        _appendSheet(wb, wcRows, {
-          "Total Tons": "#,##0",
-          "Total Runtime (hours)": "0.0",
-          "Avg TPH Fed": "0.0",
-          "Avg Runtime %": '0.0"%"',
-          "Avg Performance %": '0.0"%"',
-        }, labelFor(dept));
+        const deptRollups = rollups.filter((r) => r.department_id === dept);
+        const wcMetrics = metricsFor(deptRollups);
+        // Header = this workcenter's resolved chart title (same as the bars).
+        const headerFor = (m) => _calcsLabelLatest(deptRollups, m.key, m.fallback);
+        const wcRows = deptRollups.map((r) => {
+          const row = { "Bucket": r.bucket_label };
+          for (const m of wcMetrics) {
+            row[headerFor(m)] = numOrEmpty(r[m.field]);
+            if (m.key === "Total") {
+              row["Total Runtime (hours)"] = numOrEmpty(r.total_runtime_hours);
+            }
+          }
+          row["Reports"] = r.report_count;
+          return row;
+        });
+        const wcFmt = { "Total Runtime (hours)": "0.0" };
+        for (const m of wcMetrics) wcFmt[headerFor(m)] = m.fmt;
+        _appendSheet(wb, wcRows, wcFmt, labelFor(dept));
 
         // Circuit sheets under this workcenter.
         const deptCircuits = circuitsByDeptId.get(dept) || [];

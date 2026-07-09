@@ -4426,3 +4426,39 @@ NO series has a finite numeric value -- absent entries, null, and non-numeric
 placeholders ("—"/"_") treated as "no data" uniformly; multi-series charts
 keep a day if ANY series has data. Real 0-value days are still shown (0 is a
 finite value). Verified with a standalone node test (12 checks) + node --check.
+
+## Runtime_Percent workcenter metric + trends-export rework (2026-07-09)
+Explicitly wired a new workcenter-only metric Runtime_Percent (mean of
+Workcenter.Runtime_Percent), and reworked the Production Charts XLSX export.
+
+- Backend: services get_rollup gains avg_runtime_percent (helper
+  _avg_runtime_percent_for_report, mean, null/non-numeric dropped);
+  Rollup dataclass + RollupEntry schema field (default None); _to_rollup_entry
+  maps it. 3 new service tests. py_compile + ruff(0.8.6) clean; driver 6/6.
+- Frontend chart: 5th workcenter panel, rendered only when the rollup carries
+  a value (avg_runtime_percent != null); title from Calcs label (fallback
+  "Runtime Percent"); decimal (toFixed 3), no %.
+- Frontend export (exportTrends): metric columns now driven by a WC_METRICS
+  spec. Per-workcenter sheet headers = the resolved chart title
+  (_calcsLabelLatest), matching the bars (Availability no longer "Avg Runtime
+  %"). Overview (cross-wc) uses the generic fallback titles. ALL % symbols
+  removed -> decimals ("0.000"), which also fixes the old bug of appending a
+  literal % to the raw fraction. Runtime_Percent column included per-sheet only
+  when present. Explicit list => metrics NOT in WC_METRICS are never exported.
+- NOTE: the dashboard export (exportCurrentSelection) still uses "% " columns;
+  left as-is since the request was scoped to the Production Charts export.
+- To make Runtime_Percent appear: payload needs Workcenter.Runtime_Percent
+  (value) + a Workcenter.Calcs "Runtime_Percent" entry for the chart title.
+
+### Trends export cleanup -- drop Overview sheet + dead code (2026-07-09)
+- Removed the export "Overview" sheet: it mirrored a cross-workcenter chart
+  that is no longer rendered, and its headers couldn't use the (per-workcenter)
+  chart titles so they were generic fallbacks. Export is now exactly the
+  charts -> one sheet per workcenter (headers = that workcenter's chart titles)
+  + its circuit sheets.
+- Removed the dead cross-workcenter line-chart builder `buildDatasets` (defined,
+  never called) and the now-unused `TREND_COLORS` palette (its only consumer).
+  Updated the export doc comment + metric-spec comment. WC_METRICS/metricsFor
+  kept (still power the per-workcenter sheets). node --check clean; -49 lines.
+- Left `_activeTrendsTab = "overview"` as-is: it's a functional sentinel that
+  resolves to the first real tab, not tied to the export sheet.

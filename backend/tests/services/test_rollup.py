@@ -390,3 +390,59 @@ async def test_rollup_daily_buckets_per_day() -> None:
     assert labels == ["2026-04-01", "2026-04-03"]
     for r in rollups:
         assert _re.match(r"^\d{4}-\d{2}-\d{2}$", r.bucket_label)
+
+
+@pytest.mark.asyncio
+async def test_avg_runtime_percent_mean_of_workcenter_field() -> None:
+    """Phase: Runtime_Percent is the simple mean of per-report
+    Workcenter.Runtime_Percent (no fallback chain)."""
+    rows = [
+        _row(row_id=1, prod_date=datetime(2026, 4, 1), workcenter={"Runtime_Percent": 0.80}),
+        _row(row_id=2, prod_date=datetime(2026, 4, 2), workcenter={"Runtime_Percent": 0.90}),
+    ]
+    rollups = await get_rollup(
+        _FakeSource(rows),
+        site_id="101",
+        bucket="monthly",
+        from_date=date(2026, 4, 1),
+        to_date=date(2026, 4, 30),
+    )
+    assert rollups[0].avg_runtime_percent == pytest.approx(0.85)
+
+
+@pytest.mark.asyncio
+async def test_avg_runtime_percent_skips_null_and_non_numeric() -> None:
+    """Null and non-numeric Runtime_Percent reports drop out of the mean,
+    just like the other averages."""
+    rows = [
+        _row(row_id=1, prod_date=datetime(2026, 4, 1), workcenter={"Runtime_Percent": 0.50}),
+        _row(row_id=2, prod_date=datetime(2026, 4, 2), workcenter={"Runtime_Percent": None}),
+        _row(row_id=3, prod_date=datetime(2026, 4, 3), workcenter={"Runtime_Percent": "—"}),
+        _row(row_id=4, prod_date=datetime(2026, 4, 4), workcenter={"Runtime_Percent": 0.70}),
+    ]
+    rollups = await get_rollup(
+        _FakeSource(rows),
+        site_id="101",
+        bucket="monthly",
+        from_date=date(2026, 4, 1),
+        to_date=date(2026, 4, 30),
+    )
+    assert rollups[0].avg_runtime_percent == pytest.approx(0.60)
+    assert rollups[0].report_count == 4
+
+
+@pytest.mark.asyncio
+async def test_avg_runtime_percent_none_when_absent() -> None:
+    """No Runtime_Percent anywhere -> None (chart + export treat as no data)."""
+    rows = [
+        _row(row_id=1, prod_date=datetime(2026, 4, 1), workcenter={"Total": 100.0}),
+        _row(row_id=2, prod_date=datetime(2026, 4, 2), workcenter={}),
+    ]
+    rollups = await get_rollup(
+        _FakeSource(rows),
+        site_id="101",
+        bucket="monthly",
+        from_date=date(2026, 4, 1),
+        to_date=date(2026, 4, 30),
+    )
+    assert rollups[0].avg_runtime_percent is None
