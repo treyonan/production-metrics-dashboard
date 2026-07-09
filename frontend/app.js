@@ -3229,28 +3229,27 @@
 
   function _renderTrendPanel({ title, subtitle, calcsLine, labels, datasets, yLabel, yFormat, chartType }) {
     const colors = _themeColors();
-    // Bugfix (PR/PRM consistency): drop any day-slot where NO series has a
-    // finite numeric value, so a chart never renders a placeholder for a day
-    // it has no data for. Absent entries, null, and non-numeric placeholders
-    // ("\u2014" / "_") are all treated as "no data" uniformly. The trends
-    // X-axis is a global union of every department's report days, so without
-    // this a day only one department reported would punch an empty slot into
-    // the others' charts -- which made PR and PRM look different when their
-    // per-day report coverage differed.
+    // Only POSITIVE data points are charted: any value that is 0, negative,
+    // null, or non-numeric is treated as "no data" -- it renders no bar, and
+    // a day-slot where NO series has a positive value is dropped entirely.
+    // Keeps bars to real activity only, and (the trends X-axis being a global
+    // union of every department's report days) keeps charts consistent across
+    // the PR/PRM filter regardless of which days each report type covered.
     {
-      const _finite = (v) => {
+      const _pos = (v) => {
         if (v === null || v === undefined) return false;
         const n = typeof v === "number" ? v : Number(v);
-        return Number.isFinite(n);
+        return Number.isFinite(n) && n > 0;
       };
-      const _ds0 = datasets || [];
-      const _keep = (labels || []).map(
-        (_, i) => _ds0.some((d) => _finite((d.data || [])[i])),
-      );
-      if (_keep.some((k) => !k)) {
-        labels = (labels || []).filter((_, i) => _keep[i]);
-        datasets = _ds0.map((d) => ({ ...d, data: (d.data || []).filter((_, i) => _keep[i]) }));
-      }
+      // Null out every non-positive value first, so 0-height bars never show
+      // (including a single series inside an otherwise-kept day).
+      const _ds0 = (datasets || []).map((d) => ({
+        ...d,
+        data: (d.data || []).map((v) => (_pos(v) ? v : null)),
+      }));
+      const _keep = (labels || []).map((_, i) => _ds0.some((d) => d.data[i] !== null));
+      labels = (labels || []).filter((_, i) => _keep[i]);
+      datasets = _ds0.map((d) => ({ ...d, data: d.data.filter((_, i) => _keep[i]) }));
     }
     // Phase 14a/b: chartType defaults to "line" for backward compat.
     // Legend visibility follows dataset count -- multi-series shows,
