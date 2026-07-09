@@ -4410,3 +4410,19 @@ page too. Filter semantics mirror the JS exactly: "PRM" -> startswith("PRM");
 - Frontend: PR/PRM control added to the charts toolbar (#trends-prodid-filter),
   both selectors kept in sync, filter threaded into the 3 rollup fetches only,
   refreshTrends() refetch on filter change when currentView==="trends".
+
+### Phase 38 bugfix -- PR/PRM chart-slot consistency (2026-07-09)
+Symptom: on the Production Charts Day view, PRM showed an empty placeholder
+("— t") bar for a day (e.g. 2026-06-28) where PR showed nothing at all.
+Root cause: the trends X-axis (`months`) is a GLOBAL union of every
+department's workcenter-rollup bucket_labels. A day only one department
+reported punches an empty slot into the OTHER departments' charts, rendered
+as a null point ("—"). total_tons is always a finite float server-side
+(_coerce_finite_float maps null AND non-numeric to skipped -> 0), so this was
+never a value-coercion issue -- it was the shared axis + per-series nulls, and
+PR vs PRM differ only in which days each report type covers.
+Fix (frontend, one place): `_renderTrendPanel` now drops any day-slot where
+NO series has a finite numeric value -- absent entries, null, and non-numeric
+placeholders ("—"/"_") treated as "no data" uniformly; multi-series charts
+keep a day if ANY series has data. Real 0-value days are still shown (0 is a
+finite value). Verified with a standalone node test (12 checks) + node --check.

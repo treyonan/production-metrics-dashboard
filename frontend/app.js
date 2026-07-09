@@ -3249,6 +3249,29 @@
 
   function _renderTrendPanel({ title, subtitle, calcsLine, labels, datasets, yLabel, yFormat, chartType }) {
     const colors = _themeColors();
+    // Bugfix (PR/PRM consistency): drop any day-slot where NO series has a
+    // finite numeric value, so a chart never renders a placeholder for a day
+    // it has no data for. Absent entries, null, and non-numeric placeholders
+    // ("\u2014" / "_") are all treated as "no data" uniformly. The trends
+    // X-axis is a global union of every department's report days, so without
+    // this a day only one department reported would punch an empty slot into
+    // the others' charts -- which made PR and PRM look different when their
+    // per-day report coverage differed.
+    {
+      const _finite = (v) => {
+        if (v === null || v === undefined) return false;
+        const n = typeof v === "number" ? v : Number(v);
+        return Number.isFinite(n);
+      };
+      const _ds0 = datasets || [];
+      const _keep = (labels || []).map(
+        (_, i) => _ds0.some((d) => _finite((d.data || [])[i])),
+      );
+      if (_keep.some((k) => !k)) {
+        labels = (labels || []).filter((_, i) => _keep[i]);
+        datasets = _ds0.map((d) => ({ ...d, data: (d.data || []).filter((_, i) => _keep[i]) }));
+      }
+    }
     // Phase 14a/b: chartType defaults to "line" for backward compat.
     // Legend visibility follows dataset count -- multi-series shows,
     // single-series hides -- regardless of chart type. This handles
