@@ -95,6 +95,25 @@ sites:
         assets:
           Conveyor: [C5, C6, C7, C8, C9, C10, C11, C12, C13, C14]
 
+  "110":
+    code: RVQ
+    display_name: Roosevelt Quarry
+    base_url: http://dbp-rvq:4511
+    dataset: IAP_RVQ_Controls
+    departments:
+      Primary:
+        prefix: Roosevelt/Primary
+        assets:
+          Conveyor: [C100, C104, C108, C110]
+      Secondary:
+        prefix: Roosevelt/Secondary
+        assets:
+          Conveyor: [C11, C17, C21, C26]
+      Chips:
+        prefix: Roosevelt/Chips
+        assets:
+          Conveyor: [C1, C6, C7, C8, C9]
+
 asset_classes:
   Conveyor:
     # Shared metric registry -- which metrics any conveyor has, regardless

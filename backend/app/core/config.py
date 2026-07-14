@@ -28,6 +28,7 @@ _DEFAULT_FRONTEND_DIR = _REPO_ROOT / "frontend"
 _DEFAULT_SITE_NAMES: dict[str, str] = {
     "101": "Big Canyon Quarry",     # default
     "100": "Ardmore Quarry",
+    "110": "Roosevelt Quarry"
 }
 
 
@@ -121,6 +122,11 @@ class Settings(BaseSettings):
         default=None,
         description="Big Canyon (BCQ) Flow bearer token. Overrides flow_api_key for site_id=101.",
         validation_alias=AliasChoices("PMD_FLOW_API_KEY_101", "FLOW_API_KEY_101"),
+    )
+    flow_api_key_110: SecretStr | None = Field(
+        default=None,
+        description="Roosevelt (RVQ) Flow bearer token. Overrides flow_api_key for site_id=110.",
+        validation_alias=AliasChoices("PMD_FLOW_API_KEY_110", "FLOW_API_KEY_110"),
     )
 
     def resolve_flow_api_key(self, site_id: str) -> SecretStr | None:

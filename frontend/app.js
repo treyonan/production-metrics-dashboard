@@ -141,7 +141,9 @@
         // Big Canyon Quarry
         "101": "http://dbp-bcq:4501/flow-software/flow/instances/80D1092C-EFBF-4592-9425-C85ABE2EC7FB/server/charts/68",
         // Ardmore
-        "100": "http://dbp-arq:4501/flow-software/flow/instances/11B1AA14-69D5-4E2F-8993-F1083BD10B36/server/charts/7"
+        "100": "http://dbp-arq:4501/flow-software/flow/instances/11B1AA14-69D5-4E2F-8993-F1083BD10B36/server/charts/7",
+        // Roosevelt
+        "110": "http://dbp-rvq:4501/flow-software/flow/instances/68A50CF7-1038-4522-96A0-D02B1CA964EE/server/charts/3"
       },
     },
   ];
@@ -156,7 +158,9 @@
         // Big Canyon Quarry
         "101": "http://dbp-bcq:4501/flow-software/flow/instances/80D1092C-EFBF-4592-9425-C85ABE2EC7FB/server/dashboards/12",
         // Ardmore
-        "100": "http://dbp-arq:4501/flow-software/flow/instances/11B1AA14-69D5-4E2F-8993-F1083BD10B36/server/dashboards/2"
+        "100": "http://dbp-arq:4501/flow-software/flow/instances/11B1AA14-69D5-4E2F-8993-F1083BD10B36/server/dashboards/2",
+        // Roosevelt
+        "110": "http://dbp-rvq:4501/flow-software/flow/instances/68A50CF7-1038-4522-96A0-D02B1CA964EE/server/dashboards/1"
       },
     },
     {
@@ -165,7 +169,9 @@
         // Big Canyon Quarry
         "101": "http://dbp-bcq:4501/flow-software/flow/instances/80D1092C-EFBF-4592-9425-C85ABE2EC7FB/server/dashboards/10",
         // Ardmore
-        "100": "http://dbp-arq:4501/flow-software/flow/instances/11B1AA14-69D5-4E2F-8993-F1083BD10B36/server/dashboards/1"
+        "100": "http://dbp-arq:4501/flow-software/flow/instances/11B1AA14-69D5-4E2F-8993-F1083BD10B36/server/dashboards/1",
+        // Roosevelt
+        "110": "http://dbp-rvq:4501/flow-software/flow/instances/68A50CF7-1038-4522-96A0-D02B1CA964EE/server/dashboards/2"
       },
     },
   ];

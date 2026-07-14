@@ -93,6 +93,7 @@ services:
     extra_hosts:
       - "dbp-bcq:10.44.135.12"      # site 101 (Big Canyon Quarry) -- Flow:4501, Timebase:4511
       - "dbp-arq:10.40.135.12"      # site 100 (Ardmore Quarry) -- Flow:4501, Timebase:4511
+      - "dbp-rvq:10.49.135.13"      # site 110 (Roosevelt Quarry) -- Flow:4501, Timebase:4511
 
     # Orchestrator-level healthcheck. Hits /api/health inside the
     # container (not via the published port) using Python's stdlib so
