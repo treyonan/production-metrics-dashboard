@@ -3964,8 +3964,6 @@
       const input = $(id);
       if (input) input.addEventListener("change", onDateChange);
     }
-    const exportBtn = $("dio-export-btn");
-    if (exportBtn) exportBtn.addEventListener("click", exportDio);
   }
 
   document.addEventListener("DOMContentLoaded", bootstrap);

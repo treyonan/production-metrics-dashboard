@@ -1056,7 +1056,6 @@ body {
   font-style: italic;
   color: var(--text-muted);
 }
-.dio-export-btn { height: 28px; }
 /* Reuse the .mx table base; DIO left-aligns the first TWO columns
    (Item Code + Item Description) rather than only the first. */
 .dio-table td:nth-child(2),
