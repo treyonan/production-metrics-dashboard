@@ -192,9 +192,9 @@
   // Spec 005: Days-of-Supply (DIO) view state. _lastDioPayload mirrors
   // the other views' cached-payload role (theme re-render / export without
   // a refetch). _activeDioPreset is the selected range preset; not
-  // persisted -- the view opens on "month" (rolling 30 days) each visit.
+  // persisted -- the view opens on "ytd" (Jan 1 to today) each visit.
   let _lastDioPayload = null;
-  let _activeDioPreset = "month";
+  let _activeDioPreset = "ytd";
   // Phase 14b restructure: which tab is currently shown on the
   // Trends view. Persists across refresh / theme-toggle re-renders
   // when the same section still exists in the new render; falls
@@ -3676,21 +3676,20 @@
   // on site change, preset click, and From/To change; NOT on the 30s
   // dashboard poll (DIO is daily data).
 
-  // Preset -> rolling window length in days. Week / Month / Quarter map to
-  // the last 7 / 30 / 90 days ending today (the SP's latest-in-range
-  // inventory covers a missing "today").
-  const _DIO_PRESET_DAYS = { week: 7, month: 30, quarter: 90 };
+  // Presets. v1 has one: YTD (year-to-date) = Jan 1 of the current year
+  // through today. The manual From/To pickers cover every other range.
+  const _DIO_PRESETS = ["ytd"];
 
   function _dioIsoDay(d) {
     return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
   }
 
-  // Set the From/To inputs from a preset: [today-(N-1) .. today] inclusive.
+  // Set the From/To inputs from a preset. YTD -> [Jan 1 this year .. today].
   function _dioApplyPresetToDates(preset) {
-    const days = _DIO_PRESET_DAYS[preset] || _DIO_PRESET_DAYS.month;
     const now = new Date();
-    const from = new Date(now);
-    from.setDate(from.getDate() - (days - 1));
+    const from = (preset === "ytd")
+      ? new Date(now.getFullYear(), 0, 1)
+      : new Date(now);
     const fromInput = $("dio-from");
     const toInput = $("dio-to");
     if (fromInput) fromInput.value = _dioIsoDay(from);
@@ -3698,7 +3697,7 @@
   }
 
   function populateDioRangeDefaults() {
-    // Default preset on first load: Month (rolling 30 days).
+    // Default preset on first load: YTD (Jan 1 -> today).
     _dioApplyPresetToDates(_activeDioPreset);
     _applyDioPresetUi(_activeDioPreset);
   }
@@ -3712,7 +3711,7 @@
   }
 
   function _setActiveDioPreset(preset) {
-    if (!_DIO_PRESET_DAYS[preset]) return;
+    if (!_DIO_PRESETS.includes(preset)) return;
     _activeDioPreset = preset;
     _applyDioPresetUi(preset);
     _dioApplyPresetToDates(preset);
