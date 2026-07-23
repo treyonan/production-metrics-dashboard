@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.routing import Mount
 
-from app.api.routes import health, metrics, production_report, sites, timebase
+from app.api.routes import dio, health, metrics, production_report, sites, timebase
 from app.core.config import get_settings
 from app.core.correlation import CorrelationIdMiddleware
 from app.core.logging import configure_logging, get_logger
@@ -299,6 +299,7 @@ def create_app() -> FastAPI:
         prefix="/api/production-report",
         tags=["Production Report"],
     )
+    app.include_router(dio.router, prefix="/api/dio", tags=["DIO"])
     app.include_router(metrics.router, prefix="/api/metrics", tags=["Interval Metrics"])
     app.include_router(timebase.router, prefix="/api/timebase", tags=["Timebase"])
 

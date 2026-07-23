@@ -1,0 +1,22 @@
+-- Operational DIO / Days of Supply (Spec 005).
+--
+-- EXECs the existing stored procedure UNS.GET_SITE_DIO_DAILY_RECORDS,
+-- which returns ONE row per item over the window with a FIXED column
+-- set (unlike the configured run report, whose columns are dynamic):
+--   Item Code, Item Description, Total Sales, TPD of sales,
+--   Current Inventory, Days Of Inventory On Hand,
+--   Days Of Inventory After Shutdown.
+-- Inventory is a point-in-time snapshot (latest DAY_END_INVENTORY in
+-- range); sales are SUMMED over the window. The two "Days Of Inventory"
+-- columns are NULL when the item had zero sales in the window.
+--
+-- Read-only: the SP only SELECTs (SET NOCOUNT ON suppresses the rowcount
+-- so the SELECT is the sole result set). The API's read-only account
+-- needs EXECUTE on UNS.GET_SITE_DIO_DAILY_RECORDS.
+--
+-- Positional ? params bind in order: SiteID, StartDate, EndDate. The SP's
+-- @OutageRange is left at its default (67) for v1 -- see spec 005 s4. The
+-- service passes StartDate at 00:00:00 and EndDate at 23:59:59 so the SP's
+-- PRODDATE BETWEEN window is inclusive of both calendar days without the
+-- DATETIME .999 round-up that would inflate the SP's DayCount.
+EXEC UNS.GET_SITE_DIO_DAILY_RECORDS @SiteID = ?, @StartDate = ?, @EndDate = ?;

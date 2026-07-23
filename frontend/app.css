@@ -1050,6 +1050,35 @@ body {
   font-style: italic;
 }
 
+/* ===== Days of Supply (DIO) view (Spec 005) ===== */
+.dio-summary {
+  font-size: 11px;
+  font-style: italic;
+  color: var(--text-muted);
+}
+.dio-export-btn { height: 28px; }
+/* Reuse the .mx table base; DIO left-aligns the first TWO columns
+   (Item Code + Item Description) rather than only the first. */
+.dio-table td:nth-child(2),
+.dio-table th:nth-child(2) {
+  text-align: left;
+}
+.dio-table td:nth-child(2) {
+  color: var(--text-body);
+  font-weight: 400;
+}
+/* Weighted totals row. */
+.dio-table tfoot td {
+  font-weight: 700;
+  color: var(--text-strong);
+  border-top: 1px solid var(--border);
+  border-bottom: none;
+  background: var(--bg-canvas);
+}
+.dio-table tfoot td:first-child { color: var(--text-strong); }
+/* Negative "DIO After Shutdown" -> critical color (short during outage). */
+.dio-table td.dio-neg { color: var(--crit); font-weight: 600; }
+
 /* Phase 14b restructure: vertical-tab sidebar + content pane.
    The grid layout that used to live on .trends-grid now lives on the
    active section so each tab's content gets the same auto-fit pairing. */

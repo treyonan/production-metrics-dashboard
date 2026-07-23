@@ -77,6 +77,28 @@ def get_configured_run_report_source(request: Request):
     return ConfiguredRunReportSource(pool=pool)
 
 
+def get_dio_source(request: Request):
+    """Return the DIO / Days-of-Supply source (Spec 005).
+
+    Same pool-from-``app.state`` pattern as
+    ``get_configured_run_report_source``; returns 503 when the SQL pool
+    didn't initialize so /api/health can surface it.
+    """
+    from app.integrations.dio.source import DioSource
+
+    pool = getattr(request.app.state, "sql_pool", None)
+    if pool is None:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "DIO source unavailable: SQL pool not initialized. "
+                "Check uvicorn startup log for 'sql_pool.create_failed' "
+                "or 'sql_pool.not_created'."
+            ),
+        )
+    return DioSource(pool=pool)
+
+
 def get_interval_metric_source(request: Request):
     """Return the configured interval-metric source.
 

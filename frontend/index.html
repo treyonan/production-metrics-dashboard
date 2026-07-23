@@ -70,6 +70,7 @@
            4. API docs            : Swagger -- engineer-only, far right. -->
       <button class="vtab on" data-view="dashboard" role="tab" aria-selected="true">Production Dashboard</button>
       <button class="vtab"    data-view="trends"    role="tab" aria-selected="false">Production Charts</button>
+      <button class="vtab"    data-view="dio"       role="tab" aria-selected="false">Days of Supply</button>
       <!-- Interval: styled like a vtab so it visually matches the
            Charts / Forms dropdowns next to it, but it's a plain link
            (no dropdown) that navigates to /flow-interval-metrics.html.
@@ -293,6 +294,45 @@
         <div class="trends-content" id="trends-grid"></div>
       </div>
       <div class="nd" id="trends-empty-state" style="display:none">No production data in this range.</div>
+    </main>
+  </div>
+
+  <!-- ===== Days of Supply (DIO) view (Spec 005) ===== -->
+  <div class="canvas" id="dio-view" style="display:none">
+    <main class="main trends-main">
+      <div class="trends-controls">
+        <div class="trends-control-group">
+          <label class="filter-label">Range</label>
+          <div class="trends-bucket-toggle" id="dio-preset-toggle" role="tablist" aria-label="Days of Supply range preset">
+            <button type="button" class="bucket-btn"    data-preset="week"    role="tab" aria-selected="false">Week</button>
+            <button type="button" class="bucket-btn on" data-preset="month"   role="tab" aria-selected="true">Month</button>
+            <button type="button" class="bucket-btn"    data-preset="quarter" role="tab" aria-selected="false">Quarter</button>
+          </div>
+        </div>
+        <div class="trends-control-group">
+          <label class="filter-label" for="dio-from">From date</label>
+          <input type="date" class="date-input" id="dio-from" aria-label="Days of Supply from-date">
+        </div>
+        <div class="trends-control-group">
+          <label class="filter-label" for="dio-to">To date</label>
+          <input type="date" class="date-input" id="dio-to" aria-label="Days of Supply to-date">
+        </div>
+        <span class="trends-status muted" id="dio-status"></span>
+        <button class="export-btn dio-export-btn" id="dio-export-btn" type="button"
+                aria-label="Export Days of Supply table to Excel (.xlsx)" title="Export to Excel">
+          <svg viewBox="0 0 14 14" aria-hidden="true">
+            <path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"
+                  d="M7 1.5 v7.2 M4.3 6 L7 8.7 L9.7 6"/>
+            <path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"
+                  d="M2 10.5 v1.5 h10 v-1.5"/>
+          </svg>
+          <span>Excel</span>
+        </button>
+      </div>
+      <div class="dio-summary muted" id="dio-summary"></div>
+      <div class="warn-bar err" id="dio-err-bar" style="display:none"></div>
+      <div class="mxw" id="dio-table-wrap"></div>
+      <div class="nd" id="dio-empty-state" style="display:none">No Days of Supply data for this range.</div>
     </main>
   </div>
 </div>

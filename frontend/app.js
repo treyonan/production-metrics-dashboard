@@ -189,6 +189,12 @@
   // Phase 37: cached product-rollup payload (same lifecycle as the
   // circuit payload -- needed by every re-render-without-fetch path).
   let _lastTrendsProductPayload = null;
+  // Spec 005: Days-of-Supply (DIO) view state. _lastDioPayload mirrors
+  // the other views' cached-payload role (theme re-render / export without
+  // a refetch). _activeDioPreset is the selected range preset; not
+  // persisted -- the view opens on "month" (rolling 30 days) each visit.
+  let _lastDioPayload = null;
+  let _activeDioPreset = "month";
   // Phase 14b restructure: which tab is currently shown on the
   // Trends view. Persists across refresh / theme-toggle re-renders
   // when the same section still exists in the new render; falls
@@ -586,6 +592,7 @@
     savePersistedSiteId(currentSiteId);
     propagateSiteIdToTopbarLinks(currentSiteId);
     if (currentView === "trends") refreshTrends();
+    else if (currentView === "dio") refreshDio();
     else refreshData();
   }
   function renderSiteStrip() {
@@ -1298,6 +1305,9 @@
     if (currentView === "trends") {
       canExport = !!(_lastTrendsPayload && (_lastTrendsPayload.rollups || []).length);
       title = "Download Trends data as Excel (.xlsx)";
+    } else if (currentView === "dio") {
+      canExport = !!(_lastDioPayload && (_lastDioPayload.rows || []).length);
+      title = "Download Days of Supply data as Excel (.xlsx)";
     } else {
       canExport = !!(_lastPayload && (_lastPayload.entries || []).length);
       title = "Download current view as Excel (.xlsx)";
@@ -2055,6 +2065,7 @@
       // Both functions read their own cached payload; if neither
       // has data the button is already disabled.
       if (currentView === "trends") exportTrends();
+      else if (currentView === "dio") exportDio();
       else exportCurrentSelection();
     });
 
@@ -2077,6 +2088,8 @@
     });
     populateTrendsRangeDefaults();
     wireTrendsControls();
+    populateDioRangeDefaults();
+    wireDioControls();
     window.addEventListener("hashchange", () => applyViewFromHash());
     applyViewFromHash();  // initial paint based on current URL
 
@@ -2214,6 +2227,7 @@
       refreshHealth(),
       refreshData(),
       currentView === "trends" ? refreshTrends() : Promise.resolve(),
+      currentView === "dio" ? refreshDio() : Promise.resolve(),
     ]);
     retunePolling();
   }
@@ -2351,7 +2365,9 @@
 
   function applyViewFromHash() {
     const target = (location.hash || "").replace(/^#/, "");
-    const next = target === "trends" ? "trends" : "dashboard";
+    const next = target === "trends" ? "trends"
+      : target === "dio" ? "dio"
+      : "dashboard";
     if (next === currentView && document.querySelector("#" + next + "-view").style.display !== "none") {
       // No-op if already on this view AND it\'s visible (initial bootstrap covers
       // the case where currentView matches default but view containers are still hidden).
@@ -2361,8 +2377,10 @@
     // Toggle the view containers.
     const dashView = $("dashboard-view");
     const trendsView = $("trends-view");
+    const dioView = $("dio-view");
     if (dashView) dashView.style.display = next === "dashboard" ? "" : "none";
     if (trendsView) trendsView.style.display = next === "trends" ? "" : "none";
+    if (dioView) dioView.style.display = next === "dio" ? "" : "none";
 
     // Tab visual state.
     for (const btn of document.querySelectorAll("#view-tabs .vtab")) {
@@ -2383,6 +2401,8 @@
     // site until it's re-selected.
     if (next === "trends" && currentSiteId) {
       refreshTrends();
+    } else if (next === "dio" && currentSiteId) {
+      refreshDio();
     } else if (next === "dashboard" && currentSiteId && currentSelection) {
       refreshData();
     }
@@ -3645,6 +3665,307 @@
       console.error("trends export failed", err);
       _showTrendsError(`Trends export failed: ${err.message}`);
     }
+  }
+
+  // --- Spec 005: Days of Supply (DIO) view -----------------------------
+  //
+  // Server-backed table of operational days-of-supply per item, fetched
+  // from GET /api/dio/daily (the SP UNS.GET_SITE_DIO_DAILY_RECORDS). No
+  // client-side math on the per-item figures -- v1 renders the SP output
+  // verbatim; only the weighted totals row is computed here. Auto-fetches
+  // on site change, preset click, and From/To change; NOT on the 30s
+  // dashboard poll (DIO is daily data).
+
+  // Preset -> rolling window length in days. Week / Month / Quarter map to
+  // the last 7 / 30 / 90 days ending today (the SP's latest-in-range
+  // inventory covers a missing "today").
+  const _DIO_PRESET_DAYS = { week: 7, month: 30, quarter: 90 };
+
+  function _dioIsoDay(d) {
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  }
+
+  // Set the From/To inputs from a preset: [today-(N-1) .. today] inclusive.
+  function _dioApplyPresetToDates(preset) {
+    const days = _DIO_PRESET_DAYS[preset] || _DIO_PRESET_DAYS.month;
+    const now = new Date();
+    const from = new Date(now);
+    from.setDate(from.getDate() - (days - 1));
+    const fromInput = $("dio-from");
+    const toInput = $("dio-to");
+    if (fromInput) fromInput.value = _dioIsoDay(from);
+    if (toInput) toInput.value = _dioIsoDay(now);
+  }
+
+  function populateDioRangeDefaults() {
+    // Default preset on first load: Month (rolling 30 days).
+    _dioApplyPresetToDates(_activeDioPreset);
+    _applyDioPresetUi(_activeDioPreset);
+  }
+
+  function _applyDioPresetUi(preset) {
+    for (const btn of document.querySelectorAll("#dio-preset-toggle .bucket-btn")) {
+      const on = btn.dataset.preset === preset;
+      btn.classList.toggle("on", on);
+      btn.setAttribute("aria-selected", on ? "true" : "false");
+    }
+  }
+
+  function _setActiveDioPreset(preset) {
+    if (!_DIO_PRESET_DAYS[preset]) return;
+    _activeDioPreset = preset;
+    _applyDioPresetUi(preset);
+    _dioApplyPresetToDates(preset);
+    if (currentView === "dio" && currentSiteId) refreshDio();
+  }
+
+  // Read the From/To inputs into a {from_date, to_date} range, or null.
+  function _dioRange() {
+    const from = ($("dio-from") || {}).value || "";
+    const to = ($("dio-to") || {}).value || "";
+    if (!from || !to) return null;
+    return { from_date: from, to_date: to };
+  }
+
+  function _showDioError(msg) {
+    const bar = $("dio-err-bar");
+    if (!bar) return;
+    bar.style.display = "";
+    bar.textContent = msg;
+  }
+  function _clearDioError() {
+    const bar = $("dio-err-bar");
+    if (bar) bar.style.display = "none";
+  }
+
+  async function refreshDio() {
+    if (!currentSiteId) return;
+    const range = _dioRange();
+    if (!range) return;
+
+    // Client-side guard: inverted range -> friendly banner instead of a
+    // raw HTTP 422 from the backend.
+    const fromMs = Date.parse(`${range.from_date}T00:00:00`);
+    const toMs = Date.parse(`${range.to_date}T00:00:00`);
+    if (Number.isFinite(fromMs) && Number.isFinite(toMs) && toMs < fromMs) {
+      _showDioError("To date must be on or after From date.");
+      return;
+    }
+
+    const status = $("dio-status");
+    if (status) status.textContent = "Loading...";
+
+    const qs =
+        `?site_id=${encodeURIComponent(currentSiteId)}`
+      + `&from_date=${encodeURIComponent(range.from_date)}`
+      + `&to_date=${encodeURIComponent(range.to_date)}`;
+    try {
+      const payload = await fetchJSON(`/api/dio/daily${qs}`);
+      _lastDioPayload = payload;
+      renderDio(payload);
+      updateExportButtonState();
+      _clearDioError();
+      if (status) status.textContent = "";
+    } catch (err) {
+      console.error("dio fetch failed", err);
+      _showDioError(`Failed to load Days of Supply data: ${err.message}`);
+      if (status) status.textContent = "error";
+    }
+  }
+
+  // Tons: thousands-separated integer; null / non-finite -> em-dash.
+  function _dioTons(v) {
+    if (v === null || v === undefined) return "—";
+    const n = Number(v);
+    if (!Number.isFinite(n)) return "—";
+    return Math.round(n).toLocaleString();
+  }
+  // One-decimal number; null / non-finite -> em-dash.
+  function _dioNum1(v) {
+    if (v === null || v === undefined) return "—";
+    const n = Number(v);
+    if (!Number.isFinite(n)) return "—";
+    return n.toFixed(1);
+  }
+
+  function renderDio(payload) {
+    const wrap = $("dio-table-wrap");
+    const summary = $("dio-summary");
+    const empty = $("dio-empty-state");
+    if (!wrap) return;
+    wrap.innerHTML = "";
+
+    const rows = (payload && payload.rows) || [];
+
+    if (summary) {
+      if (payload && payload.from_date) {
+        const dc = payload.day_count;
+        summary.textContent =
+          `Date range: ${payload.from_date} to ${payload.to_date}`
+          + ` · ${dc} day${dc === 1 ? "" : "s"} in range`
+          + ` · Shutdown: 67 days`;
+      } else {
+        summary.textContent = "";
+      }
+    }
+
+    if (!rows.length) {
+      if (empty) empty.style.display = "";
+      return;
+    }
+    if (empty) empty.style.display = "none";
+
+    const table = el("table", { class: "mx dio-table" });
+    const thead = el("thead");
+    const headRow = el("tr");
+    const headers = [
+      "Item Code",
+      "Item Description",
+      "Total Sales",
+      "Avg Daily Sales",
+      "Current Inventory",
+      "Days of Supply",
+      "DIO After Shutdown",
+    ];
+    for (const h of headers) headRow.appendChild(el("th", {}, h));
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    const tbody = el("tbody");
+    let totSales = 0, totDaily = 0, totInv = 0;
+    let sawSales = false, sawDaily = false, sawInv = false;
+
+    for (const r of rows) {
+      const tr = el("tr");
+      tr.appendChild(el("td", {}, r.item_code || "—"));
+      tr.appendChild(el("td", {}, r.item_description || "—"));
+      tr.appendChild(el("td", {}, _dioTons(r.total_sales)));
+      tr.appendChild(el("td", {}, _dioNum1(r.tpd_sales)));
+      tr.appendChild(el("td", {}, _dioTons(r.current_inventory)));
+      tr.appendChild(el("td", {}, _dioNum1(r.days_on_hand)));
+
+      const after = r.days_after_shutdown;
+      const afterNum = Number(after);
+      const afterCell = el("td", {}, _dioNum1(after));
+      if (after !== null && after !== undefined
+          && Number.isFinite(afterNum) && afterNum < 0) {
+        afterCell.classList.add("dio-neg");
+      }
+      tr.appendChild(afterCell);
+      tbody.appendChild(tr);
+
+      if (Number.isFinite(Number(r.total_sales))) { totSales += Number(r.total_sales); sawSales = true; }
+      if (Number.isFinite(Number(r.tpd_sales))) { totDaily += Number(r.tpd_sales); sawDaily = true; }
+      if (Number.isFinite(Number(r.current_inventory))) { totInv += Number(r.current_inventory); sawInv = true; }
+    }
+    table.appendChild(tbody);
+
+    // Totals row. Days of Supply for the total is WEIGHTED: total
+    // inventory / total avg-daily-sales (not an average of the per-row
+    // days). After Shutdown = that weighted days - 67. Null (em-dash)
+    // when there's no positive daily-sales denominator.
+    const tfoot = el("tfoot");
+    const totRow = el("tr");
+    const totalDays = (sawDaily && totDaily > 0) ? (totInv / totDaily) : null;
+    const totalAfter = (totalDays === null) ? null : (totalDays - 67);
+    totRow.appendChild(el("td", {}, "Total"));
+    totRow.appendChild(el("td", {}, ""));
+    totRow.appendChild(el("td", {}, sawSales ? _dioTons(totSales) : "—"));
+    totRow.appendChild(el("td", {}, sawDaily ? _dioNum1(totDaily) : "—"));
+    totRow.appendChild(el("td", {}, sawInv ? _dioTons(totInv) : "—"));
+    totRow.appendChild(el("td", {}, _dioNum1(totalDays)));
+    const totAfterCell = el("td", {}, _dioNum1(totalAfter));
+    if (totalAfter !== null && totalAfter < 0) totAfterCell.classList.add("dio-neg");
+    totRow.appendChild(totAfterCell);
+    tfoot.appendChild(totRow);
+    table.appendChild(tfoot);
+
+    wrap.appendChild(table);
+  }
+
+  function exportDio() {
+    if (typeof XLSX === "undefined") {
+      _showDioError("Export unavailable: XLSX library failed to load.");
+      return;
+    }
+    const payload = _lastDioPayload;
+    const rows = (payload && payload.rows) || [];
+    if (!rows.length) return;
+    try {
+      const siteMeta = sites.find((s) => s.id === currentSiteId)
+        || { id: currentSiteId, name: "" };
+
+      // Mirror the displayed table: one row per item + the weighted totals
+      // row. numOrEmpty -> blank cell for null, so NULL days-of-supply
+      // export as empty (the "export mirrors displayed data" rule).
+      let totSales = 0, totDaily = 0, totInv = 0;
+      let sawSales = false, sawDaily = false, sawInv = false;
+      const outRows = rows.map((r) => {
+        if (Number.isFinite(Number(r.total_sales))) { totSales += Number(r.total_sales); sawSales = true; }
+        if (Number.isFinite(Number(r.tpd_sales))) { totDaily += Number(r.tpd_sales); sawDaily = true; }
+        if (Number.isFinite(Number(r.current_inventory))) { totInv += Number(r.current_inventory); sawInv = true; }
+        return {
+          "Item Code": r.item_code || "",
+          "Item Description": r.item_description || "",
+          "Total Sales": numOrEmpty(r.total_sales),
+          "Avg Daily Sales": numOrEmpty(r.tpd_sales),
+          "Current Inventory": numOrEmpty(r.current_inventory),
+          "Days of Supply": numOrEmpty(r.days_on_hand),
+          "DIO After Shutdown": numOrEmpty(r.days_after_shutdown),
+        };
+      });
+      const totalDays = (sawDaily && totDaily > 0) ? (totInv / totDaily) : null;
+      const totalAfter = (totalDays === null) ? null : (totalDays - 67);
+      outRows.push({
+        "Item Code": "Total",
+        "Item Description": "",
+        "Total Sales": sawSales ? numOrEmpty(totSales) : null,
+        "Avg Daily Sales": sawDaily ? numOrEmpty(totDaily) : null,
+        "Current Inventory": sawInv ? numOrEmpty(totInv) : null,
+        "Days of Supply": numOrEmpty(totalDays),
+        "DIO After Shutdown": numOrEmpty(totalAfter),
+      });
+
+      const formats = {
+        "Total Sales": "#,##0",
+        "Avg Daily Sales": "0.0",
+        "Current Inventory": "#,##0",
+        "Days of Supply": "0.0",
+        "DIO After Shutdown": "0.0",
+      };
+      const ws = XLSX.utils.json_to_sheet(outRows);
+      applyColumnFormats(ws, outRows, formats);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Days of Supply");
+
+      const from = (payload.from_date || "").replace(/[^0-9-]/g, "");
+      const to = (payload.to_date || "").replace(/[^0-9-]/g, "");
+      const filename =
+        `dio_${slugifySite(siteMeta.name, siteMeta.id)}_${from}_${to}_${timestampSlug()}.xlsx`;
+      XLSX.writeFile(wb, filename);
+      _clearDioError();
+    } catch (err) {
+      console.error("dio export failed", err);
+      _showDioError(`Export failed: ${err.message}`);
+    }
+  }
+
+  function wireDioControls() {
+    for (const btn of document.querySelectorAll("#dio-preset-toggle .bucket-btn")) {
+      btn.addEventListener("click", () => {
+        const preset = btn.dataset.preset;
+        if (preset) _setActiveDioPreset(preset);
+      });
+    }
+    const onDateChange = () => {
+      if (currentView === "dio" && currentSiteId) refreshDio();
+    };
+    for (const id of ["dio-from", "dio-to"]) {
+      const input = $(id);
+      if (input) input.addEventListener("change", onDateChange);
+    }
+    const exportBtn = $("dio-export-btn");
+    if (exportBtn) exportBtn.addEventListener("click", exportDio);
   }
 
   document.addEventListener("DOMContentLoaded", bootstrap);
