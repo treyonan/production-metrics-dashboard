@@ -589,6 +589,41 @@
     }
   }
 
+  // --- gradient area shading under the line (context/layout-design) -----
+  // Parse a #rrggbb / #rgb accent into {r,g,b}; falls back to Dolese brand
+  // green if the value isn't a plain hex (e.g. a CSS var resolving oddly).
+  function _hexToRgb(hex) {
+    let h = String(hex).trim().replace(/^#/, "");
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    const n = parseInt(h, 16);
+    if (h.length !== 6 || Number.isNaN(n)) return { r: 0, g: 80, b: 47 };
+    return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+  }
+
+  // Vertical fill gradient: ~28% accent near the line -> transparent at the
+  // axis. Built in Chart.js' scriptable context (it needs the laid-out
+  // chartArea) and cached on the chart instance keyed by colour + plot
+  // height, so it is only (re)built on first paint and on resize -- never
+  // per frame. Creating a CanvasGradient is cheap regardless, so this adds
+  // no meaningful render cost over the plain stroked line.
+  function _areaGradient(context, color) {
+    const chart = context.chart;
+    const ctx = chart.ctx;
+    const chartArea = chart.chartArea;
+    if (!chartArea) return "rgba(0,0,0,0)";  // pre-layout first frame
+    const key = color + ":" + Math.round(chartArea.top) + ":" + Math.round(chartArea.bottom);
+    if (chart.__areaGradientKey === key && chart.__areaGradient) {
+      return chart.__areaGradient;
+    }
+    const c = _hexToRgb(color);
+    const grad = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+    grad.addColorStop(0, "rgba(" + c.r + ", " + c.g + ", " + c.b + ", 0.9)");
+    grad.addColorStop(1, "rgba(" + c.r + ", " + c.g + ", " + c.b + ", .1)");
+    chart.__areaGradient = grad;
+    chart.__areaGradientKey = key;
+    return grad;
+  }
+
   function renderChart(samples, meta) {
     // Quality filter -- defensive only. The backend
     // (/api/timebase/history) drops quality != "GOOD" server-side by
@@ -669,13 +704,62 @@
     const labelPrefix = meta && meta.metric ? meta.metric.display_name : "value";
     const yLabel = (isCumulative ? "Δ " : "") + (unit ? labelPrefix + " (" + unit + ")" : labelPrefix);
 
+    // Average of the plotted values over the selected window (mean of the
+    // finite y's -- deltas in cumulative mode, raw values otherwise). Null
+    // when the window has no plottable samples.
+    let _avgSum = 0, _avgCnt = 0;
+    for (const _p of dataPoints) {
+      if (Number.isFinite(_p.y)) { _avgSum += _p.y; _avgCnt++; }
+    }
+    const avgValue = _avgCnt ? _avgSum / _avgCnt : null;
+
     destroyChart();
     const ctx = els.chartCanvas.getContext("2d");
     const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#00502f";
+    // Dashed horizontal average line + a small labelled value, drawn as a
+    // lightweight inline plugin -- no extra dataset, so no tooltip / legend
+    // noise and no interaction with the area-fill gradient. Effectively
+    // free: one stroke + one label per render.
+    const avgLinePlugin = {
+      id: "avgLine",
+      afterDatasetsDraw(chart) {
+        if (avgValue == null || !Number.isFinite(avgValue)) return;
+        const yScale = chart.scales && chart.scales.y;
+        const area = chart.chartArea;
+        if (!yScale || !area) return;
+        const yPix = yScale.getPixelForValue(avgValue);
+        if (yPix < area.top || yPix > area.bottom) return;  // avg off-scale
+        const c = chart.ctx;
+        const lineColor = getCss("--text-muted") || "#888";
+        c.save();
+        c.beginPath();
+        c.setLineDash([6, 4]);
+        c.lineWidth = 1;
+        c.strokeStyle = lineColor;
+        c.moveTo(area.left, yPix);
+        c.lineTo(area.right, yPix);
+        c.stroke();
+        c.setLineDash([]);
+        const txt = "avg " + avgValue.toLocaleString(undefined, { maximumFractionDigits: 2 })
+          + (unit ? " " + unit : "");
+        c.font = "11px system-ui, -apple-system, sans-serif";
+        c.textAlign = "right";
+        c.textBaseline = "bottom";
+        const tw = c.measureText(txt).width;
+        const padX = 5, chipH = 15, rx = area.right - 2, ry = yPix - 3;
+        c.fillStyle = getCss("--bg-card") || "rgba(0,0,0,0.7)";
+        c.fillRect(rx - tw - padX * 2, ry - chipH, tw + padX * 2, chipH);
+        c.fillStyle = getCss("--text") || lineColor;
+        c.fillText(txt, rx - padX, ry - 2);
+        c.restore();
+      },
+    };
+
     let newChart;
     try {
       newChart = new Chart(ctx, {
         type: "line",
+        plugins: [avgLinePlugin],
         data: {
           datasets: [{
             label: yLabel,
@@ -685,7 +769,11 @@
             pointRadius: 0,
             pointHoverRadius: 4,
             borderColor: accent,
-            backgroundColor: accent,
+            // Gradient shading under the line (see context/layout-design):
+            // ~28% accent near the line fading to transparent at the axis.
+            // The dark accent border keeps the full profile readable on top.
+            backgroundColor: (context) => _areaGradient(context, accent),
+            fill: "start",
             borderWidth: 1.5,
             tension: 0,
             spanGaps: true,
