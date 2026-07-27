@@ -25,6 +25,7 @@ class DioResult:
     from_date: date
     to_date: date
     day_count: int
+    shutdown_days: int
     records: list[DioRecord]
 
 
@@ -42,6 +43,7 @@ async def get_dio_daily(
     site_id: str,
     from_date: date,
     to_date: date,
+    shutdown_days: int,
 ) -> DioResult:
     """Fetch Days-of-Supply records for a site over an inclusive window.
 
@@ -60,12 +62,15 @@ async def get_dio_daily(
 
     start_dt = datetime.combine(from_date, time.min)
     end_dt = datetime.combine(to_date, _END_OF_DAY)
-    records = await source.fetch_records(site_id=site_id, start=start_dt, end=end_dt)
+    records = await source.fetch_records(
+        site_id=site_id, start=start_dt, end=end_dt, shutdown_days=shutdown_days
+    )
     day_count = (to_date - from_date).days + 1
     return DioResult(
         site_id=site_id,
         from_date=from_date,
         to_date=to_date,
         day_count=day_count,
+        shutdown_days=shutdown_days,
         records=records,
     )

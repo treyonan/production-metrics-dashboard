@@ -1,8 +1,9 @@
-"""Service tests for ``get_dio_daily`` (Spec 005).
+"""Service tests for ``get_dio_daily`` (Spec 005 + shutdown-days param).
 
 Uses a fake source (the live SP can't run in CI) to verify window
 validation, the inclusive DATETIME bounds handed to the SP, the day
-count, and NULL passthrough for the days-of-supply figures.
+count, NULL passthrough, and that ``shutdown_days`` is threaded to the
+source (SP ``@OutageRange``) and echoed back.
 """
 
 from __future__ import annotations
@@ -16,16 +17,16 @@ from app.services.dio import get_dio_daily
 
 
 class _FakeDioSource:
-    """Records each (site, start, end) call; returns canned records."""
+    """Records each (site, start, end, shutdown_days) call; returns canned rows."""
 
     name = "fake:dio"
 
     def __init__(self, records: list[DioRecord]) -> None:
         self._records = records
-        self.calls: list[tuple[str, datetime, datetime]] = []
+        self.calls: list[tuple[str, datetime, datetime, int]] = []
 
-    async def fetch_records(self, *, site_id, start, end):
-        self.calls.append((site_id, start, end))
+    async def fetch_records(self, *, site_id, start, end, shutdown_days):
+        self.calls.append((site_id, start, end, shutdown_days))
         return list(self._records)
 
 
@@ -47,25 +48,40 @@ def _rec(code: str = "ST5450", **kw) -> DioRecord:
 async def test_passes_inclusive_window_and_counts_days():
     src = _FakeDioSource([_rec()])
     result = await get_dio_daily(
-        src, site_id="101", from_date=date(2026, 6, 1), to_date=date(2026, 6, 30)
+        src, site_id="101", from_date=date(2026, 6, 1), to_date=date(2026, 6, 30),
+        shutdown_days=10,
     )
     assert result.day_count == 30
+    assert result.shutdown_days == 10
     assert len(result.records) == 1
     assert len(src.calls) == 1
-    site, start, end = src.calls[0]
+    site, start, end, sd = src.calls[0]
     assert site == "101"
     assert start == datetime(2026, 6, 1, 0, 0, 0)
     # End-of-day is whole seconds (no microseconds) to avoid the DATETIME
     # round-up that would otherwise inflate the SP's DayCount divisor.
     assert end == datetime(2026, 6, 30, 23, 59, 59)
     assert end.microsecond == 0
+    assert sd == 10
+
+
+@pytest.mark.asyncio
+async def test_shutdown_days_threaded_to_source_and_echoed():
+    src = _FakeDioSource([])
+    result = await get_dio_daily(
+        src, site_id="101", from_date=date(2026, 6, 1), to_date=date(2026, 6, 7),
+        shutdown_days=25,
+    )
+    assert result.shutdown_days == 25
+    assert src.calls[0][3] == 25  # passed through to the SP (@OutageRange)
 
 
 @pytest.mark.asyncio
 async def test_single_day_window_counts_one_day():
     src = _FakeDioSource([])
     result = await get_dio_daily(
-        src, site_id="101", from_date=date(2026, 6, 15), to_date=date(2026, 6, 15)
+        src, site_id="101", from_date=date(2026, 6, 15), to_date=date(2026, 6, 15),
+        shutdown_days=10,
     )
     assert result.day_count == 1
     assert result.records == []
@@ -77,7 +93,8 @@ async def test_null_days_pass_through():
         [_rec(total_sales=0.0, days_on_hand=None, days_after_shutdown=None)]
     )
     result = await get_dio_daily(
-        src, site_id="101", from_date=date(2026, 6, 1), to_date=date(2026, 6, 7)
+        src, site_id="101", from_date=date(2026, 6, 1), to_date=date(2026, 6, 7),
+        shutdown_days=10,
     )
     assert result.records[0].days_on_hand is None
     assert result.records[0].days_after_shutdown is None
@@ -88,5 +105,6 @@ async def test_inverted_window_raises():
     src = _FakeDioSource([])
     with pytest.raises(ValueError):
         await get_dio_daily(
-            src, site_id="101", from_date=date(2026, 6, 30), to_date=date(2026, 6, 1)
+            src, site_id="101", from_date=date(2026, 6, 30), to_date=date(2026, 6, 1),
+            shutdown_days=10,
         )

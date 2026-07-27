@@ -36,7 +36,8 @@ class DioRow(BaseModel):
     days_after_shutdown: float | None = Field(
         default=None,
         description=(
-            "Days of supply minus the outage range (67). Negative means "
+            "Days of supply minus the shutdown days (SP @OutageRange). "
+            "Negative means "
             "short during the outage. Null when the item had no sales."
         ),
     )
@@ -49,5 +50,8 @@ class DioResponse(BaseModel):
     from_date: date = Field(description="Inclusive window start.")
     to_date: date = Field(description="Inclusive window end.")
     day_count: int = Field(description="Calendar days in the window (inclusive).")
+    shutdown_days: int = Field(
+        description="Shutdown/outage days used for the after-shutdown figure (SP @OutageRange)."
+    )
     generated_at: datetime = Field(description="UTC timestamp the response was built.")
     rows: list[DioRow] = Field(default_factory=list, description="One row per item.")

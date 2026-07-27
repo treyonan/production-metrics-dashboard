@@ -111,14 +111,17 @@ class DioSource:
         site_id: str,
         start: datetime,
         end: datetime,
+        shutdown_days: int,
     ) -> list[DioRecord]:
         """Run the SP for one (site, window) and map rows to ``DioRecord``.
 
         ``site_id`` is str in the API's contract but the SP's param is
-        INT, so it's cast here. Raises on driver / timeout errors and on
-        an unexpected column count -- the service turns that into a 503.
+        INT, so it's cast here. ``shutdown_days`` binds to the SP's
+        ``@OutageRange`` (the "Days Of Inventory After Shutdown" offset).
+        Raises on driver / timeout errors and on an unexpected column
+        count -- the service turns that into a 503.
         """
-        params = (int(site_id), start, end)
+        params = (int(site_id), start, end, int(shutdown_days))
 
         async def _run() -> list[DioRecord]:
             async with (

@@ -70,7 +70,7 @@
            4. API docs            : Swagger -- engineer-only, far right. -->
       <button class="vtab on" data-view="dashboard" role="tab" aria-selected="true">Production Dashboard</button>
       <button class="vtab"    data-view="trends"    role="tab" aria-selected="false">Production Charts</button>
-      <button class="vtab"    data-view="dio"       role="tab" aria-selected="false">Days of Supply</button>
+      <button class="vtab"    data-view="dio"       role="tab" aria-selected="false">DIO</button>
       <!-- Interval: styled like a vtab so it visually matches the
            Charts / Forms dropdowns next to it, but it's a plain link
            (no dropdown) that navigates to /flow-interval-metrics.html.
@@ -315,12 +315,17 @@
           <label class="filter-label" for="dio-to">To date</label>
           <input type="date" class="date-input" id="dio-to" aria-label="Days of Supply to-date">
         </div>
+        <div class="trends-control-group">
+          <label class="filter-label" for="dio-shutdown">Shutdown Days</label>
+          <input type="number" class="date-input dio-shutdown-input" id="dio-shutdown"
+                 min="0" step="1" value="10" aria-label="Shutdown days (SP OutageRange)">
+        </div>
         <span class="trends-status muted" id="dio-status"></span>
       </div>
       <div class="dio-summary muted" id="dio-summary"></div>
       <div class="warn-bar err" id="dio-err-bar" style="display:none"></div>
       <div class="mxw" id="dio-table-wrap"></div>
-      <div class="nd" id="dio-empty-state" style="display:none">No Days of Supply data for this range.</div>
+      <div class="nd" id="dio-empty-state" style="display:none">No DIO data for this range.</div>
     </main>
   </div>
 </div>

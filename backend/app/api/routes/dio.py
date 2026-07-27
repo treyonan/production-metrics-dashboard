@@ -36,7 +36,8 @@ _MAX_DIO_DAYS = 366
         "one row per item: total sales (SUMMED over the window), average "
         "tons/day, current on-hand inventory (latest snapshot in range), "
         "days of supply (inventory / avg daily sales), and days of supply "
-        "after a 67-day shutdown. The two days-of-supply figures are null "
+        "after a configurable shutdown (``shutdown_days``, the Shutdown Days "
+        "control; SP @OutageRange, default 10). The two days-of-supply figures are null "
         "when the item had no sales in the window. ``from_date`` / "
         "``to_date`` are inclusive of both days. Cap: 366 days. SP failures "
         "surface as 503. See tasks/specs/005-dio-days-of-supply.md."
@@ -47,6 +48,10 @@ async def dio_daily(
     site_id: Annotated[str, Query(description="Site to report (required).")],
     from_date: Annotated[date, Query(description="Inclusive window start, YYYY-MM-DD.")],
     to_date: Annotated[date, Query(description="Inclusive window end, YYYY-MM-DD.")],
+    shutdown_days: Annotated[
+        int,
+        Query(ge=0, le=3650, description="Shutdown/outage days -> SP @OutageRange (default 10)."),
+    ] = 10,
 ) -> DioResponse:
     if from_date > to_date:
         raise HTTPException(
@@ -72,6 +77,7 @@ async def dio_daily(
             site_id=site_id,
             from_date=from_date,
             to_date=to_date,
+            shutdown_days=shutdown_days,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -89,6 +95,7 @@ async def dio_daily(
         from_date=result.from_date,
         to_date=result.to_date,
         day_count=result.day_count,
+        shutdown_days=result.shutdown_days,
         generated_at=datetime.now(UTC),
         rows=[
             DioRow(

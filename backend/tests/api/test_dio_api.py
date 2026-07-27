@@ -1,4 +1,4 @@
-"""API tests for GET /api/dio/daily (Spec 005).
+"""API tests for GET /api/dio/daily (Spec 005 + shutdown-days param).
 
 The DIO SQL source (backed by UNS.GET_SITE_DIO_DAILY_RECORDS, which can't
 run in CI) is overridden with a fake. The conftest ``client`` fixture
@@ -18,7 +18,7 @@ from app.main import app
 
 class _FakeDioSource:
     async def fetch_records(
-        self, *, site_id: str, start: datetime, end: datetime
+        self, *, site_id: str, start: datetime, end: datetime, shutdown_days: int
     ) -> list[DioRecord]:
         return [
             DioRecord(
@@ -59,6 +59,7 @@ def test_dio_daily_happy_path(client_with_dio) -> None:
     assert body["from_date"] == "2026-06-01"
     assert body["to_date"] == "2026-06-30"
     assert body["day_count"] == 30
+    assert body["shutdown_days"] == 10  # default when omitted
     assert "generated_at" in body
     rows = body["rows"]
     assert len(rows) == 2
@@ -76,6 +77,29 @@ def test_dio_daily_happy_path(client_with_dio) -> None:
     # NULL days-of-supply (no sales) round-trips as JSON null.
     assert rows[1]["days_on_hand"] is None
     assert rows[1]["days_after_shutdown"] is None
+
+
+def test_dio_daily_echoes_custom_shutdown_days(client_with_dio) -> None:
+    resp = client_with_dio.get(
+        "/api/dio/daily",
+        params={
+            "site_id": "101", "from_date": "2026-06-01", "to_date": "2026-06-30",
+            "shutdown_days": "25",
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.json()["shutdown_days"] == 25
+
+
+def test_dio_daily_rejects_negative_shutdown_days(client_with_dio) -> None:
+    resp = client_with_dio.get(
+        "/api/dio/daily",
+        params={
+            "site_id": "101", "from_date": "2026-06-01", "to_date": "2026-06-30",
+            "shutdown_days": "-1",
+        },
+    )
+    assert resp.status_code == 422
 
 
 def test_dio_daily_single_day_counts_one(client_with_dio) -> None:

@@ -1307,7 +1307,7 @@
       title = "Download Trends data as Excel (.xlsx)";
     } else if (currentView === "dio") {
       canExport = !!(_lastDioPayload && (_lastDioPayload.rows || []).length);
-      title = "Download Days of Supply data as Excel (.xlsx)";
+      title = "Download DIO data as Excel (.xlsx)";
     } else {
       canExport = !!(_lastPayload && (_lastPayload.entries || []).length);
       title = "Download current view as Excel (.xlsx)";
@@ -3718,12 +3718,16 @@
     if (currentView === "dio" && currentSiteId) refreshDio();
   }
 
-  // Read the From/To inputs into a {from_date, to_date} range, or null.
+  // Read the From/To inputs into a {from_date, to_date, shutdown_days}
+  // range, or null when a date is missing. Shutdown days defaults to 10
+  // and is clamped to a non-negative integer (maps to the SP @OutageRange).
   function _dioRange() {
     const from = ($("dio-from") || {}).value || "";
     const to = ($("dio-to") || {}).value || "";
     if (!from || !to) return null;
-    return { from_date: from, to_date: to };
+    let shutdown = parseInt(($("dio-shutdown") || {}).value, 10);
+    if (!Number.isFinite(shutdown) || shutdown < 0) shutdown = 10;
+    return { from_date: from, to_date: to, shutdown_days: shutdown };
   }
 
   function _showDioError(msg) {
@@ -3757,7 +3761,8 @@
     const qs =
         `?site_id=${encodeURIComponent(currentSiteId)}`
       + `&from_date=${encodeURIComponent(range.from_date)}`
-      + `&to_date=${encodeURIComponent(range.to_date)}`;
+      + `&to_date=${encodeURIComponent(range.to_date)}`
+      + `&shutdown_days=${encodeURIComponent(range.shutdown_days)}`;
     try {
       const payload = await fetchJSON(`/api/dio/daily${qs}`);
       _lastDioPayload = payload;
@@ -3767,7 +3772,7 @@
       if (status) status.textContent = "";
     } catch (err) {
       console.error("dio fetch failed", err);
-      _showDioError(`Failed to load Days of Supply data: ${err.message}`);
+      _showDioError(`Failed to load DIO data: ${err.message}`);
       if (status) status.textContent = "error";
     }
   }
@@ -3799,10 +3804,11 @@
     if (summary) {
       if (payload && payload.from_date) {
         const dc = payload.day_count;
+        const sd = (payload.shutdown_days != null) ? payload.shutdown_days : 10;
         summary.textContent =
           `Date range: ${payload.from_date} to ${payload.to_date}`
           + ` · ${dc} day${dc === 1 ? "" : "s"} in range`
-          + ` · Shutdown: 67 days`;
+          + ` · Shutdown: ${sd} day${sd === 1 ? "" : "s"}`;
       } else {
         summary.textContent = "";
       }
@@ -3861,12 +3867,14 @@
 
     // Totals row. Days of Supply for the total is WEIGHTED: total
     // inventory / total avg-daily-sales (not an average of the per-row
-    // days). After Shutdown = that weighted days - 67. Null (em-dash)
-    // when there's no positive daily-sales denominator.
+    // days). After Shutdown = that weighted days minus the shutdown-days
+    // value the SP used. Null (em-dash) when there's no positive
+    // daily-sales denominator.
+    const _sd = (payload && payload.shutdown_days != null) ? payload.shutdown_days : 10;
     const tfoot = el("tfoot");
     const totRow = el("tr");
     const totalDays = (sawDaily && totDaily > 0) ? (totInv / totDaily) : null;
-    const totalAfter = (totalDays === null) ? null : (totalDays - 67);
+    const totalAfter = (totalDays === null) ? null : (totalDays - _sd);
     totRow.appendChild(el("td", {}, "Total"));
     totRow.appendChild(el("td", {}, ""));
     totRow.appendChild(el("td", {}, sawSales ? _dioTons(totSales) : "—"));
@@ -3913,8 +3921,9 @@
           "DIO After Shutdown": numOrEmpty(r.days_after_shutdown),
         };
       });
+      const _sd = (payload && payload.shutdown_days != null) ? payload.shutdown_days : 10;
       const totalDays = (sawDaily && totDaily > 0) ? (totInv / totDaily) : null;
-      const totalAfter = (totalDays === null) ? null : (totalDays - 67);
+      const totalAfter = (totalDays === null) ? null : (totalDays - _sd);
       outRows.push({
         "Item Code": "Total",
         "Item Description": "",
@@ -3935,7 +3944,7 @@
       const ws = XLSX.utils.json_to_sheet(outRows);
       applyColumnFormats(ws, outRows, formats);
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Days of Supply");
+      XLSX.utils.book_append_sheet(wb, ws, "DIO");
 
       const from = (payload.from_date || "").replace(/[^0-9-]/g, "");
       const to = (payload.to_date || "").replace(/[^0-9-]/g, "");
@@ -3959,7 +3968,7 @@
     const onDateChange = () => {
       if (currentView === "dio" && currentSiteId) refreshDio();
     };
-    for (const id of ["dio-from", "dio-to"]) {
+    for (const id of ["dio-from", "dio-to", "dio-shutdown"]) {
       const input = $(id);
       if (input) input.addEventListener("change", onDateChange);
     }
