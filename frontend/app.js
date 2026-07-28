@@ -3829,7 +3829,7 @@
       "Total Sales",
       "Avg Daily Sales",
       "Current Inventory",
-      "Days of Supply",
+      "DIO",
       "DIO After Shutdown",
     ];
     for (const h of headers) headRow.appendChild(el("th", {}, h));
