@@ -3917,7 +3917,7 @@
           "Total Sales": numOrEmpty(r.total_sales),
           "Avg Daily Sales": numOrEmpty(r.tpd_sales),
           "Current Inventory": numOrEmpty(r.current_inventory),
-          "Days of Supply": numOrEmpty(r.days_on_hand),
+          "DIO": numOrEmpty(r.days_on_hand),
           "DIO After Shutdown": numOrEmpty(r.days_after_shutdown),
         };
       });
@@ -3930,7 +3930,7 @@
         "Total Sales": sawSales ? numOrEmpty(totSales) : null,
         "Avg Daily Sales": sawDaily ? numOrEmpty(totDaily) : null,
         "Current Inventory": sawInv ? numOrEmpty(totInv) : null,
-        "Days of Supply": numOrEmpty(totalDays),
+        "DIO": numOrEmpty(totalDays),
         "DIO After Shutdown": numOrEmpty(totalAfter),
       });
 
@@ -3938,7 +3938,7 @@
         "Total Sales": "#,##0",
         "Avg Daily Sales": "0.0",
         "Current Inventory": "#,##0",
-        "Days of Supply": "0.0",
+        "DIO": "0.0",
         "DIO After Shutdown": "0.0",
       };
       const ws = XLSX.utils.json_to_sheet(outRows);
