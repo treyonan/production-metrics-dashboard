@@ -26,9 +26,19 @@ _DEFAULT_FRONTEND_DIR = _REPO_ROOT / "frontend"
 # treats sites[0] as the no-deep-link default. Put the most-used
 # site first.
 _DEFAULT_SITE_NAMES: dict[str, str] = {
-    "101": "Big Canyon Quarry",     # default
+    "101": "Big Canyon Quarry",         # default
     "100": "Ardmore Quarry",
-    "110": "Roosevelt Quarry"
+    "110": "Roosevelt Quarry",
+    "109": "Richards Spur Quarry",
+    "103": "Coleman Quarry",
+    "104": "Cooperton Quarry",
+    "106": "Davis Quarry",
+    "108": "Hartshome Quarry",
+    "151": "White Eagle Sand",
+    "180": "Enid Stone",
+    "181": "Midtown Materials",
+    "183": "Yukon Stone Yard",
+    "187": "Fort Worth Materials",
 }
 
 
