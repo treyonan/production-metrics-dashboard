@@ -3804,14 +3804,21 @@
     if (summary) {
       if (payload && payload.from_date) {
         const dc = payload.day_count;
-        // "Full days" reframes the window as [start of from_date, start of
-        // to_date): the SP's inclusive day_count minus 1. Display only --
-        // the SP's own DayCount still drives the per-item TPD math.
-        const fullDays = Math.max(0, dc - 1);
         const sd = (payload.shutdown_days != null) ? payload.shutdown_days : 10;
+        // When the window ends *today*, today isn't a complete day yet, so
+        // reframe it as ending at the START of today and count one fewer
+        // "full" day (day_count - 1). When it ends on a past date, that day
+        // is complete -- keep the original inclusive count and wording.
+        // Display only; the SP's own day count still drives the TPD math.
+        const _endsToday = (payload.to_date === todayISO());
+        const _toText = _endsToday
+          ? `to the start of ${payload.to_date}`
+          : `to ${payload.to_date}`;
+        const _rangeDays = _endsToday ? Math.max(0, dc - 1) : dc;
+        const _rangeWord = _endsToday ? "full day" : "day";
         summary.textContent =
-          `Date range: ${payload.from_date} to the start of ${payload.to_date}`
-          + ` · ${fullDays} full day${fullDays === 1 ? "" : "s"} in range`
+          `Date range: ${payload.from_date} ${_toText}`
+          + ` · ${_rangeDays} ${_rangeWord}${_rangeDays === 1 ? "" : "s"} in range`
           + ` · Shutdown: ${sd} day${sd === 1 ? "" : "s"}`;
       } else {
         summary.textContent = "";
