@@ -33,7 +33,7 @@ _DEFAULT_SITE_NAMES: dict[str, str] = {
     "103": "Coleman Quarry",
     "104": "Cooperton Quarry",
     "106": "Davis Quarry",
-    "108": "Hartshome Quarry",
+    "108": "Hartshorne Quarry",
     "151": "White Eagle Sand",
     "180": "Enid Stone",
     "181": "Midtown Materials",
