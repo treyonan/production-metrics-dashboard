@@ -157,6 +157,172 @@ curl -s http://localhost:8001/api/health | jq
 If `/api/health` reports a source down with a clear error, the API
 stays up and degrades gracefully — see "Troubleshooting" below.
 
+## Deploy by copying files onto the host (from scratch, with auto-restart)
+
+Use this instead of "First-time deploy" when the server can't `git clone`
+the repo (no GitHub access from the box, air-gapped network, etc.) and
+you're transferring a build from a dev box. The end state is identical to
+the clone path; only the code-transfer step differs, and this section also
+turns on container auto-restart so the app survives host reboots.
+
+> **You can't copy just the Dockerfile.** `backend/Dockerfile` builds with
+> the *repo root* as its build context and `COPY`s `backend/`, `context/`,
+> and `frontend/` into the image (see the `COPY` lines in the Dockerfile
+> and `build.context: .` in `docker-compose.yml`). So "copy the Dockerfile
+> over" really means copy the whole project tree -- the Dockerfile plus the
+> directories it pulls in. Copy the build context, not the one file.
+
+### 1. Create the deploy directory and hand it to your user
+
+```bash
+# /opt is root-owned, so the mkdir needs sudo. Chown the directory to your
+# login user up-front so the copy -- and every later command -- runs
+# without sudo and doesn't leave root-owned files behind.
+sudo mkdir -p /opt/production-metrics-dashboard
+sudo chown "$USER":"$USER" /opt/production-metrics-dashboard
+sudo chmod 755 /opt/production-metrics-dashboard
+```
+
+### 2. Copy the project (build context) onto the server
+
+Run this **from the repo root on the dev box** (WSL2 / Git-Bash / macOS
+shell). `rsync` is preferred -- it skips the heavy/ignored paths and is
+re-runnable for later updates. Exclude `venv/`, `.git/`, and caches so you
+aren't shipping hundreds of MB:
+
+```bash
+rsync -av --delete \
+  --exclude 'venv/' --exclude '.git/' \
+  --exclude '__pycache__/' --exclude '*.py[cod]' \
+  --exclude '.pytest_cache/' --exclude '.ruff_cache/' \
+  ./ deployuser@LINUX_HOST:/opt/production-metrics-dashboard/
+```
+
+No `rsync`? `scp -r` works too -- it copies everything, so delete the venv
+on the server afterward to reclaim space:
+
+```bash
+scp -r ./ deployuser@LINUX_HOST:/opt/production-metrics-dashboard/
+# then, on the server:
+rm -rf /opt/production-metrics-dashboard/backend/venv
+```
+
+Verify the layout is flat (same invariant as the clone path -- see "Repo
+layout invariant"):
+
+```bash
+cd /opt/production-metrics-dashboard
+ls
+# Expect: backend  context  docker-compose.yml  frontend  CLAUDE.md  ...
+```
+
+### 3. Create and lock down `backend/.env`
+
+`.env` is the one piece of config that is NOT in git and is NEVER baked
+into the image -- it's read at container start via `env_file:` in
+`docker-compose.yml`. Prefer to leave it out of the bulk copy (secrets
+shouldn't ride along in an rsync) and create it on the server from the
+template:
+
+```bash
+cp backend/.env.example backend/.env
+nano backend/.env            # set DB_CONN_STRING, FLOW_API_KEY, per-site keys, etc.
+chmod 600 backend/.env       # owner read/write only -- it holds secrets
+```
+
+See "First-time deploy" above for which keys are required.
+
+### 4. Turn on auto-restart
+
+Out of the box the compose service declares **no** restart policy, so a
+host reboot or a crash leaves the container down. Add a restart policy to
+the `api` service in `docker-compose.yml`:
+
+```yaml
+services:
+  api:
+    # ... existing keys ...
+    container_name: pmd-api
+    restart: unless-stopped        # <-- add this line
+```
+
+`unless-stopped` restarts the container on crash and when the Docker
+daemon starts (i.e., after a host reboot), but respects a deliberate
+`docker compose stop` / `down` -- it won't come back until you start it
+again. (`always` would even override a manual stop when the daemon
+restarts; `unless-stopped` is the safer default for a server.)
+
+Also make sure the Docker daemon itself starts on boot, or the restart
+policy has nothing to act through:
+
+```bash
+sudo systemctl enable --now docker
+```
+
+### 5. Build the image and start the container (detached)
+
+```bash
+cd /opt/production-metrics-dashboard
+docker compose up -d --build
+```
+
+`-d` runs it in the background; `--build` builds the image from
+`backend/Dockerfile` first (required on the first run and after any
+backend or dependency change).
+
+### 6. Verify the restart policy took, then smoke-test
+
+```bash
+# Restart policy actually applied?
+docker inspect -f '{{.HostConfig.RestartPolicy.Name}}' pmd-api    # unless-stopped
+docker inspect -f '{{.State.Status}}' pmd-api                     # running
+
+# App is up
+curl -s http://localhost:8001/api/__ping                          # {"alive":true,...}
+curl -s http://localhost:8001/api/health | jq                     # sources report ok:true
+```
+
+Optional -- prove auto-restart works by killing the container and watching
+Docker bring it back:
+
+```bash
+docker kill pmd-api
+sleep 3
+docker ps --filter name=pmd-api      # STATUS shows "Up ... (healthy)" again
+```
+
+### Alternative: plain `docker build` + `docker run` (no Compose)
+
+If Compose isn't available, build and run the image directly -- but you
+must reproduce by hand everything `docker-compose.yml` declares: the port
+map, the env file, the `extra_hosts` entries, the read-only bind mounts,
+and the restart arg. Run from the repo root so the relative paths resolve:
+
+```bash
+# Build (context = repo root ".", Dockerfile lives under backend/)
+docker build -t production-metrics-dashboard:local -f backend/Dockerfile .
+
+# Run detached, auto-restarting, mirroring docker-compose.yml
+docker run -d \
+  --name pmd-api \
+  --restart unless-stopped \
+  -p 8001:8000 \
+  --env-file backend/.env \
+  --add-host dbp-bcq:10.44.135.12 \
+  --add-host dbp-arq:10.40.135.12 \
+  --add-host dbp-rvq:10.49.135.12 \
+  -v "$PWD/context:/app/context:ro" \
+  -v "$PWD/frontend:/app/frontend:ro" \
+  -v "$PWD/backend/app/integrations/timebase/catalog.yaml:/app/backend/app/integrations/timebase/catalog.yaml:ro" \
+  production-metrics-dashboard:local
+```
+
+Keep the `--add-host` lines in sync with `extra_hosts:` in
+`docker-compose.yml` (one line per plant server; see "Adding a new site").
+Compose is still the recommended path -- it keeps all of this in one
+version-controlled file. The raw `docker run` is here only for hosts
+without Compose.
+
 ## Updates after dev-box changes
 
 The dev-side workflow is `git push` from the Windows box. The server-side
@@ -334,6 +500,12 @@ If they don't match, rebuild.
 
 ## Change history
 
+- **2026-07-30** — added the "Deploy by copying files onto the host"
+  section: a from-scratch flow for servers without `git` access (create/own
+  the deploy directory, `rsync`/`scp` the build context, lock down `.env`),
+  plus auto-restart guidance via `restart: unless-stopped` (Compose) or
+  `--restart unless-stopped` (`docker run`). Note: `docker-compose.yml` does
+  not yet declare a restart policy — add the key per that section to enable it.
 - **2026-04-27** — repo re-rooted at the project level. Prior history
   lived under workspace-rooted `treyonan/Claude_Cowork`; that remote
   is archived and clones from it are no longer valid. Current remote:
