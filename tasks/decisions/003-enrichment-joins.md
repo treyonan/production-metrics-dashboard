@@ -3,6 +3,15 @@
 **Status:** Accepted, 2026-04-24
 **Context:** Phase 8. See `tasks/todo.md` for the implementation plan.
 
+> **Partially superseded (Phase 33).** The `department_name` label
+> described here as coming from the cross-database
+> `[DailyProductionEntry].[dbo].[Departments]` LEFT JOIN (added Phase
+> 12) is now resolved in Python from the payload's
+> `Metrics.Workcenter.Description`, and that join has been removed from
+> `select_all.sql`. The weather/notes enrichment joins
+> (`SITE_PRODUCTION_RUN_HISTORY`, `SITE_PRODUCTION_RUN_COMMENTS`) are
+> unaffected. See `tasks/decisions/005-department-name-from-payload.md`.
+
 ## Context
 
 Operators and plant engineers need more context next to each

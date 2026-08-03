@@ -4476,3 +4476,43 @@ NOTE (deploy): frontend/ is volume-mounted in docker-compose (live on refresh);
 the backend is baked into the image, so backend changes need `docker compose up
 --build`. This is why the Runtime_Percent chart (backend avg_runtime_percent)
 didn't appear until a rebuild while frontend-only changes showed instantly.
+
+### department_name from Workcenter.Description (Phase 33, 2026-08-03)
+Swapped the source of the department label (dashboard header + Production
+Charts `#trends` left-nav/charts + rollups + XLSX export) from the
+cross-database `[DailyProductionEntry].[dbo].[Departments]` LEFT JOIN to the
+payload's `Metrics.Workcenter.Description`. Single choke point:
+`SqlProductionReportSource._row_to_dataclass`. Field name/type unchanged, so
+no service/route/schema/frontend edits. See ADR
+`tasks/decisions/005-department-name-from-payload.md`.
+
+Changes:
+- `base.py`: new shared resolver `workcenter_description(payload)` (`_`->space,
+  strip; `"_"`/`"None"`/blank -> None). Updated `department_name` docstring.
+- `sql_source.py`: `_row_to_dataclass` reads via the resolver; `Dept <id>`
+  fallback + `department_name.workcenter_description_missing` warning.
+- `select_all.sql`: dropped the Departments JOIN + `DEPT_NAME` column (last
+  column, no index shift). Read-only account no longer needs SELECT on
+  `[DailyProductionEntry]`.
+- `tests/_fixtures/csv_source.py`: delegates to the shared resolver.
+- `tests/integrations/test_sql_source.py`: reworked the `_row` helper (13 cols)
+  and the department tests; added normalization + placeholder coverage and a
+  test against the canonical `payload-example-{arq,bcq}.json`.
+- Docs: `payload-schema.md` (documented `Workcenter.Description`), root +
+  backend `ARCHITECTURE.md`, ADR 003 superseding note, ADR 005 (new).
+
+Decisions (confirmed with Trey): source is always present -> no Departments
+fallback; keep `Dept <id>` contract guard; normalize `_`->space.
+Verification: full suite green (235 passed, was 220; +15 resolver tests),
+`ruff check` clean on all changed files. Ran in a Python 3.12 venv in the
+cloud workspace (prod parity: `class Snapshot[T]` needs 3.12).
+
+Follow-up (2026-08-03): container logs flooded with
+`department_name.workcenter_description_missing` WARNINGs -- legacy pre-field
+reports (e.g. PRM101 2024 rows) genuinely lack Workcenter.Description, and
+`fetch_rows()` is a full-table scan, so each re-warned every poll. Fix
+(chosen with Trey: recent-only): `sql_source._is_recent_report(prod_date)`
+gates the log -- WARNING only when prod_date is within
+`_RECENT_MISSING_WARN_DAYS` (7), else DEBUG. Pure helper, `now`-injectable,
+unit-tested (`test_is_recent_report_window`). Suite 236 passed, ruff clean.
+Needs `docker compose up --build` (backend baked into image).

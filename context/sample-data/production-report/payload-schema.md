@@ -129,6 +129,7 @@ Rollup-level KPIs and schedule context.
 | `Start_Time` | string | no | `HH:MM:SS` 24-hour format |
 | `Production_Mode` | string | no | Placeholder for future use. Currently `"2"` for all runs. Reserved for when the workcenter operates in additional modes; human-readable mode descriptions will be defined later. |
 | `Scheduled_Status` | string | no | Enum-like. Observed: `"Scheduled"`. |
+| `Description` | string | no | Human-readable **department name** (e.g. `"Primary"`, `"Secondary"`, `"Portable 2"`). This is the authoritative source of `department_name` on the dashboard header, Trends left-nav/charts, rollups, and the XLSX export (Phase 33). Resolved via `base.workcenter_description`: underscores are normalized to spaces, and `"_"` / `"None"` / blank are treated as absent (caller falls back to `Dept <id>`). Always populated in current production payloads. |
 
 **Quirks**:
 - `Production_Mode` looks numeric but is a string. Currently a placeholder

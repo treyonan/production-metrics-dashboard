@@ -13,12 +13,17 @@ were expanded to match.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
 
-from app.integrations.production_report.sql_source import SqlProductionReportSource
+from app.integrations.production_report.base import workcenter_description
+from app.integrations.production_report.sql_source import (
+    _RECENT_MISSING_WARN_DAYS,
+    SqlProductionReportSource,
+    _is_recent_report,
+)
 from app.integrations.sql.queries import load_query
 
 # -- aioodbc-shaped fakes ---------------------------------------------------
@@ -79,11 +84,12 @@ class FakePool:
         return _AsyncCtx(FakeConnection(self._cursor))
 
 
-# Column order for select_all.sql (Phase 12 -- 14 columns total).
-# Any test that passes a row tuple through the fake cursor uses
-# exactly these columns. Helper below builds a tuple with all
-# enrichment fields defaulted to None so older tests can keep their
-# focused assertions; new Phase 12 tests pass dept_name explicitly.
+# Column order for select_all.sql (13 columns total). Any test that
+# passes a row tuple through the fake cursor uses exactly these columns.
+# Helper below builds a tuple with all enrichment fields defaulted to
+# None so older tests can keep their focused assertions. department_name
+# is no longer a SQL column -- it's resolved from the payload's
+# Metrics.Workcenter.Description, so tests set it via the `payload` arg.
 def _row(
     *,
     id=101,
@@ -99,14 +105,12 @@ def _row(
     avg_humidity=None,
     max_wind_speed=None,
     notes=None,
-    dept_name=None,  # Phase 12 -- DEPT_NAME from Departments LEFT JOIN.
 ):
     if prod_date is None:
         prod_date = datetime(2026, 4, 22)
     return (
         id, prod_date, prod_id, site_id, department_id, payload, dtm,
         shift, weather_conditions, avg_temp, avg_humidity, max_wind_speed, notes,
-        dept_name,
     )
 
 
@@ -175,10 +179,10 @@ async def test_fetch_rows_casts_ints_to_strings_and_parses_payload() -> None:
     assert r.avg_humidity is None
     assert r.max_wind_speed is None
     assert r.notes is None
-    # Phase 12 + 13: department_name is non-null in the contract; the
-    # SQL source synthesizes "Dept <id>" on a JOIN miss. Helper builds
-    # rows with dept_name=None by default, so we should see the
-    # fallback string here.
+    # department_name is non-null in the contract; the source synthesizes
+    # "Dept <id>" when the payload carries no Metrics.Workcenter.Description.
+    # This payload has a Workcenter block but no Description, so we should
+    # see the fallback string here.
     assert r.department_name == "Dept 127"
 
 
@@ -254,13 +258,15 @@ async def test_fetch_rows_tolerates_null_enrichment_from_left_join_miss() -> Non
 
 
 @pytest.mark.asyncio
-async def test_fetch_rows_reads_department_name_from_dept_join() -> None:
-    """Phase 12: department_name from the Departments LEFT JOIN lands on
-    the dataclass. Underscores in the upstream value are already
-    replaced with spaces by the SQL-side REPLACE() (D8) -- this test
-    asserts the source layer passes that string through unchanged.
+async def test_fetch_rows_reads_department_name_from_workcenter_description() -> None:
+    """department_name is resolved from the payload's
+    Metrics.Workcenter.Description and lands on the dataclass.
     """
-    row = _row(id=401, prod_id="PR_DEPT_NAMED", dept_name="North Crusher")
+    row = _row(
+        id=401,
+        prod_id="PR_DEPT_NAMED",
+        payload='{"Metrics":{"Workcenter":{"Description":"North Crusher"}}}',
+    )
     pool = FakePool(FakeCursor(rows=[row]))
     src = SqlProductionReportSource(pool=pool)
     r = (await src.fetch_rows())[0]
@@ -269,18 +275,58 @@ async def test_fetch_rows_reads_department_name_from_dept_join() -> None:
 
 
 @pytest.mark.asyncio
-async def test_fetch_rows_synthesizes_dept_name_fallback_on_left_join_miss() -> None:
-    """Phase 13: department_name is non-null in the source-row contract.
-    A production report whose DEPARTMENT_ID has no matching row in
-    [DailyProductionEntry].[dbo].[Departments] gets NULL from the
-    LEFT JOIN; the source synthesizes a deterministic 'Dept <id>'
-    fallback (and logs a warning) so downstream code never sees null.
+async def test_fetch_rows_normalizes_underscores_in_description() -> None:
+    """Underscores in Workcenter.Description are normalized to spaces,
+    matching the retired SQL-side REPLACE() convention.
     """
-    row = _row(id=402, prod_id="PR_NO_DEPT", department_id=999, dept_name=None)
+    row = _row(
+        id=403,
+        prod_id="PR_UNDERSCORE",
+        payload='{"Metrics":{"Workcenter":{"Description":"Portable_2"}}}',
+    )
+    pool = FakePool(FakeCursor(rows=[row]))
+    src = SqlProductionReportSource(pool=pool)
+    r = (await src.fetch_rows())[0]
+    assert r.department_name == "Portable 2"
+
+
+@pytest.mark.asyncio
+async def test_fetch_rows_synthesizes_dept_name_fallback_when_description_missing() -> None:
+    """department_name is non-null in the source-row contract. A report
+    whose payload carries no Metrics.Workcenter.Description (or only a
+    placeholder) gets a deterministic 'Dept <id>' fallback (and a logged
+    warning) so downstream code never sees null.
+    """
+    row = _row(
+        id=402,
+        prod_id="PR_NO_DEPT",
+        department_id=999,
+        payload='{"Metrics":{"Workcenter":{"Availability":50.0}}}',
+    )
     pool = FakePool(FakeCursor(rows=[row]))
     src = SqlProductionReportSource(pool=pool)
     r = (await src.fetch_rows())[0]
     assert r.department_name == "Dept 999"
+
+
+def test_is_recent_report_window() -> None:
+    """The recent-warning window (drives warn-vs-debug for a missing
+    Workcenter.Description) is inclusive of the cutoff and treats
+    non-datetime prod_date as not recent.
+    """
+    now = datetime(2026, 8, 3)
+    assert _is_recent_report(datetime(2026, 8, 3), now=now) is True  # today
+    assert _is_recent_report(datetime(2026, 8, 2), now=now) is True  # 1 day
+    assert (
+        _is_recent_report(now - timedelta(days=_RECENT_MISSING_WARN_DAYS), now=now)
+        is True
+    )  # exactly at cutoff
+    assert (
+        _is_recent_report(now - timedelta(days=_RECENT_MISSING_WARN_DAYS + 1), now=now)
+        is False
+    )  # just past cutoff
+    assert _is_recent_report(datetime(2024, 6, 29), now=now) is False  # legacy
+    assert _is_recent_report(None, now=now) is False  # missing/None dtm
 
 
 @pytest.mark.asyncio
@@ -307,11 +353,70 @@ def test_load_query_reads_ping_and_select_all() -> None:
     ping = load_query(queries_dir, "ping")
     select_all = load_query(queries_dir, "select_all")
     assert "SELECT 1" in ping
-    # Phase 8: enriched select joins three tables; all three names must appear.
+    # Phase 8: enriched select joins the history and comments tables.
     assert "FROM [UNS].[SITE_PRODUCTION_RUN_REPORTS]" in select_all
     assert "[UNS].[SITE_PRODUCTION_RUN_HISTORY]" in select_all
     assert "[UNS].[SITE_PRODUCTION_RUN_COMMENTS]" in select_all
-    # Phase 12: cross-database Departments JOIN with name normalization.
-    assert "[DailyProductionEntry].[dbo].[Departments]" in select_all
-    assert "REPLACE(d.[Name], '_', ' ')" in select_all
     assert "SELECT *" not in select_all
+    # Phase 33: the cross-database Departments JOIN was removed --
+    # department_name now comes from the payload's Workcenter.Description.
+    # Inspect the executable SQL only (comment lines may still reference
+    # the retired table for historical context).
+    sql_body = "\n".join(
+        line for line in select_all.splitlines()
+        if not line.lstrip().startswith("--")
+    )
+    assert "[DailyProductionEntry]" not in sql_body
+    assert "DEPT_NAME" not in sql_body
+    assert "Departments" not in sql_body
+
+
+# -- workcenter_description resolver -----------------------------------------
+# Single source of truth for the department label. Exercised directly here
+# (the SQL source and the CSV test fixture both delegate to it).
+
+import json  # noqa: E402 -- local to the resolver tests below
+
+_SAMPLE_DIR = (
+    Path(__file__).resolve().parents[2].parent
+    / "context"
+    / "sample-data"
+    / "production-report"
+)
+
+
+@pytest.mark.parametrize(
+    ("example_file", "expected"),
+    [
+        ("payload-example-arq.json", "Primary"),
+        ("payload-example-bcq.json", "Secondary"),
+    ],
+)
+def test_workcenter_description_from_canonical_examples(example_file, expected) -> None:
+    """The committed canonical payloads always carry
+    Metrics.Workcenter.Description; the resolver returns it verbatim.
+    """
+    payload = json.loads((_SAMPLE_DIR / example_file).read_text(encoding="utf-8"))
+    assert workcenter_description(payload) == expected
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        ({"Metrics": {"Workcenter": {"Description": "Primary"}}}, "Primary"),
+        ({"Metrics": {"Workcenter": {"Description": "Portable_2"}}}, "Portable 2"),
+        ({"Metrics": {"Workcenter": {"Description": "  Secondary  "}}}, "Secondary"),
+        # Placeholders / absence -> None so callers fall back to "Dept <id>".
+        ({"Metrics": {"Workcenter": {"Description": "_"}}}, None),
+        ({"Metrics": {"Workcenter": {"Description": "None"}}}, None),
+        ({"Metrics": {"Workcenter": {"Description": ""}}}, None),
+        ({"Metrics": {"Workcenter": {"Description": None}}}, None),
+        ({"Metrics": {"Workcenter": {"Description": 42}}}, None),  # non-string
+        ({"Metrics": {"Workcenter": {"Availability": 99.9}}}, None),  # no key
+        ({"Metrics": {}}, None),  # no Workcenter
+        ({}, None),  # no Metrics
+        (None, None),  # no payload
+    ],
+)
+def test_workcenter_description_normalization_and_placeholders(payload, expected) -> None:
+    assert workcenter_description(payload) == expected

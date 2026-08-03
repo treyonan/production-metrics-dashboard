@@ -16,6 +16,47 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Protocol, runtime_checkable
 
+# Payload string values that mean "no value" rather than real content.
+# Mirrors the frontend's placeholderize() convention ("_" / "None" /
+# blank render as an em-dash) so a placeholder Description is treated as
+# absent and falls back to the numeric department id.
+_DEPT_NAME_PLACEHOLDERS: frozenset[str] = frozenset({"", "None"})
+
+
+def workcenter_description(payload: dict[str, Any] | None) -> str | None:
+    """Resolve the department label from ``Metrics.Workcenter.Description``.
+
+    Returns the normalized description string, or ``None`` when the field
+    is absent, non-string, or a placeholder -- letting the caller apply
+    its own ``f"Dept {id}"`` fallback (and log, if it wants to).
+
+    Normalization mirrors the retired ``[DailyProductionEntry].[dbo].``
+    ``[Departments]`` convention: underscores become spaces, then the
+    value is stripped. A value that reduces to empty (e.g. a bare ``"_"``)
+    or equals the ``"None"`` sentinel is treated as a placeholder and
+    yields ``None``.
+
+    Single source of truth for the label so every surface (dashboard
+    header, Trends left-nav + charts, circuit/product rollups, XLSX
+    export) and every ``ProductionReportSource`` implementation resolve
+    the name identically.
+    """
+    if not isinstance(payload, dict):
+        return None
+    metrics = payload.get("Metrics")
+    if not isinstance(metrics, dict):
+        return None
+    workcenter = metrics.get("Workcenter")
+    if not isinstance(workcenter, dict):
+        return None
+    raw = workcenter.get("Description")
+    if not isinstance(raw, str):
+        return None
+    cleaned = raw.replace("_", " ").strip()
+    if cleaned in _DEPT_NAME_PLACEHOLDERS:
+        return None
+    return cleaned
+
 
 @dataclass(frozen=True)
 class SourceStatus:
@@ -47,13 +88,19 @@ class ProductionReportRow:
     SQL rows whose LEFT JOIN misses (e.g. a production report with no
     history row yet) report None field-by-field.
 
-    ``department_name`` comes from a cross-database LEFT JOIN against
-    ``[DailyProductionEntry].[dbo].[Departments]``. The SQL source
-    synthesizes a ``f"Dept {department_id}"`` fallback (and logs a
-    warning) when the JOIN misses, so this field is always populated
-    in production responses -- the frontend can display it without
-    null-check fallbacks. Underscores in the upstream name are
-    normalized to spaces at the SQL layer (Phase 12, D8).
+    ``department_name`` is resolved from the report payload's
+    ``Metrics.Workcenter.Description`` via :func:`workcenter_description`.
+    The source synthesizes a ``f"Dept {department_id}"`` fallback (and
+    logs a warning) when Description is absent or a placeholder, so this
+    field is always populated in production responses -- the frontend
+    can display it without null-check fallbacks. Underscores in the
+    description are normalized to spaces.
+
+    (Through Phase 32 this came from a cross-database LEFT JOIN against
+    ``[DailyProductionEntry].[dbo].[Departments]``; that join was
+    removed once ``Workcenter.Description`` became the authoritative
+    label source -- see
+    ``tasks/decisions/005-department-name-from-payload.md``.)
 
     No ``| None`` default: every source must populate this field.
     Phase 13 (2026-04-28) made SQL the only production source and

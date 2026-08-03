@@ -21,8 +21,10 @@ focuses on the FastAPI code.
 > Settings fields are gone, the `get_production_report_source` DI
 > provider no longer branches, and `department_name` on
 > `ProductionReportRow` / `ProductionReportEntry` is non-null
-> (the SQL source synthesizes a `Dept <id>` fallback on the rare
-> Departments LEFT JOIN miss). Sections below that reference the
+> (the SQL source synthesizes a `Dept <id>` fallback when the payload's
+> `Metrics.Workcenter.Description` is absent or a placeholder -- Phase
+> 33; through Phase 32 this came from a Departments LEFT JOIN, since
+> removed). Sections below that reference the
 > conditional branching, the missing Settings fields, or the CSV
 > source file under `app/integrations/...` describe historical
 > state -- the Protocol pattern itself still holds.
@@ -440,10 +442,14 @@ the parameterized query (`integrations/production_report/queries/select_all.sql`
 loaded at construction time), and releases both when the block exits
 (even on exception).
 
-The SQL query includes LEFT JOINs to the Departments table (for `department_name`,
-Phase 12) and SITE_PRODUCTION_RUN_HISTORY (for enrichment fields like shift,
-weather, temp, humidity, wind_speed, notes — Phase 8). Missing enrichment
-values default to None.
+The SQL query includes LEFT JOINs to SITE_PRODUCTION_RUN_HISTORY and
+SITE_PRODUCTION_RUN_COMMENTS (for enrichment fields like shift, weather,
+temp, humidity, wind_speed, notes — Phase 8). Missing enrichment values
+default to None. `department_name` is **not** a SQL column: it is resolved
+in Python from the payload's `Metrics.Workcenter.Description` via
+`base.workcenter_description` (Phase 33; the cross-database Departments
+LEFT JOIN that formerly supplied it was removed — see
+`tasks/decisions/005-department-name-from-payload.md`).
 
 `_row_to_dataclass` does the type normalisation:
 
@@ -454,8 +460,7 @@ values default to None.
 | `PROD_ID`        | varchar        | `prod_id: str`                | —                                      |
 | `SITE_ID`        | int            | `site_id: str`                | **cast to str** — matches JSON/frontend |
 | `DEPARTMENT_ID`  | int            | `department_id: str`          | **cast to str** — same reason          |
-| `DEPARTMENT_NAME`| varchar        | `department_name: str`        | Phase 12: from LEFT JOIN; fallback `f"Dept {id}"` on miss |
-| `PAYLOAD`        | nvarchar(max)  | `payload: dict[str, Any]`     | `json.loads` (empty → `{}`)            |
+| `PAYLOAD`        | nvarchar(max)  | `payload: dict[str, Any]`     | `json.loads` (empty → `{}`); also the source of `department_name` via `Metrics.Workcenter.Description` (Phase 33), fallback `f"Dept {id}"` |
 | `SHIFT`          | varchar        | `shift: str \| None`          | Phase 8: enrichment field              |
 | `WEATHER_CONDITIONS` | varchar    | `weather_conditions: str \| None` | Phase 8                                |
 | `AVG_TEMP`       | float          | `avg_temp: float \| None`     | Phase 8                                |

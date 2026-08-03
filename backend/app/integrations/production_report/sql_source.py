@@ -1,9 +1,8 @@
 """SQL Server-backed production-report source.
 
 Reads from ``IA_ENTERPRISE.[UNS].[SITE_PRODUCTION_RUN_REPORTS]``
-(plus three LEFT JOINs for shift/weather, notes, and department name)
-via an aioodbc connection pool. The only production-report source
-as of Phase 13.
+(plus two LEFT JOINs for shift/weather and notes) via an aioodbc
+connection pool. The only production-report source as of Phase 13.
 
 Type-contract notes:
 
@@ -19,11 +18,18 @@ Type-contract notes:
   AVG_HUMIDITY, MAX_WIND_SPEED, NOTES) come from LEFT JOINs and
   can be NULL. Numeric columns are converted to ``float`` for
   JSON serialization compatibility; ``None`` passes through.
-* Phase 12 ``DEPT_NAME`` comes from the cross-database
-  ``[DailyProductionEntry].[dbo].[Departments]`` LEFT JOIN with
-  underscores normalized to spaces. Phase 13 made the field
-  non-null on the dataclass; this source synthesizes
-  ``f"Dept {id}"`` and logs a warning on the rare JOIN miss.
+* ``department_name`` is resolved from the payload's
+  ``Metrics.Workcenter.Description`` via
+  :func:`app.integrations.production_report.base.workcenter_description`
+  (shared with the test fixture so both resolve identically). The
+  dataclass field is non-null; this source synthesizes ``f"Dept {id}"``
+  when Description is absent or a placeholder. A *recent* report missing
+  it logs at WARNING (an actionable upstream regression); older/legacy
+  reports -- which predate the field and would otherwise flood the log on
+  the full-table scan -- log at DEBUG (see ``_RECENT_MISSING_WARN_DAYS``).
+  (The cross-database ``[DailyProductionEntry].[dbo].[Departments]``
+  join that formerly supplied this value was removed -- see
+  ``tasks/decisions/005-department-name-from-payload.md``.)
 """
 
 from __future__ import annotations
@@ -31,18 +37,40 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from app.core.logging import get_logger
 from app.integrations.sql.queries import load_query
 
-from .base import ProductionReportRow, SourceStatus
+from .base import ProductionReportRow, SourceStatus, workcenter_description
 
 if TYPE_CHECKING:
     import aioodbc
 
 _QUERIES_DIR = Path(__file__).parent / "queries"
 _log = get_logger("app.integrations.production_report.sql_source")
+
+# A report missing Metrics.Workcenter.Description only signals a real
+# upstream regression when it is *recent*. Legacy reports predate the
+# field and will never have it; on the parameterless full-table scan they
+# would otherwise re-warn on every poll. Reports older than this cutoff
+# (in days, by prod_date) log the fallback at DEBUG instead of WARNING.
+_RECENT_MISSING_WARN_DAYS: Final[int] = 7
+
+
+def _is_recent_report(prod_date: Any, *, now: datetime | None = None) -> bool:
+    """Whether ``prod_date`` falls within the recent-warning window.
+
+    Drives the warn-vs-debug choice when a report is missing
+    ``Workcenter.Description``: recent -> WARNING (actionable regression),
+    older -> DEBUG (expected legacy gap). ``now`` is injectable for tests;
+    it defaults to the current time in ``prod_date``'s tz (or naive).
+    Non-datetime ``prod_date`` is treated as not recent.
+    """
+    if not isinstance(prod_date, datetime):
+        return False
+    ref = now if now is not None else datetime.now(prod_date.tzinfo)
+    return (ref - prod_date).days <= _RECENT_MISSING_WARN_DAYS
 
 
 def _to_float_or_none(v: Any) -> float | None:
@@ -119,32 +147,49 @@ class SqlProductionReportSource:
           3=SITE_ID        4=DEPARTMENT_ID  5=PAYLOAD   6=DTM
           7=SHIFT          8=WEATHER_CONDITIONS
           9=AVG_TEMP      10=AVG_HUMIDITY  11=MAX_WIND_SPEED
-         12=NOTES         13=DEPT_NAME (Phase 12)
+         12=NOTES
         """
         payload_raw = row[5]
         payload: dict[str, Any] = json.loads(payload_raw) if payload_raw else {}
 
-        # Phase 13: department_name is non-null in the source-row
-        # contract. The Departments LEFT JOIN should always match in
-        # production, but on a miss we synthesize a deterministic
-        # "Dept <id>" fallback and log a warning so the data integrity
-        # issue is visible without taking the request down.
+        # department_name is resolved from the payload's
+        # Metrics.Workcenter.Description (shared resolver, so the test
+        # fixture and this source stay in lockstep). The field is
+        # non-null in the source-row contract; Description should always
+        # be present in production, but on an absent/placeholder value we
+        # synthesize a deterministic "Dept <id>" fallback and log a
+        # warning so the data-integrity issue is visible without taking
+        # the request down.
         department_id = str(row[4])
-        dept_name_raw = row[13]
-        if dept_name_raw is None:
-            _log.warning(
-                "department_name.left_join_miss",
+        resolved = workcenter_description(payload)
+        if resolved is None:
+            # Only a RECENT report missing the field is actionable (an
+            # upstream regression). Legacy reports predate the field and
+            # are expected to miss it; on a full-table scan they'd flood
+            # the log every poll, so they drop to DEBUG.
+            prod_date = row[1]
+            is_recent = _is_recent_report(prod_date)
+            log = _log.warning if is_recent else _log.debug
+            log(
+                "department_name.workcenter_description_missing",
                 department_id=department_id,
                 prod_id=row[2],
+                prod_date=(
+                    prod_date.isoformat()
+                    if isinstance(prod_date, datetime)
+                    else None
+                ),
+                recent=is_recent,
                 hint=(
-                    "No row in [DailyProductionEntry].[dbo].[Departments] "
-                    "matched DEPARTMENT_ID. Surfacing 'Dept <id>' fallback. "
-                    "Investigate: missing Departments row or stale ID."
+                    "payload.Metrics.Workcenter.Description was absent or a "
+                    "placeholder; surfacing 'Dept <id>' fallback. A recent "
+                    "report missing this indicates an upstream regression; "
+                    "legacy reports predate the field and are expected."
                 ),
             )
             department_name = f"Dept {department_id}"
         else:
-            department_name = str(dept_name_raw)
+            department_name = resolved
 
         return ProductionReportRow(
             id=int(row[0]),

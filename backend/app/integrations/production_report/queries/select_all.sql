@@ -5,7 +5,7 @@
 --
 -- CANONICAL JOIN REFERENCE (Phase 8):
 --   [UNS].[GET_PRODUCTION_RUN_REPORTS]  -- an existing stored procedure
---   that joins the same three tables. We replicate its joins here
+--   that joins the same tables. We replicate its joins here
 --   rather than EXEC-ing the SP because:
 --     (a) the SP requires a single @WORKCENTER param, which would force
 --         N-round-trips per /range (one per department), and
@@ -24,25 +24,17 @@
 --   and weather fields; the dashboard surfaces those as em-dash via
 --   the standard placeholderize path.
 --
--- Phase 12 (2026-04-28): added LEFT JOIN to
--- [DailyProductionEntry].[dbo].[Departments] for human-readable
--- department names. Cross-database query; the API's read-only
--- account must hold SELECT on [DailyProductionEntry].[dbo].[Departments].
--- LEFT JOIN (not INNER) so a missing lookup row doesn't drop the
--- production report -- name comes back NULL and the frontend falls
--- back to the numeric department_id.
---
--- DEPT_NAME normalization (D8): underscores in [Name] are replaced
--- with spaces at the SQL layer. Single source of truth -- every
--- downstream surface (panel headers, Trends legends, modal,
--- XLSX export) inherits the normalization for free. If a caller
--- ever needs the raw underscored form, add a separate
--- DEPT_NAME_RAW column rather than re-doing the transformation
--- in multiple places.
+-- DEPARTMENT NAME (Phase 33): the human-readable department label is no
+-- longer sourced here. It is resolved in the Python layer from the
+-- payload's Metrics.Workcenter.Description (see
+-- SqlProductionReportSource._row_to_dataclass and
+-- app.integrations.production_report.base.workcenter_description). The
+-- cross-database LEFT JOIN to [DailyProductionEntry].[dbo].[Departments]
+-- that formerly supplied DEPT_NAME was removed, so the API's read-only
+-- account no longer needs SELECT on that database. See
+-- tasks/decisions/005-department-name-from-payload.md.
 --
 -- Column order matches SqlProductionReportSource._row_to_dataclass.
--- DEPT_NAME appended at position 13 to avoid shifting any existing
--- positional indices in _row_to_dataclass.
 SELECT
     rr.ID,
     rr.PRODDATE,
@@ -56,12 +48,9 @@ SELECT
     rh.AVG_TEMP,
     rh.AVG_HUMIDITY,
     rh.MAX_WIND_SPEED,
-    rc.NOTES,
-    REPLACE(d.[Name], '_', ' ') AS DEPT_NAME
+    rc.NOTES
 FROM [UNS].[SITE_PRODUCTION_RUN_REPORTS] rr
 LEFT JOIN [UNS].[SITE_PRODUCTION_RUN_HISTORY] rh
     ON rh.PROD_ID = rr.PROD_ID
 LEFT JOIN [UNS].[SITE_PRODUCTION_RUN_COMMENTS] rc
-    ON rc.PROD_ID = rr.PROD_ID
-LEFT JOIN [DailyProductionEntry].[dbo].[Departments] d
-    ON d.[Id] = rr.DEPARTMENT_ID;
+    ON rc.PROD_ID = rr.PROD_ID;

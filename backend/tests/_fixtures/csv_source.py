@@ -40,7 +40,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from app.integrations.production_report.base import ProductionReportRow, SourceStatus
+from app.integrations.production_report.base import (
+    ProductionReportRow,
+    SourceStatus,
+    workcenter_description,
+)
 
 _DATE_FMT = "%m/%d/%y %H:%M"
 
@@ -121,19 +125,25 @@ class CsvProductionReportSource:
         # committed sample always has a value.
         dtm_raw = (raw.get("DTM") or "").strip()
         dtm = datetime.strptime(dtm_raw, _DATE_FMT) if dtm_raw else None
-        # Phase 13 (2026-04-28): department_name is non-null in the
-        # source-row contract but the test fixture's sample.csv has no
-        # Departments column. Synthesize the same "Dept <id>" fallback
-        # the SQL source uses on a JOIN miss so test rows look like
-        # production rows without a JOIN match.
+        # department_name is resolved from the payload's
+        # Metrics.Workcenter.Description via the SAME shared resolver the
+        # production SQL source uses, so the fixture and production stay
+        # in lockstep. The committed sample.csv predates the field, so its
+        # rows resolve to the "Dept <id>" fallback -- representative of a
+        # report whose payload lacks the Description. The canonical shape
+        # (which always carries Workcenter.Description) lives in
+        # payload-example-arq.json / -bcq.json and is exercised by the
+        # unit tests in tests/integrations/test_sql_source.py.
         dept_id = raw["DEPARTMENT_ID"]
+        payload = json.loads(raw["PAYLOAD"])
+        resolved = workcenter_description(payload)
         return ProductionReportRow(
             id=int(raw["ID"]),
             prod_date=datetime.strptime(raw["PRODDATE"], _DATE_FMT),
             prod_id=raw["PROD_ID"],
             site_id=raw["SITE_ID"],
             department_id=dept_id,
-            department_name=f"Dept {dept_id}",
-            payload=json.loads(raw["PAYLOAD"]),
+            department_name=resolved if resolved is not None else f"Dept {dept_id}",
+            payload=payload,
             dtm=dtm,
         )

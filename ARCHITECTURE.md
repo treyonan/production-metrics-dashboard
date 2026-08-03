@@ -154,10 +154,11 @@ Here's every hop the request makes:
 7. **Source call.** `SqlProductionReportSource.fetch_rows()` runs a
    parameterized SQL query (from `integrations/sql/queries/select_all.sql`)
    via `aioodbc` against the Azure Managed SQL instance. The query
-   includes LEFT JOINs to the Departments table (for `department_name`)
-   and Site metadata tables (for enrichment fields like shift, weather,
-   notes). Results are parsed into typed `ProductionReportRow` instances;
-   missing enrichment values default to None.
+   includes LEFT JOINs to Site metadata tables (for enrichment fields
+   like shift, weather, notes). `department_name` is resolved in Python
+   from the payload's `Metrics.Workcenter.Description` (Phase 33), not
+   from a join. Results are parsed into typed `ProductionReportRow`
+   instances; missing enrichment values default to None.
 
 8. **Pydantic serialization.** The route wraps the rows in a
    `ProductionReportLatestResponse` (from `app/schemas/production_report.py`).
@@ -244,7 +245,7 @@ class ProductionReportRow:
     prod_id: str
     site_id: str
     department_id: str
-    department_name: str  # Phase 12: from Departments LEFT JOIN
+    department_name: str  # Phase 33: from payload Metrics.Workcenter.Description
     payload: dict[str, Any]
     dtm: datetime
     # Phase 8: enrichment fields from site metadata JOINs (optional)
